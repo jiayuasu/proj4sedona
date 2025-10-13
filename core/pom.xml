@@ -30,6 +30,13 @@
             <version>${project.version}</version>
         </dependency>
         
+        <!-- MGRS dependency -->
+        <dependency>
+            <groupId>org.proj4</groupId>
+            <artifactId>proj4sedona-mgrs</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        
         <!-- JSON processing for PROJJSON support -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

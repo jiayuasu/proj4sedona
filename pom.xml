@@ -13,6 +13,7 @@
     <modules>
         <module>core</module>
         <module>wkt-parser</module>
+        <module>mgrs</module>
     </modules>
 
     <name>Proj4Sedona</name>

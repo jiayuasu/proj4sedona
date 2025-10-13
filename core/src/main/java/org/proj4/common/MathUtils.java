@@ -285,7 +285,6 @@ public final class MathUtils {
      */
     public static double iqsfnz(double e, double q) {
         double con = 1 - e * e;
-        double com = 1 / (2 * e);
         double phi = Math.asin(0.5 * q / con);
         for (int i = 0; i < 15; i++) {
             double sinphi = Math.sin(phi);
@@ -316,7 +315,6 @@ public final class MathUtils {
         double sigma1 = Math.atan2(Math.tan(u1), Math.cos(az));
         double alpha = Math.asin(Math.cos(u1) * Math.sin(az));
         
-        double u2 = u1;
         double sigma = s / (b * (1 + f * f / 4 * (1 - Math.cos(2 * sigma1))));
         
         for (int i = 0; i < 100; i++) {
@@ -324,9 +322,7 @@ public final class MathUtils {
             double deltaSigma = 0;
             
             for (int j = 0; j < 20; j++) {
-                double cos2SigmaM = Math.cos(2 * sigma1 + sigma);
                 double sinSigma = Math.sin(sigma);
-                double cosSigma = Math.cos(sigma);
                 
                 double deltaSigmaNew = (b * (1 + f * f / 4 * (1 - Math.cos(2 * sigma1))) * sigma - s) / 
                                      (b * (1 + f * f / 4 * (1 - Math.cos(2 * sigma1))) + 

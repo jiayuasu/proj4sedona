@@ -27,20 +27,17 @@ public class AlbersEqualArea {
         
         double sin_po = Math.sin(proj.lat1);
         double cos_po = Math.cos(proj.lat1);
-        double t1 = sin_po;
         double con = sin_po;
         double ms1 = MathUtils.msfnz(e3, sin_po, cos_po);
         double qs1 = MathUtils.qsfnz(e3, sin_po);
         
         sin_po = Math.sin(proj.lat2);
         cos_po = Math.cos(proj.lat2);
-        double t2 = sin_po;
         double ms2 = MathUtils.msfnz(e3, sin_po, cos_po);
         double qs2 = MathUtils.qsfnz(e3, sin_po);
         
         sin_po = Math.sin(proj.lat0);
         cos_po = Math.cos(proj.lat0);
-        double t3 = sin_po;
         double qs0 = MathUtils.qsfnz(e3, sin_po);
         
         double ns0;
@@ -71,7 +68,6 @@ public class AlbersEqualArea {
         double lat = p.y;
         
         double sin_phi = Math.sin(lat);
-        double cos_phi = Math.cos(lat);
         
         double qs = MathUtils.qsfnz(proj.e3, sin_phi);
         double rh1 = proj.a * Math.sqrt(proj.c - proj.ns0 * qs) / proj.ns0;

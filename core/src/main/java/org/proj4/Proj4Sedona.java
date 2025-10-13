@@ -5,6 +5,7 @@ import org.proj4.core.Projection;
 import org.proj4.constants.Values;
 import org.proj4.projjson.ProjJsonDefinition;
 import org.proj4.projjson.ProjJsonParser;
+import org.proj4.mgrs.Mgrs;
 
 import java.io.IOException;
 import java.util.function.Function;
@@ -364,5 +365,56 @@ public class Proj4Sedona {
      */
     public static Point toPoint(double[] coords) {
         return Point.fromArray(coords);
+    }
+    
+    // ===== MGRS Support =====
+    
+    /**
+     * Convert lat/lon to MGRS.
+     * @param lon longitude in degrees
+     * @param lat latitude in degrees
+     * @param accuracy accuracy in digits (5 for 1 m, 4 for 10 m, 3 for 100 m, 2 for 1 km, 1 for 10 km or 0 for 100 km)
+     * @return the MGRS string for the given location and accuracy
+     */
+    public static String mgrsForward(double lon, double lat, int accuracy) {
+        return Mgrs.forward(lon, lat, accuracy);
+    }
+    
+    /**
+     * Convert lat/lon to MGRS with default accuracy (5 digits = 1 meter).
+     * @param lon longitude in degrees
+     * @param lat latitude in degrees
+     * @return the MGRS string for the given location
+     */
+    public static String mgrsForward(double lon, double lat) {
+        return Mgrs.forward(lon, lat);
+    }
+    
+    /**
+     * Convert MGRS to lat/lon bounding box.
+     * @param mgrs MGRS string
+     * @return array with [left, bottom, right, top] values in WGS84 degrees
+     */
+    public static double[] mgrsInverse(String mgrs) {
+        return Mgrs.inverse(mgrs);
+    }
+    
+    /**
+     * Convert MGRS to lat/lon point (center of bounding box).
+     * @param mgrs MGRS string
+     * @return array with [longitude, latitude] in degrees
+     */
+    public static double[] mgrsToPoint(String mgrs) {
+        return Mgrs.toPoint(mgrs);
+    }
+    
+    /**
+     * Create a Point from MGRS string.
+     * @param mgrs MGRS string
+     * @return Point with longitude and latitude in degrees
+     */
+    public static Point fromMGRS(String mgrs) {
+        double[] coords = Mgrs.toPoint(mgrs);
+        return new Point(coords[0], coords[1]);
     }
 }

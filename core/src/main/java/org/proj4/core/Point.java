@@ -1,5 +1,6 @@
 package org.proj4.core;
 
+import org.proj4.mgrs.Mgrs;
 import java.util.Objects;
 
 /**
@@ -151,5 +152,34 @@ public class Point {
         } else {
             return String.format("Point{x=%.6f, y=%.6f}", x, y);
         }
+    }
+    
+    // ===== MGRS Support =====
+    
+    /**
+     * Create a Point from MGRS string.
+     * @param mgrs MGRS string
+     * @return Point with longitude and latitude in degrees
+     */
+    public static Point fromMGRS(String mgrs) {
+        double[] coords = Mgrs.toPoint(mgrs);
+        return new Point(coords[0], coords[1]);
+    }
+    
+    /**
+     * Convert this point to MGRS string with specified accuracy.
+     * @param accuracy accuracy in digits (5 for 1 m, 4 for 10 m, 3 for 100 m, 2 for 1 km, 1 for 10 km or 0 for 100 km)
+     * @return MGRS string
+     */
+    public String toMGRS(int accuracy) {
+        return Mgrs.forward(x, y, accuracy);
+    }
+    
+    /**
+     * Convert this point to MGRS string with default accuracy (5 digits = 1 meter).
+     * @return MGRS string
+     */
+    public String toMGRS() {
+        return Mgrs.forward(x, y);
     }
 }

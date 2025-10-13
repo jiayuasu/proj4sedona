@@ -309,18 +309,4 @@ public class ProjStringParser {
         }
     }
     
-    /**
-     * Safely parses a value as an integer.
-     * @param value the value to parse
-     * @return the integer value
-     */
-    private static int parseInt(Object value) {
-        if (value instanceof Number) {
-            return ((Number) value).intValue();
-        } else if (value instanceof String) {
-            return Integer.parseInt((String) value);
-        } else {
-            throw new IllegalArgumentException("Cannot parse value as integer: " + value);
-        }
-    }
 }
