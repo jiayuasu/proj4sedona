@@ -7,10 +7,10 @@ import org.proj4.constants.Values;
 import java.util.function.Function;
 
 /**
- * Main entry point for the Proj4Java library.
+ * Main entry point for the Proj4Sedona library.
  * This class provides the same API as the JavaScript proj4 library.
  */
-public class Proj4Java {
+public class Proj4Sedona {
     
     /**
      * Represents a coordinate transformation converter.
@@ -141,8 +141,13 @@ public class Proj4Java {
             point = new Point(point.x + fromProj.from_greenwich, point.y, point.z, point.m);
         }
         
-        // TODO: Implement datum transformation
-        // point = datumTransform(fromProj.datum, toProj.datum, point);
+        // Convert datums if needed, and if possible
+        if (fromProj.datum != null && toProj.datum != null) {
+            point = org.proj4.datum.DatumTransform.transform(fromProj.datum, toProj.datum, point);
+            if (point == null) {
+                return null;
+            }
+        }
         
         // Adjust for prime meridian if necessary
         if (toProj.from_greenwich != 0) {

@@ -101,12 +101,13 @@ public class ProjStringParser {
             case "to_meter":
             case "from_greenwich":
             case "zone":
-            case "south":
                 try {
                     return Double.parseDouble(value);
                 } catch (NumberFormatException e) {
                     return value; // Return as string if not a number
                 }
+            case "south":
+                return "true".equalsIgnoreCase(value) || "1".equals(value);
             default:
                 // Try to parse as number first
                 try {
@@ -153,63 +154,63 @@ public class ProjStringParser {
         
         // Convert angle parameters from degrees to radians
         if (params.containsKey("lat_0")) {
-            def.put("lat0", ((Double) params.get("lat_0")) * Values.D2R);
+            def.put("lat0", parseDouble(params.get("lat_0")) * Values.D2R);
         }
         if (params.containsKey("lat_1")) {
-            def.put("lat1", ((Double) params.get("lat_1")) * Values.D2R);
+            def.put("lat1", parseDouble(params.get("lat_1")) * Values.D2R);
         }
         if (params.containsKey("lat_2")) {
-            def.put("lat2", ((Double) params.get("lat_2")) * Values.D2R);
+            def.put("lat2", parseDouble(params.get("lat_2")) * Values.D2R);
         }
         if (params.containsKey("lat_ts")) {
-            def.put("lat_ts", ((Double) params.get("lat_ts")) * Values.D2R);
+            def.put("lat_ts", parseDouble(params.get("lat_ts")) * Values.D2R);
         }
         if (params.containsKey("lon_0")) {
-            def.put("long0", ((Double) params.get("lon_0")) * Values.D2R);
+            def.put("long0", parseDouble(params.get("lon_0")) * Values.D2R);
         }
         if (params.containsKey("lon_1")) {
-            def.put("long1", ((Double) params.get("lon_1")) * Values.D2R);
+            def.put("long1", parseDouble(params.get("lon_1")) * Values.D2R);
         }
         if (params.containsKey("lon_2")) {
-            def.put("long2", ((Double) params.get("lon_2")) * Values.D2R);
+            def.put("long2", parseDouble(params.get("lon_2")) * Values.D2R);
         }
         if (params.containsKey("alpha")) {
-            def.put("alpha", ((Double) params.get("alpha")) * Values.D2R);
+            def.put("alpha", parseDouble(params.get("alpha")) * Values.D2R);
         }
         if (params.containsKey("longc")) {
-            def.put("longc", ((Double) params.get("longc")) * Values.D2R);
+            def.put("longc", parseDouble(params.get("longc")) * Values.D2R);
         }
         
         // Copy other parameters
         if (params.containsKey("x_0")) {
-            def.put("x0", params.get("x_0"));
+            def.put("x0", parseDouble(params.get("x_0")));
         }
         if (params.containsKey("y_0")) {
-            def.put("y0", params.get("y_0"));
+            def.put("y0", parseDouble(params.get("y_0")));
         }
         if (params.containsKey("k")) {
-            def.put("k0", params.get("k"));
+            def.put("k0", parseDouble(params.get("k")));
         }
         if (params.containsKey("k_0")) {
-            def.put("k0", params.get("k_0"));
+            def.put("k0", parseDouble(params.get("k_0")));
         }
         if (params.containsKey("a")) {
-            def.put("a", params.get("a"));
+            def.put("a", parseDouble(params.get("a")));
         }
         if (params.containsKey("b")) {
-            def.put("b", params.get("b"));
+            def.put("b", parseDouble(params.get("b")));
         }
         if (params.containsKey("rf")) {
-            def.put("rf", params.get("rf"));
+            def.put("rf", parseDouble(params.get("rf")));
         }
         if (params.containsKey("to_meter")) {
-            def.put("to_meter", params.get("to_meter"));
+            def.put("to_meter", parseDouble(params.get("to_meter")));
         }
         if (params.containsKey("from_greenwich")) {
-            def.put("from_greenwich", params.get("from_greenwich"));
+            def.put("from_greenwich", parseDouble(params.get("from_greenwich")));
         }
         if (params.containsKey("zone")) {
-            def.put("zone", params.get("zone"));
+            def.put("zone", parseDouble(params.get("zone")));
         }
         if (params.containsKey("south")) {
             def.put("utmSouth", params.get("south"));
@@ -291,5 +292,35 @@ public class ProjStringParser {
     public static String getEllipsoid(String projString) {
         Map<String, Object> params = parse(projString);
         return (String) params.get("ellps");
+    }
+    
+    /**
+     * Safely parses a value as a double.
+     * @param value the value to parse
+     * @return the double value
+     */
+    private static double parseDouble(Object value) {
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        } else if (value instanceof String) {
+            return Double.parseDouble((String) value);
+        } else {
+            throw new IllegalArgumentException("Cannot parse value as double: " + value);
+        }
+    }
+    
+    /**
+     * Safely parses a value as an integer.
+     * @param value the value to parse
+     * @return the integer value
+     */
+    private static int parseInt(Object value) {
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        } else if (value instanceof String) {
+            return Integer.parseInt((String) value);
+        } else {
+            throw new IllegalArgumentException("Cannot parse value as integer: " + value);
+        }
     }
 }

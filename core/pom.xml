@@ -7,13 +7,13 @@
 
     <parent>
         <groupId>org.proj4</groupId>
-        <artifactId>proj4java</artifactId>
+        <artifactId>proj4sedona</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>proj4java-core</artifactId>
+    <artifactId>proj4sedona-core</artifactId>
     <packaging>jar</packaging>
-    <name>Proj4Java Core</name>
+    <name>Proj4Sedona Core</name>
     <description>Core functionality for coordinate system transformations</description>
 
     <properties>

@@ -5,9 +5,9 @@ import org.proj4.core.Point;
 import static org.assertj.core.api.Assertions.*;
 
 /**
- * Basic tests for the Proj4Java library.
+ * Basic tests for the Proj4Sedona library.
  */
-public class Proj4JavaTest {
+public class Proj4SedonaTest {
     
     @Test
     public void testPointCreation() {
@@ -56,7 +56,7 @@ public class Proj4JavaTest {
     @Test
     public void testWGS84Projection() {
         Point point = new Point(-71.0, 41.0);
-        Point result = Proj4Java.transform("WGS84", point);
+        Point result = Proj4Sedona.transform("WGS84", point);
         
         // For WGS84 to WGS84, should be identity transformation
         assertThat(result.x).isCloseTo(-71.0, within(1e-10));
@@ -65,19 +65,19 @@ public class Proj4JavaTest {
     
     @Test
     public void testConverterCreation() {
-        Proj4Java.Converter converter = Proj4Java.converter("WGS84");
+        Proj4Sedona.Converter converter = Proj4Sedona.converter("WGS84");
         assertThat(converter).isNotNull();
         assertThat(converter.getProjection()).isNotNull();
     }
     
     @Test
     public void testToPointUtility() {
-        Point point = Proj4Java.toPoint(10.0, 20.0);
+        Point point = Proj4Sedona.toPoint(10.0, 20.0);
         assertThat(point.x).isEqualTo(10.0);
         assertThat(point.y).isEqualTo(20.0);
         
         double[] coords = {30.0, 40.0, 50.0};
-        Point point2 = Proj4Java.toPoint(coords);
+        Point point2 = Proj4Sedona.toPoint(coords);
         assertThat(point2.x).isEqualTo(30.0);
         assertThat(point2.y).isEqualTo(40.0);
         assertThat(point2.z).isEqualTo(50.0);
@@ -85,7 +85,7 @@ public class Proj4JavaTest {
     
     @Test
     public void testVersion() {
-        String version = Proj4Java.getVersion();
+        String version = Proj4Sedona.getVersion();
         assertThat(version).isEqualTo("1.0.0-SNAPSHOT");
     }
 }

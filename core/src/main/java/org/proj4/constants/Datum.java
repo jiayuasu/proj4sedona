@@ -20,6 +20,12 @@ public final class Datum {
         public final String ellipse;      // Associated ellipsoid
         public final String datumName;    // Human-readable name
         public final int datumType;       // Type of datum transformation
+        public double a;                  // Semi-major axis
+        public double b;                  // Semi-minor axis
+        public double es;                 // Eccentricity squared
+        public double ep2;                // Second eccentricity squared
+        public final double[] datum_params; // Parsed datum parameters
+        public final String grids;        // Grid files string
         
         public DatumDef(String towgs84, String nadgrids, String ellipse, String datumName, int datumType) {
             this.towgs84 = towgs84;
@@ -27,6 +33,35 @@ public final class Datum {
             this.ellipse = ellipse;
             this.datumName = datumName;
             this.datumType = datumType;
+            this.grids = nadgrids;
+            
+            // Parse datum parameters
+            if (towgs84 != null && !towgs84.isEmpty()) {
+                String[] params = towgs84.split(",");
+                this.datum_params = new double[params.length];
+                for (int i = 0; i < params.length; i++) {
+                    this.datum_params[i] = Double.parseDouble(params[i].trim());
+                }
+                
+                // Convert rotation parameters from arcseconds to radians for 7-parameter
+                if (datumType == Values.PJD_7PARAM && params.length > 3) {
+                    for (int i = 3; i < 6; i++) {
+                        this.datum_params[i] *= Values.SEC_TO_RAD;
+                    }
+                    // Scale factor: convert from ppm to unitless
+                    if (params.length > 6) {
+                        this.datum_params[6] = (this.datum_params[6] / 1000000.0) + 1.0;
+                    }
+                }
+            } else {
+                this.datum_params = new double[0];
+            }
+            
+            // Set ellipsoid parameters (will be set by caller)
+            this.a = Double.NaN;
+            this.b = Double.NaN;
+            this.es = Double.NaN;
+            this.ep2 = Double.NaN;
         }
         
         public DatumDef(String towgs84, String ellipse, String datumName) {
@@ -34,6 +69,20 @@ public final class Datum {
                  towgs84 != null && towgs84.contains(",") ? 
                  (towgs84.split(",").length > 3 ? Values.PJD_7PARAM : Values.PJD_3PARAM) : 
                  Values.PJD_WGS84);
+        }
+        
+        /**
+         * Sets the ellipsoid parameters for this datum.
+         * @param a semi-major axis
+         * @param b semi-minor axis
+         * @param es eccentricity squared
+         * @param ep2 second eccentricity squared
+         */
+        public void setEllipsoidParams(double a, double b, double es, double ep2) {
+            this.a = a;
+            this.b = b;
+            this.es = es;
+            this.ep2 = ep2;
         }
     }
     

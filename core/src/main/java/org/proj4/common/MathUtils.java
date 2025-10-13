@@ -267,6 +267,17 @@ public final class MathUtils {
     }
     
     /**
+     * Calculates the q function for equal area projections with cosphi.
+     * @param e eccentricity
+     * @param sinphi sine of latitude
+     * @param cosphi cosine of latitude
+     * @return q value
+     */
+    public static double qsfnz(double e, double sinphi, double cosphi) {
+        return qsfnz(e, sinphi);
+    }
+    
+    /**
      * Calculates the inverse q function.
      * @param e eccentricity
      * @param q q value
@@ -348,5 +359,54 @@ public final class MathUtils {
         double az2 = Math.atan2(Math.sin(alpha), -Math.sin(u1) * Math.sin(sigma) + Math.cos(u1) * Math.cos(sigma) * Math.cos(az));
         
         return new double[]{lat2, lon2, az2};
+    }
+    
+    /**
+     * Calculates the e0 coefficient for ellipsoid calculations.
+     * @param es squared eccentricity
+     * @return e0 coefficient
+     */
+    public static double e0fn(double es) {
+        return 1 - 0.25 * es * (1 + es / 16 * (3 + 1.25 * es));
+    }
+    
+    /**
+     * Calculates the e1 coefficient for ellipsoid calculations.
+     * @param es squared eccentricity
+     * @return e1 coefficient
+     */
+    public static double e1fn(double es) {
+        return 0.375 * es * (1 + 0.25 * es * (1 + 0.46875 * es));
+    }
+    
+    /**
+     * Calculates the e2 coefficient for ellipsoid calculations.
+     * @param es squared eccentricity
+     * @return e2 coefficient
+     */
+    public static double e2fn(double es) {
+        return 0.05859375 * es * es * (1 + 0.75 * es);
+    }
+    
+    /**
+     * Calculates the e3 coefficient for ellipsoid calculations.
+     * @param es squared eccentricity
+     * @return e3 coefficient
+     */
+    public static double e3fn(double es) {
+        return es * es * es * (35.0 / 3072.0);
+    }
+    
+    /**
+     * Calculates the meridian length using coefficients.
+     * @param e0 first coefficient
+     * @param e1 second coefficient
+     * @param e2 third coefficient
+     * @param e3 fourth coefficient
+     * @param phi latitude
+     * @return meridian length
+     */
+    public static double mlfn(double e0, double e1, double e2, double e3, double phi) {
+        return e0 * phi - e1 * Math.sin(2 * phi) + e2 * Math.sin(4 * phi) - e3 * Math.sin(6 * phi);
     }
 }

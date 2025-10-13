@@ -61,6 +61,17 @@ public class Projection {
     public Datum.DatumDef datum;
     public String[] datum_params;
     
+    // Additional projection parameters
+    public double n;      // Cone constant for conic projections
+    public double c;      // Constant for equal area projections
+    public double rho0;   // Radius at origin latitude
+    public double f0;     // Scale factor for LCC
+    public double e0, e1, e2, e3; // Ellipsoid coefficients
+    public double ml0;    // Meridian length at origin
+    public int zone;      // UTM zone
+    public boolean utmSouth; // UTM southern hemisphere flag
+    public double ns0;    // Albers Equal Area cone constant
+    
     // Projection methods (to be set by specific projection implementations)
     public ProjectionMethod forward;
     public ProjectionMethod inverse;
@@ -214,6 +225,14 @@ public class Projection {
         // Set NADGRIDS
         this.nadgrids = (String) def.get("nadgrids");
         
+        // Set UTM parameters
+        if (def.containsKey("zone")) {
+            this.zone = ((Number) def.get("zone")).intValue();
+        }
+        if (def.containsKey("utmSouth")) {
+            this.utmSouth = (Boolean) def.get("utmSouth");
+        }
+        
         // Calculate derived parameters
         calculateDerivedParameters();
         
@@ -221,6 +240,11 @@ public class Projection {
         this.datum = Datum.get(this.datumCode);
         if (this.datum == null) {
             this.datum = Datum.getWGS84();
+        }
+        
+        // Set ellipsoid parameters in datum
+        if (this.datum != null) {
+            this.datum.setEllipsoidParams(this.a, this.b, this.es, this.ep2);
         }
         
         // Set transformation methods based on projection type
@@ -304,6 +328,11 @@ public class Projection {
                 this.datum = Datum.getWGS84();
             }
             
+            // Set ellipsoid parameters in datum
+            if (this.datum != null) {
+                this.datum.setEllipsoidParams(this.a, this.b, this.es, this.ep2);
+            }
+            
             // Set transformation methods based on projection type
             initializeProjectionMethods();
             
@@ -327,6 +356,26 @@ public class Projection {
                 this.forward = this::mercatorForward;
                 this.inverse = this::mercatorInverse;
                 this.init = this::mercatorInit;
+                break;
+            case "lcc":
+                this.forward = p -> org.proj4.projections.LambertConformalConic.forward(this, p);
+                this.inverse = p -> org.proj4.projections.LambertConformalConic.inverse(this, p);
+                this.init = proj -> org.proj4.projections.LambertConformalConic.init(proj);
+                break;
+            case "aea":
+                this.forward = p -> org.proj4.projections.AlbersEqualArea.forward(this, p);
+                this.inverse = p -> org.proj4.projections.AlbersEqualArea.inverse(this, p);
+                this.init = proj -> org.proj4.projections.AlbersEqualArea.init(proj);
+                break;
+            case "tmerc":
+                this.forward = p -> org.proj4.projections.TransverseMercator.forward(this, p);
+                this.inverse = p -> org.proj4.projections.TransverseMercator.inverse(this, p);
+                this.init = proj -> org.proj4.projections.TransverseMercator.init(proj);
+                break;
+            case "utm":
+                this.forward = p -> org.proj4.projections.UTM.forward(this, p);
+                this.inverse = p -> org.proj4.projections.UTM.inverse(this, p);
+                this.init = proj -> org.proj4.projections.UTM.init(proj);
                 break;
             default:
                 // For unsupported projections, use identity transformation
@@ -365,6 +414,11 @@ public class Projection {
         // Set datum
         this.datum = Datum.getWGS84();
         
+        // Set ellipsoid parameters in datum
+        if (this.datum != null) {
+            this.datum.setEllipsoidParams(this.a, this.b, this.es, this.ep2);
+        }
+        
         // Set transformation methods (identity for longlat)
         this.forward = p -> new Point(p.x, p.y, p.z, p.m); // Identity transformation
         this.inverse = p -> new Point(p.x, p.y, p.z, p.m); // Identity transformation
@@ -393,6 +447,11 @@ public class Projection {
         
         // Set datum
         this.datum = Datum.getWGS84();
+        
+        // Set ellipsoid parameters in datum
+        if (this.datum != null) {
+            this.datum.setEllipsoidParams(this.a, this.b, this.es, this.ep2);
+        }
         
         // Set transformation methods
         this.forward = this::mercatorForward;

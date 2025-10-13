@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.proj4</groupId>
-    <artifactId>proj4java</artifactId>
+    <artifactId>proj4sedona</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
@@ -15,9 +15,9 @@
         <module>wkt-parser</module>
     </modules>
 
-    <name>Proj4Java</name>
+    <name>Proj4Sedona</name>
     <description>Java port of Proj4js - A library for coordinate system transformations</description>
-    <url>https://github.com/proj4js/proj4java</url>
+    <url>https://github.com/proj4js/proj4sedona</url>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>

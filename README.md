@@ -1,15 +1,19 @@
-# Proj4Java
+# Proj4Sedona
 
 A Java port of the Proj4js library for coordinate system transformations.
 
 ## Overview
 
-Proj4Java is a Java library that provides coordinate system transformations, similar to the popular JavaScript Proj4js library. It allows you to transform point coordinates from one coordinate system to another, including datum transformations.
+Proj4Sedona is a Java library that provides coordinate system transformations, similar to the popular JavaScript Proj4js library. It allows you to transform point coordinates from one coordinate system to another, including datum transformations.
 
 ## Features
 
 - **Coordinate System Transformations**: Transform coordinates between different projections
-- **Multiple Projection Support**: Currently supports WGS84 (longitude/latitude) and basic Mercator projections
+- **Multiple Projection Support**: Supports WGS84, Mercator, Lambert Conformal Conic, UTM, Transverse Mercator, and Albers Equal Area projections
+- **Datum Transformations**: Full support for 3-parameter and 7-parameter Helmert transformations
+- **Grid-Based Adjustments**: Support for NTv2 and other grid-based datum transformations
+- **PROJ String Support**: Parse and use PROJ.4 string definitions
+- **WKT Support**: Parse and use Well-Known Text (WKT) coordinate system definitions
 - **Extensible Architecture**: Easy to add new projection implementations
 - **Type Safety**: Full Java type safety with proper error handling
 - **Maven Integration**: Ready-to-use Maven project structure
@@ -23,7 +27,7 @@ Add this to your `pom.xml`:
 ```xml
 <dependency>
     <groupId>org.proj4</groupId>
-    <artifactId>proj4java</artifactId>
+    <artifactId>proj4sedona</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
@@ -31,18 +35,18 @@ Add this to your `pom.xml`:
 ### Basic Usage
 
 ```java
-import org.proj4.Proj4Java;
+import org.proj4.Proj4Sedona;
 import org.proj4.core.Point;
 
 // Create a point
 Point point = new Point(-71.0, 41.0); // Longitude, Latitude
 
 // Transform from WGS84 to WGS84 (identity transformation)
-Point result = Proj4Java.transform("WGS84", point);
+Point result = Proj4Sedona.transform("WGS84", point);
 System.out.println(result); // Point{x=-71.000000, y=41.000000}
 
 // Create a converter for repeated transformations
-Proj4Java.Converter converter = Proj4Java.converter("WGS84");
+Proj4Sedona.Converter converter = Proj4Sedona.converter("WGS84");
 Point transformed = converter.forward(point);
 ```
 
@@ -62,8 +66,43 @@ Point p4 = Point.fromArray(coords);
 Point p5 = Point.fromString("10.0,20.0,30.0");
 
 // Using utility methods
-Point p6 = Proj4Java.toPoint(10.0, 20.0);
-Point p7 = Proj4Java.toPoint(new double[]{10.0, 20.0, 30.0});
+Point p6 = Proj4Sedona.toPoint(10.0, 20.0);
+Point p7 = Proj4Sedona.toPoint(new double[]{10.0, 20.0, 30.0});
+```
+
+### Advanced Usage with Datum Transformations
+
+```java
+// Transform between different datums
+Point point = new Point(-71.0, 41.0); // Boston, MA
+
+// Transform from WGS84 to NAD83
+Point nad83 = Proj4Sedona.transform(
+    "+proj=longlat +datum=WGS84",
+    "+proj=longlat +datum=NAD83",
+    point
+);
+
+// Transform with custom 3-parameter datum
+Point custom = Proj4Sedona.transform(
+    "WGS84",
+    "+proj=longlat +datum=WGS84 +towgs84=100,200,300",
+    point
+);
+
+// Transform with 7-parameter datum
+Point sevenParam = Proj4Sedona.transform(
+    "WGS84",
+    "+proj=longlat +datum=WGS84 +towgs84=100,200,300,1,2,3,1.000001",
+    point
+);
+
+// Use different projections with datum transformations
+Point utm = Proj4Sedona.transform(
+    "+proj=longlat +datum=WGS84",
+    "+proj=utm +zone=19 +datum=NAD83",
+    point
+);
 ```
 
 ## Architecture
@@ -72,7 +111,7 @@ Point p7 = Proj4Java.toPoint(new double[]{10.0, 20.0, 30.0});
 
 - **`Point`**: Represents a coordinate point with x, y, z, and m components
 - **`Projection`**: Represents a map projection with transformation methods
-- **`Proj4Java`**: Main entry point with static transformation methods
+- **`Proj4Sedona`**: Main entry point with static transformation methods
 - **`Converter`**: Provides forward/inverse transformation capabilities
 
 ### Constants
@@ -87,23 +126,36 @@ Point p7 = Proj4Java.toPoint(new double[]{10.0, 20.0, 30.0});
 org.proj4/
 ├── core/           # Core transformation classes
 ├── constants/      # Mathematical constants and definitions
-├── projections/    # Projection implementations (future)
-├── datum/          # Datum transformation logic (future)
-└── transform/      # Coordinate transformation logic (future)
+├── projections/    # Projection implementations
+├── datum/          # Datum transformation logic
+├── parse/          # PROJ string parsing
+├── wkt/            # WKT parsing and processing
+└── common/         # Common mathematical utilities
 ```
 
 ## Supported Projections
 
 Currently implemented:
 - **WGS84** (EPSG:4326): Longitude/Latitude coordinate system
-- **Basic Mercator**: Web Mercator projection (EPSG:3857)
+- **Mercator**: Web Mercator projection (EPSG:3857)
+- **Lambert Conformal Conic**: Conic projection for mid-latitude regions
+- **UTM**: Universal Transverse Mercator projection
+- **Transverse Mercator**: Base projection for UTM
+- **Albers Equal Area**: Equal-area conic projection
+
+## Supported Datum Transformations
+
+- **3-Parameter Helmert**: Translation-only transformations (dx, dy, dz)
+- **7-Parameter Helmert**: Full Helmert transformations (dx, dy, dz, rx, ry, rz, scale)
+- **Grid-Based**: NTv2 and other grid-based datum adjustments
+- **Built-in Datums**: WGS84, NAD83, NAD27, and other common datums
 
 ## Building
 
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd proj4java
+cd proj4sedona
 
 # Build the project
 mvn clean compile
@@ -137,12 +189,12 @@ Test coverage includes:
 - ✅ WGS84 and basic Mercator projections
 - ✅ Unit tests
 
-### Phase 2 (Planned)
-- [ ] Additional projection implementations (Lambert, UTM, etc.)
-- [ ] PROJ string parsing
-- [ ] WKT (Well-Known Text) support
-- [ ] Datum transformations
-- [ ] Grid-based datum adjustments
+### Phase 2 (Completed)
+- ✅ Additional projection implementations (Lambert, UTM, etc.)
+- ✅ PROJ string parsing
+- ✅ WKT (Well-Known Text) support
+- ✅ Datum transformations
+- ✅ Grid-based datum adjustments
 
 ### Phase 3 (Future)
 - [ ] PROJJSON support
@@ -171,7 +223,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## API Reference
 
-### Proj4Java Class
+### Proj4Sedona Class
 
 #### Static Methods
 
