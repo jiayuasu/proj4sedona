@@ -11,6 +11,7 @@ public final class Values {
     public static final double HALF_PI = PI / 2.0;
     public static final double FORTPI = PI / 4.0;
     public static final double TWO_PI = 2.0 * PI;
+    public static final double SPI = 3.14159265359; // Slightly greater than PI for longitude wrapping
     
     // Degree to radian conversion
     public static final double D2R = PI / 180.0;
@@ -54,6 +55,15 @@ public final class Values {
     public static final double WGS84_A = 6378137.0;
     public static final double WGS84_B = 6356752.314245;
     public static final double WGS84_RF = 298.257223563;
+    
+    // Additional constants from JavaScript version
+    public static final double SRS_WGS84_SEMIMAJOR = 6378137.0;
+    public static final double SRS_WGS84_SEMIMINOR = 6356752.314;
+    public static final double SRS_WGS84_ESQUARED = 0.0066943799901413165;
+    public static final double SEC_TO_RAD = 4.84813681109535993589914102357e-6;
+    public static final double SIXTH = 0.1666666666666666667;
+    public static final double RA4 = 0.04722222222222222222;
+    public static final double RA6 = 0.02215608465608465608;
     
     // Utility methods
     private Values() {

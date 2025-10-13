@@ -5,30 +5,31 @@
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.proj4</groupId>
-    <artifactId>proj4java</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-    <packaging>pom</packaging>
+    <parent>
+        <groupId>org.proj4</groupId>
+        <artifactId>proj4java</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
 
-    <modules>
-        <module>core</module>
-        <module>wkt-parser</module>
-    </modules>
-
-    <name>Proj4Java</name>
-    <description>Java port of Proj4js - A library for coordinate system transformations</description>
-    <url>https://github.com/proj4js/proj4java</url>
+    <artifactId>proj4java-core</artifactId>
+    <packaging>jar</packaging>
+    <name>Proj4Java Core</name>
+    <description>Core functionality for coordinate system transformations</description>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <junit.version>5.9.2</junit.version>
-        <assertj.version>3.24.2</assertj.version>
-        <jackson.version>2.15.2</jackson.version>
     </properties>
 
     <dependencies>
+        <!-- WKT parser dependency -->
+        <dependency>
+            <groupId>org.proj4</groupId>
+            <artifactId>wkt-parser</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        
         <!-- JSON processing for PROJJSON support -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
