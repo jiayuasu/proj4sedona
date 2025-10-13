@@ -29,8 +29,11 @@ public class TransverseMercator {
             proj.e2 = MathUtils.e2fn(proj.es);
             proj.e3 = MathUtils.e3fn(proj.es);
             
+            // Calculate en coefficients for meridian length calculation
+            proj.en = MathUtils.enfn(proj.es);
+            
             // Calculate meridian distance at origin latitude
-            proj.ml0 = MathUtils.mlfn(proj.e0, proj.e1, proj.e2, proj.e3, proj.lat0);
+            proj.ml0 = MathUtils.mlfn(proj.lat0, Math.sin(proj.lat0), Math.cos(proj.lat0), proj.en);
         }
     }
     
@@ -88,7 +91,7 @@ public class TransverseMercator {
             double ts = t * t;
             double con = 1 - proj.es * sin_phi * sin_phi;
             al = al / Math.sqrt(con);
-            double ml = MathUtils.mlfn(proj.e0, proj.e1, proj.e2, proj.e3, lat);
+            double ml = MathUtils.mlfn(lat, sin_phi, cos_phi, proj.en);
             
             x = proj.a * (proj.k0 * al * (1
                 + als / 6 * (1 - t + c
@@ -140,7 +143,15 @@ public class TransverseMercator {
         } else {
             // Ellipsoidal case
             double con = proj.ml0 + y / proj.k0;
-            double phi = MathUtils.invMlfn(proj.es, proj.e0, proj.e1, proj.e2, proj.e3, con);
+            
+            // Debug: check if en is null
+            if (proj.en == null) {
+                // Initialize en if it's null
+                proj.en = MathUtils.enfn(proj.es);
+                proj.ml0 = MathUtils.mlfn(proj.lat0, Math.sin(proj.lat0), Math.cos(proj.lat0), proj.en);
+            }
+            
+            double phi = MathUtils.invMlfn(con, proj.es, proj.en);
             
             if (Math.abs(phi) < Values.HALF_PI) {
                 double sin_phi = Math.sin(phi);
@@ -160,10 +171,10 @@ public class TransverseMercator {
                         - ds / 30 * (61 + 90 * t - 252 * c * t + 45 * ts + 46 * c
                             - ds / 56 * (1385 + 3633 * t + 4095 * ts + 1574 * ts * t))));
                 
-                lon = adjustLon(proj.long0 + (d * (1
+                lon = adjustLon(proj.long0 + ((d * (1
                     - ds / 6 * (1 + 2 * t + c
                         - ds / 20 * (5 + 28 * t + 24 * ts + 8 * c * t + 6 * c
-                            - ds / 42 * (61 + 662 * t + 1320 * ts + 720 * ts * t)))) / cos_phi));
+                            - ds / 42 * (61 + 662 * t + 1320 * ts + 720 * ts * t))))) / cos_phi));
             } else {
                 lat = Values.HALF_PI * Math.signum(y);
                 lon = 0;

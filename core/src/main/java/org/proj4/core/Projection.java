@@ -67,6 +67,7 @@ public class Projection {
     public double rho0;   // Radius at origin latitude
     public double f0;     // Scale factor for LCC
     public double e0, e1, e2, e3; // Ellipsoid coefficients
+    public double[] en;   // Meridian length coefficients
     public double ml0;    // Meridian length at origin
     public int zone;      // UTM zone
     public boolean utmSouth; // UTM southern hemisphere flag

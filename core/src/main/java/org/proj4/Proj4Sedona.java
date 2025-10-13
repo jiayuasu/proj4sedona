@@ -3,7 +3,10 @@ package org.proj4;
 import org.proj4.core.Point;
 import org.proj4.core.Projection;
 import org.proj4.constants.Values;
+import org.proj4.projjson.ProjJsonDefinition;
+import org.proj4.projjson.ProjJsonParser;
 
+import java.io.IOException;
 import java.util.function.Function;
 
 /**
@@ -240,6 +243,89 @@ public class Proj4Sedona {
      */
     public static Projection getWGS84() {
         return WGS84;
+    }
+    
+    /**
+     * Creates a projection from a PROJJSON string.
+     * @param projJsonString the PROJJSON string
+     * @return a Projection object
+     * @throws IOException if parsing fails
+     */
+    public static Projection fromProjJson(String projJsonString) throws IOException {
+        return ProjJsonParser.parse(projJsonString);
+    }
+    
+    /**
+     * Creates a projection from a PROJJSON definition object.
+     * @param definition the PROJJSON definition
+     * @return a Projection object
+     */
+    public static Projection fromProjJson(ProjJsonDefinition definition) {
+        return ProjJsonParser.parse(definition);
+    }
+    
+    /**
+     * Converts a PROJJSON definition to a PROJ string.
+     * @param definition the PROJJSON definition
+     * @return a PROJ string
+     */
+    public static String toProjString(ProjJsonDefinition definition) {
+        return ProjJsonParser.toProjString(definition);
+    }
+    
+    /**
+     * Converts a PROJ string to a PROJJSON definition.
+     * @param projString the PROJ string
+     * @return a PROJJSON definition
+     */
+    public static ProjJsonDefinition toProjJson(String projString) {
+        return ProjJsonParser.fromProjString(projString);
+    }
+    
+    /**
+     * Transforms coordinates using PROJJSON definitions.
+     * @param fromProjJson the source PROJJSON definition
+     * @param toProjJson the destination PROJJSON definition
+     * @param coords the coordinates to transform
+     * @return transformed coordinates
+     */
+    public static Point transform(ProjJsonDefinition fromProjJson, ProjJsonDefinition toProjJson, Point coords) {
+        Projection from = fromProjJson(fromProjJson);
+        Projection to = fromProjJson(toProjJson);
+        return transform(from, to, coords, false);
+    }
+    
+    /**
+     * Transforms coordinates from WGS84 to a PROJJSON definition.
+     * @param toProjJson the destination PROJJSON definition
+     * @param coords the coordinates to transform
+     * @return transformed coordinates
+     */
+    public static Point transform(ProjJsonDefinition toProjJson, Point coords) {
+        Projection to = fromProjJson(toProjJson);
+        return transform(WGS84, to, coords, false);
+    }
+    
+    /**
+     * Creates a converter from a PROJJSON definition.
+     * @param toProjJson the destination PROJJSON definition
+     * @return a Converter object
+     */
+    public static Converter converter(ProjJsonDefinition toProjJson) {
+        Projection to = fromProjJson(toProjJson);
+        return new Converter(WGS84, to, true);
+    }
+    
+    /**
+     * Creates a converter between two PROJJSON definitions.
+     * @param fromProjJson the source PROJJSON definition
+     * @param toProjJson the destination PROJJSON definition
+     * @return a Converter object
+     */
+    public static Converter converter(ProjJsonDefinition fromProjJson, ProjJsonDefinition toProjJson) {
+        Projection from = fromProjJson(fromProjJson);
+        Projection to = fromProjJson(toProjJson);
+        return new Converter(from, to, false);
     }
     
     /**

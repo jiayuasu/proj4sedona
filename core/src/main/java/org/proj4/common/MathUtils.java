@@ -19,7 +19,7 @@ public final class MathUtils {
      * @return adjusted longitude
      */
     public static double adjustLon(double x) {
-        return (Math.abs(x) <= Values.SPI) ? x : (x - (sign(x) * Values.TWO_PI));
+        return (Math.abs(x) <= Values.PI) ? x : (x - (sign(x) * Values.TWO_PI));
     }
     
     /**
@@ -214,22 +214,22 @@ public final class MathUtils {
     }
     
     /**
-     * Calculates the inverse meridian length.
-     * @param e eccentricity
-     * @param c0 first coefficient
-     * @param c1 second coefficient
-     * @param c2 third coefficient
-     * @param c3 fourth coefficient
-     * @param ml meridian length
+     * Calculates the inverse meridian length using the proj4js algorithm.
+     * @param arg meridian length
+     * @param es squared eccentricity
+     * @param en coefficients array
      * @return latitude
      */
-    public static double invMlfn(double e, double c0, double c1, double c2, double c3, double ml) {
-        double phi = ml / c0;
-        for (int i = 0; i < 15; i++) {
-            double dphi = (ml - mlfn(e, c0, c1, c2, c3, phi)) / c0;
-            phi += dphi;
-            if (Math.abs(dphi) <= 1e-10) {
-                break;
+    public static double invMlfn(double arg, double es, double[] en) {
+        double k = 1 / (1 - es);
+        double phi = arg;
+        for (int i = 0; i < 20; i++) {
+            double s = Math.sin(phi);
+            double t = 1 - es * s * s;
+            t = (mlfn(phi, s, Math.cos(phi), en) - arg) * (t * Math.sqrt(t)) * k;
+            phi -= t;
+            if (Math.abs(t) <= Values.EPSLN) {
+                return phi;
             }
         }
         return phi;
@@ -408,5 +408,36 @@ public final class MathUtils {
      */
     public static double mlfn(double e0, double e1, double e2, double e3, double phi) {
         return e0 * phi - e1 * Math.sin(2 * phi) + e2 * Math.sin(4 * phi) - e3 * Math.sin(6 * phi);
+    }
+    
+    /**
+     * Calculates the meridian length using the proj4js algorithm.
+     * @param phi latitude
+     * @param sphi sine of latitude
+     * @param cphi cosine of latitude
+     * @param en coefficients array
+     * @return meridian length
+     */
+    public static double mlfn(double phi, double sphi, double cphi, double[] en) {
+        cphi *= sphi;
+        sphi *= sphi;
+        return (en[0] * phi - cphi * (en[1] + sphi * (en[2] + sphi * (en[3] + sphi * en[4]))));
+    }
+    
+    /**
+     * Calculates the en coefficients for meridian length calculation.
+     * @param es squared eccentricity
+     * @return en coefficients array
+     */
+    public static double[] enfn(double es) {
+        double[] en = new double[5];
+        en[0] = 1 - es * (0.25 + es * (0.046875 + es * (0.01953125 + es * 0.01068115234375)));
+        en[1] = es * (0.75 - es * (0.046875 + es * (0.01953125 + es * 0.01068115234375)));
+        double t = es * es;
+        en[2] = t * (0.46875 - es * (0.01302083333333333333 + es * 0.00712076822916666666));
+        t *= es;
+        en[3] = t * (0.36458333333333333333 - es * 0.00569661458333333333);
+        en[4] = t * es * 0.3076171875;
+        return en;
     }
 }
