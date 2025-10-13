@@ -436,4 +436,203 @@ public final class MathUtils {
         en[4] = t * es * 0.3076171875;
         return en;
     }
+    
+    /**
+     * Adjusts UTM zone based on longitude.
+     * Ported from adjust_zone.js
+     * @param zone the zone number (if undefined, will be calculated)
+     * @param lon longitude in radians
+     * @return adjusted zone number
+     */
+    public static int adjustZone(Integer zone, double lon) {
+        if (zone == null) {
+            zone = (int) Math.floor((adjustLon(lon) + Values.PI) * 30 / Values.PI) + 1;
+            
+            if (zone < 0) {
+                return 0;
+            } else if (zone > 60) {
+                return 60;
+            }
+        }
+        return zone;
+    }
+    
+    /**
+     * Calculates the Gauss-Krüger transverse Mercator projection.
+     * Ported from gatg.js
+     * @param pp coefficients array
+     * @param B latitude in radians
+     * @return result
+     */
+    public static double gatg(double[] pp, double B) {
+        double cos_2B = 2 * Math.cos(2 * B);
+        int i = pp.length - 1;
+        double h1 = pp[i];
+        double h2 = 0;
+        double h = 0;
+        
+        while (--i >= 0) {
+            h = -h2 + cos_2B * h1 + pp[i];
+            h2 = h1;
+            h1 = h;
+        }
+        
+        return (B + h * Math.sin(2 * B));
+    }
+    
+    /**
+     * Calculates the radius of curvature in the prime vertical.
+     * Ported from gN.js
+     * @param a semi-major axis
+     * @param e eccentricity
+     * @param sinphi sine of latitude
+     * @return radius of curvature
+     */
+    public static double gN(double a, double e, double sinphi) {
+        double temp = e * sinphi;
+        return a / Math.sqrt(1 - temp * temp);
+    }
+    
+    /**
+     * Calculates the fL function for transverse Mercator projections.
+     * Ported from fL.js
+     * @param x the x value
+     * @param L the L value
+     * @return result
+     */
+    public static double fL(double x, double L) {
+        return 2 * Math.atan(x * Math.exp(L)) - Values.HALF_PI;
+    }
+    
+    /**
+     * Calculates the srat function for ellipsoid calculations.
+     * Ported from srat.js
+     * @param esinp e * sin(phi)
+     * @param exp exponent
+     * @return result
+     */
+    public static double srat(double esinp, double exp) {
+        return Math.pow((1 - esinp) / (1 + esinp), exp);
+    }
+    
+    /**
+     * Calculates the radius of curvature in the meridian.
+     * @param a semi-major axis
+     * @param e eccentricity
+     * @param sinphi sine of latitude
+     * @return radius of curvature in the meridian
+     */
+    public static double gM(double a, double e, double sinphi) {
+        double temp = e * sinphi;
+        return a * (1 - e * e) / Math.pow(1 - temp * temp, 1.5);
+    }
+    
+    /**
+     * Calculates the convergence angle for transverse Mercator projections.
+     * @param lon longitude in radians
+     * @param lat latitude in radians
+     * @param lon0 central meridian in radians
+     * @param e eccentricity
+     * @return convergence angle in radians
+     */
+    public static double convergence(double lon, double lat, double lon0, double e) {
+        double dlon = lon - lon0;
+        double sinlat = Math.sin(lat);
+        double coslat = Math.cos(lat);
+        double sin2lat = sinlat * sinlat;
+        double e2 = e * e;
+        
+        double term1 = sinlat * dlon;
+        double term2 = sinlat * coslat * coslat * dlon * dlon * dlon * (1 + 3 * e2 * sin2lat) / 6;
+        
+        return term1 + term2;
+    }
+    
+    /**
+     * Calculates the scale factor for transverse Mercator projections.
+     * @param lat latitude in radians
+     * @param e eccentricity
+     * @param k0 central scale factor
+     * @return scale factor
+     */
+    public static double scaleFactor(double lat, double e, double k0) {
+        double sinlat = Math.sin(lat);
+        double sin2lat = sinlat * sinlat;
+        double e2 = e * e;
+        
+        return k0 * (1 + e2 * sin2lat / 2 + 5 * e2 * e2 * sin2lat * sin2lat / 24);
+    }
+    
+    /**
+     * Calculates the grid convergence for UTM projections.
+     * @param lon longitude in radians
+     * @param lat latitude in radians
+     * @param zone UTM zone number
+     * @return grid convergence in radians
+     */
+    public static double utmConvergence(double lon, double lat, int zone) {
+        double lon0 = (zone - 1) * 6 - 180 + 3; // Central meridian
+        lon0 = Math.toRadians(lon0);
+        return convergence(lon, lat, lon0, 0.08181919084262157); // WGS84 eccentricity
+    }
+    
+    /**
+     * Calculates the distance between two points using the haversine formula.
+     * @param lat1 first latitude in radians
+     * @param lon1 first longitude in radians
+     * @param lat2 second latitude in radians
+     * @param lon2 second longitude in radians
+     * @param radius Earth radius in meters
+     * @return distance in meters
+     */
+    public static double haversineDistance(double lat1, double lon1, double lat2, double lon2, double radius) {
+        double dlat = lat2 - lat1;
+        double dlon = lon2 - lon1;
+        
+        double a = Math.sin(dlat / 2) * Math.sin(dlat / 2) +
+                   Math.cos(lat1) * Math.cos(lat2) *
+                   Math.sin(dlon / 2) * Math.sin(dlon / 2);
+        
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        
+        return radius * c;
+    }
+    
+    /**
+     * Calculates the bearing between two points.
+     * @param lat1 first latitude in radians
+     * @param lon1 first longitude in radians
+     * @param lat2 second latitude in radians
+     * @param lon2 second longitude in radians
+     * @return bearing in radians
+     */
+    public static double bearing(double lat1, double lon1, double lat2, double lon2) {
+        double dlon = lon2 - lon1;
+        
+        double y = Math.sin(dlon) * Math.cos(lat2);
+        double x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dlon);
+        
+        return Math.atan2(y, x);
+    }
+    
+    /**
+     * Calculates the midpoint between two points on a sphere.
+     * @param lat1 first latitude in radians
+     * @param lon1 first longitude in radians
+     * @param lat2 second latitude in radians
+     * @param lon2 second longitude in radians
+     * @return array [lat, lon] in radians
+     */
+    public static double[] midpoint(double lat1, double lon1, double lat2, double lon2) {
+        double dlon = lon2 - lon1;
+        
+        double bx = Math.cos(lat2) * Math.cos(dlon);
+        double by = Math.cos(lat2) * Math.sin(dlon);
+        
+        double lat3 = Math.atan2(Math.sin(lat1) + Math.sin(lat2),
+                                Math.sqrt((Math.cos(lat1) + bx) * (Math.cos(lat1) + bx) + by * by));
+        double lon3 = lon1 + Math.atan2(by, Math.cos(lat1) + bx);
+        
+        return new double[]{lat3, lon3};
+    }
 }

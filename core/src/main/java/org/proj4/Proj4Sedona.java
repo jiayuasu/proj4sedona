@@ -6,6 +6,8 @@ import org.proj4.constants.Values;
 import org.proj4.projjson.ProjJsonDefinition;
 import org.proj4.projjson.ProjJsonParser;
 import org.proj4.mgrs.Mgrs;
+import org.proj4.cache.ProjectionCache;
+import org.proj4.optimization.BatchTransformer;
 
 import java.io.IOException;
 import java.util.function.Function;
@@ -100,8 +102,8 @@ public class Proj4Sedona {
      * @return transformed coordinates
      */
     public static Point transform(String fromProj, String toProj, Point coords, boolean enforceAxis) {
-        Projection from = new Projection(fromProj);
-        Projection to = new Projection(toProj);
+        Projection from = ProjectionCache.getProjection(fromProj);
+        Projection to = ProjectionCache.getProjection(toProj);
         return transform(from, to, coords, enforceAxis);
     }
     
@@ -335,6 +337,80 @@ public class Proj4Sedona {
      */
     public static String getVersion() {
         return "1.0.0-SNAPSHOT";
+    }
+    
+    // ===== Performance Optimizations =====
+    
+    /**
+     * Creates a batch transformer for efficient processing of multiple points.
+     * @param fromProj the source projection string
+     * @param toProj the destination projection string
+     * @return a BatchTransformer instance
+     */
+    public static BatchTransformer createBatchTransformer(String fromProj, String toProj) {
+        return new BatchTransformer(fromProj, toProj, false);
+    }
+    
+    /**
+     * Creates a batch transformer for efficient processing of multiple points.
+     * @param fromProj the source projection string
+     * @param toProj the destination projection string
+     * @param enforceAxis whether to enforce axis order
+     * @return a BatchTransformer instance
+     */
+    public static BatchTransformer createBatchTransformer(String fromProj, String toProj, boolean enforceAxis) {
+        return new BatchTransformer(fromProj, toProj, enforceAxis);
+    }
+    
+    /**
+     * Creates a batch transformer for efficient processing of multiple points.
+     * @param fromProj the source projection
+     * @param toProj the destination projection
+     * @param enforceAxis whether to enforce axis order
+     * @return a BatchTransformer instance
+     */
+    public static BatchTransformer createBatchTransformer(Projection fromProj, Projection toProj, boolean enforceAxis) {
+        return new BatchTransformer(fromProj, toProj, enforceAxis);
+    }
+    
+    /**
+     * Transforms multiple points in batch for better performance.
+     * @param fromProj the source projection string
+     * @param toProj the destination projection string
+     * @param points the points to transform
+     * @return list of transformed points
+     */
+    public static java.util.List<Point> transformBatch(String fromProj, String toProj, java.util.List<Point> points) {
+        BatchTransformer transformer = createBatchTransformer(fromProj, toProj);
+        return transformer.transformBatch(points);
+    }
+    
+    /**
+     * Transforms arrays of coordinates in batch for better performance.
+     * @param fromProj the source projection string
+     * @param toProj the destination projection string
+     * @param xCoords array of x coordinates
+     * @param yCoords array of y coordinates
+     * @return array of transformed points
+     */
+    public static Point[] transformArrays(String fromProj, String toProj, double[] xCoords, double[] yCoords) {
+        BatchTransformer transformer = createBatchTransformer(fromProj, toProj);
+        return transformer.transformArrays(xCoords, yCoords);
+    }
+    
+    /**
+     * Clears the projection cache to free memory.
+     */
+    public static void clearProjectionCache() {
+        ProjectionCache.clearCache();
+    }
+    
+    /**
+     * Gets the current projection cache size.
+     * @return the number of cached projections
+     */
+    public static int getProjectionCacheSize() {
+        return ProjectionCache.getCacheSize();
     }
     
     /**
