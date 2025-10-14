@@ -16,16 +16,3 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.sedona.proj.wkt;
-
-/** Exception thrown when WKT parsing fails. */
-public class WKTParseException extends Exception {
-
-  public WKTParseException(String message) {
-    super(message);
-  }
-
-  public WKTParseException(String message, Throwable cause) {
-    super(message, cause);
-  }
-}

@@ -1,655 +1,659 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 package org.apache.sedona.proj.core;
-
-import org.apache.sedona.proj.constants.Datum;
-import org.apache.sedona.proj.constants.Ellipsoid;
-import org.apache.sedona.proj.constants.Values;
-import org.apache.sedona.proj.constants.Units;
-import org.apache.sedona.proj.common.MathUtils;
-import org.apache.sedona.proj.parse.ProjStringParser;
-import org.apache.sedona.proj.wkt.WKTProcessor;
-import org.apache.sedona.proj.wkt.WKTParseException;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.sedona.proj.common.MathUtils;
+import org.apache.sedona.proj.constants.Datum;
+import org.apache.sedona.proj.constants.Ellipsoid;
+import org.apache.sedona.proj.constants.Units;
+import org.apache.sedona.proj.constants.Values;
+import org.apache.sedona.proj.parse.ProjStringParser;
+import org.apache.sedona.proj.wkt.WKTParseException;
+import org.apache.sedona.proj.wkt.WKTProcessor;
 
 /**
- * Represents a map projection with its parameters and transformation methods.
- * This is the Java equivalent of the JavaScript Proj class.
+ * Represents a map projection with its parameters and transformation methods. This is the Java
+ * equivalent of the JavaScript Proj class.
  */
 public class Projection {
-    
-    // Projection parameters
-    public String name;
-    public String title;
-    public String projName;
-    public String ellps;
-    public String datumCode;
-    public String datumName;
-    public String axis;
-    public String units;
-    public String nadgrids;
-    
-    // Ellipsoid parameters
-    public double a;  // Semi-major axis
-    public double b;  // Semi-minor axis
-    public double rf; // Reciprocal of flattening
-    public double es; // Eccentricity squared
-    public double e;  // Eccentricity
-    public double ep2; // Second eccentricity squared
-    public boolean sphere; // Whether using spherical approximation
-    
-    // Projection parameters
-    public double lat0;   // Latitude of origin
-    public double lat1;   // First standard parallel
-    public double lat2;   // Second standard parallel
-    public double lat_ts; // Latitude of true scale
-    public double long0;  // Central meridian
-    public double long1;  // First longitude
-    public double long2;  // Second longitude
-    public double alpha;  // Azimuth
-    public double longc;  // Longitude of center
-    public double x0;     // False easting
-    public double y0;     // False northing
-    public double k0;     // Scale factor
-    public double to_meter; // Unit conversion factor
-    public double from_greenwich; // Prime meridian offset
-    
-    // Datum and transformation
-    public Datum.DatumDef datum;
-    public String[] datum_params;
-    
-    // Additional projection parameters
-    public double n;      // Cone constant for conic projections
-    public double c;      // Constant for equal area projections
-    public double rho0;   // Radius at origin latitude
-    public double f0;     // Scale factor for LCC
-    public double e0, e1, e2, e3; // Ellipsoid coefficients
-    public double[] en;   // Meridian length coefficients
-    public double ml0;    // Meridian length at origin
-    public int zone;      // UTM zone
-    public boolean utmSouth; // UTM southern hemisphere flag
-    public double ns0;    // Albers Equal Area cone constant
-    
-    // Hotine Oblique Mercator parameters
-    public boolean noOff; // No offset flag
-    public boolean noRot; // No rotation flag
-    public boolean noUoff; // No U offset flag
-    public double rectifiedGridAngle; // Rectified grid angle
-    
-    // Projection methods (to be set by specific projection implementations)
-    public ProjectionMethod forward;
-    public ProjectionMethod inverse;
-    public ProjectionInitializer init;
-    
-    // Projection-specific instances
-    public Object omerc; // Hotine Oblique Mercator instance
-    public Object eqdc; // Equidistant Conic instance
-    public Object laea; // Lambert Azimuthal Equal Area instance
-    public Object gnom; // Gnomonic instance
-    public Object utm; // UTM instance
-    public Object aea; // Albers Equal Area instance
-    public Object sinu; // Sinusoidal instance
-    
-    // Registry of available projections
-    private static final Map<String, ProjectionFactory> PROJECTIONS = new ConcurrentHashMap<>();
-    
-    /**
-     * Functional interface for projection forward/inverse methods.
-     */
-    @FunctionalInterface
-    public interface ProjectionMethod {
-        Point transform(Point point);
+
+  // Projection parameters
+  public String name;
+  public String title;
+  public String projName;
+  public String ellps;
+  public String datumCode;
+  public String datumName;
+  public String axis;
+  public String units;
+  public String nadgrids;
+
+  // Ellipsoid parameters
+  public double a; // Semi-major axis
+  public double b; // Semi-minor axis
+  public double rf; // Reciprocal of flattening
+  public double es; // Eccentricity squared
+  public double e; // Eccentricity
+  public double ep2; // Second eccentricity squared
+  public boolean sphere; // Whether using spherical approximation
+
+  // Projection parameters
+  public double lat0; // Latitude of origin
+  public double lat1; // First standard parallel
+  public double lat2; // Second standard parallel
+  public double lat_ts; // Latitude of true scale
+  public double long0; // Central meridian
+  public double long1; // First longitude
+  public double long2; // Second longitude
+  public double alpha; // Azimuth
+  public double longc; // Longitude of center
+  public double x0; // False easting
+  public double y0; // False northing
+  public double k0; // Scale factor
+  public double to_meter; // Unit conversion factor
+  public double from_greenwich; // Prime meridian offset
+
+  // Datum and transformation
+  public Datum.DatumDef datum;
+  public String[] datum_params;
+
+  // Additional projection parameters
+  public double n; // Cone constant for conic projections
+  public double c; // Constant for equal area projections
+  public double rho0; // Radius at origin latitude
+  public double f0; // Scale factor for LCC
+  public double e0, e1, e2, e3; // Ellipsoid coefficients
+  public double[] en; // Meridian length coefficients
+  public double ml0; // Meridian length at origin
+  public int zone; // UTM zone
+  public boolean utmSouth; // UTM southern hemisphere flag
+  public double ns0; // Albers Equal Area cone constant
+
+  // Hotine Oblique Mercator parameters
+  public boolean noOff; // No offset flag
+  public boolean noRot; // No rotation flag
+  public boolean noUoff; // No U offset flag
+  public double rectifiedGridAngle; // Rectified grid angle
+
+  // Projection methods (to be set by specific projection implementations)
+  public ProjectionMethod forward;
+  public ProjectionMethod inverse;
+  public ProjectionInitializer init;
+
+  // Projection-specific instances
+  public Object omerc; // Hotine Oblique Mercator instance
+  public Object eqdc; // Equidistant Conic instance
+  public Object laea; // Lambert Azimuthal Equal Area instance
+  public Object gnom; // Gnomonic instance
+  public Object utm; // UTM instance
+  public Object aea; // Albers Equal Area instance
+  public Object sinu; // Sinusoidal instance
+
+  // Registry of available projections
+  private static final Map<String, ProjectionFactory> PROJECTIONS = new ConcurrentHashMap<>();
+
+  /** Functional interface for projection forward/inverse methods. */
+  @FunctionalInterface
+  public interface ProjectionMethod {
+    Point transform(Point point);
+  }
+
+  /** Functional interface for projection initialization. */
+  @FunctionalInterface
+  public interface ProjectionInitializer {
+    void initialize(Projection proj);
+  }
+
+  /** Functional interface for projection factory. */
+  @FunctionalInterface
+  public interface ProjectionFactory {
+    Projection create();
+  }
+
+  /**
+   * Creates a new projection instance.
+   *
+   * @param srsCode the spatial reference system code or definition
+   */
+  public Projection(String srsCode) {
+    this();
+    initializeFromCode(srsCode);
+  }
+
+  /** Creates a new projection instance. */
+  public Projection() {
+    // Set default values
+    this.k0 = Values.DEFAULT_K0;
+    this.lat0 = Values.DEFAULT_LAT0;
+    this.long0 = Values.DEFAULT_LONG0;
+    this.x0 = Values.DEFAULT_X0;
+    this.y0 = Values.DEFAULT_Y0;
+    this.axis = Values.AXIS_ENU;
+    this.ellps = "wgs84";
+    this.datumCode = "WGS84";
+    this.units = "m";
+  }
+
+  /**
+   * Initializes the projection from a spatial reference system code.
+   *
+   * @param srsCode the SRS code or definition
+   */
+  private void initializeFromCode(String srsCode) {
+    if (srsCode == null || srsCode.trim().isEmpty()) {
+      throw new IllegalArgumentException("SRS code cannot be null or empty");
     }
-    
-    /**
-     * Functional interface for projection initialization.
-     */
-    @FunctionalInterface
-    public interface ProjectionInitializer {
-        void initialize(Projection proj);
+
+    // Handle PROJ strings (start with +)
+    if (srsCode.startsWith("+")) {
+      initializeFromProjString(srsCode);
     }
-    
-    /**
-     * Functional interface for projection factory.
-     */
-    @FunctionalInterface
-    public interface ProjectionFactory {
-        Projection create();
+    // Handle WKT strings (start with GEOGCS, PROJCS, etc.)
+    else if (srsCode.startsWith("GEOGCS")
+        || srsCode.startsWith("PROJCS")
+        || srsCode.startsWith("GEODCRS")
+        || srsCode.startsWith("PROJCRS")) {
+      initializeFromWKT(srsCode);
     }
-    
-    /**
-     * Creates a new projection instance.
-     * @param srsCode the spatial reference system code or definition
-     */
-    public Projection(String srsCode) {
-        this();
-        initializeFromCode(srsCode);
+    // Handle simple cases
+    else if ("WGS84".equals(srsCode) || "EPSG:4326".equals(srsCode)) {
+      initializeLongLat();
+    } else if ("EPSG:3857".equals(srsCode) || "GOOGLE".equals(srsCode)) {
+      initializeMercator();
+    } else {
+      throw new IllegalArgumentException("Unsupported SRS code: " + srsCode);
     }
-    
-    /**
-     * Creates a new projection instance.
-     */
-    public Projection() {
-        // Set default values
-        this.k0 = Values.DEFAULT_K0;
-        this.lat0 = Values.DEFAULT_LAT0;
-        this.long0 = Values.DEFAULT_LONG0;
-        this.x0 = Values.DEFAULT_X0;
-        this.y0 = Values.DEFAULT_Y0;
-        this.axis = Values.AXIS_ENU;
-        this.ellps = "wgs84";
-        this.datumCode = "WGS84";
-        this.units = "m";
-    }
-    
-    /**
-     * Initializes the projection from a spatial reference system code.
-     * @param srsCode the SRS code or definition
-     */
-    private void initializeFromCode(String srsCode) {
-        if (srsCode == null || srsCode.trim().isEmpty()) {
-            throw new IllegalArgumentException("SRS code cannot be null or empty");
+  }
+
+  /**
+   * Initializes the projection from a PROJ string.
+   *
+   * @param projString the PROJ string
+   */
+  private void initializeFromProjString(String projString) {
+    Map<String, Object> def = ProjStringParser.parseToDefinition(projString);
+
+    // Set basic properties
+    this.projName = (String) def.get("projName");
+    this.name = this.projName;
+    this.title = (String) def.getOrDefault("title", this.projName);
+    this.datumCode = (String) def.getOrDefault("datumCode", "WGS84");
+    this.ellps = (String) def.getOrDefault("ellps", "WGS84");
+    this.units = (String) def.getOrDefault("units", "m");
+    this.axis = (String) def.getOrDefault("axis", Values.AXIS_ENU);
+
+    // Set projection parameters
+    this.lat0 = (Double) def.getOrDefault("lat0", Values.DEFAULT_LAT0);
+    this.lat1 = (Double) def.getOrDefault("lat1", this.lat0);
+    this.lat2 = (Double) def.getOrDefault("lat2", this.lat0);
+    this.lat_ts = (Double) def.getOrDefault("lat_ts", 0.0);
+    this.long0 = (Double) def.getOrDefault("long0", Values.DEFAULT_LONG0);
+    this.long1 = (Double) def.getOrDefault("long1", this.long0);
+    this.long2 = (Double) def.getOrDefault("long2", this.long0);
+    this.alpha = (Double) def.getOrDefault("alpha", 0.0);
+    this.longc = (Double) def.getOrDefault("longc", 0.0);
+    this.rectifiedGridAngle = (Double) def.getOrDefault("rectifiedGridAngle", 0.0);
+    this.x0 = (Double) def.getOrDefault("x0", Values.DEFAULT_X0);
+    this.y0 = (Double) def.getOrDefault("y0", Values.DEFAULT_Y0);
+    this.k0 = (Double) def.getOrDefault("k0", Values.DEFAULT_K0);
+
+    // Set boolean parameters
+    this.noOff = (Boolean) def.getOrDefault("noOff", false);
+    this.noRot = (Boolean) def.getOrDefault("noRot", false);
+    this.noUoff = (Boolean) def.getOrDefault("noUoff", false);
+
+    // Set ellipsoid parameters
+    this.a = (Double) def.getOrDefault("a", Double.NaN);
+    this.b = (Double) def.getOrDefault("b", Double.NaN);
+    this.rf = (Double) def.getOrDefault("rf", Double.NaN);
+
+    // If ellipsoid parameters are not provided, get them from the ellipsoid definition
+    if (Double.isNaN(this.a) || Double.isNaN(this.b) || Double.isNaN(this.rf)) {
+      Ellipsoid.EllipsoidDef ellipsoid = Ellipsoid.get(this.ellps);
+      if (ellipsoid != null) {
+        if (Double.isNaN(this.a)) {
+          this.a = ellipsoid.a;
         }
-        
-        // Handle PROJ strings (start with +)
-        if (srsCode.startsWith("+")) {
-            initializeFromProjString(srsCode);
+        if (Double.isNaN(this.b)) {
+          this.b = ellipsoid.b;
         }
-        // Handle WKT strings (start with GEOGCS, PROJCS, etc.)
-        else if (srsCode.startsWith("GEOGCS") || srsCode.startsWith("PROJCS") || 
-                 srsCode.startsWith("GEODCRS") || srsCode.startsWith("PROJCRS")) {
-            initializeFromWKT(srsCode);
+        if (Double.isNaN(this.rf)) {
+          this.rf = ellipsoid.rf;
         }
-        // Handle simple cases
-        else if ("WGS84".equals(srsCode) || "EPSG:4326".equals(srsCode)) {
-            initializeLongLat();
-        } else if ("EPSG:3857".equals(srsCode) || "GOOGLE".equals(srsCode)) {
-            initializeMercator();
-        } else {
-            throw new IllegalArgumentException("Unsupported SRS code: " + srsCode);
-        }
+      }
     }
-    
-    /**
-     * Initializes the projection from a PROJ string.
-     * @param projString the PROJ string
-     */
-    private void initializeFromProjString(String projString) {
-        Map<String, Object> def = ProjStringParser.parseToDefinition(projString);
-        
-        // Set basic properties
-        this.projName = (String) def.get("projName");
-        this.name = this.projName;
-        this.title = (String) def.getOrDefault("title", this.projName);
-        this.datumCode = (String) def.getOrDefault("datumCode", "WGS84");
-        this.ellps = (String) def.getOrDefault("ellps", "WGS84");
-        this.units = (String) def.getOrDefault("units", "m");
-        this.axis = (String) def.getOrDefault("axis", Values.AXIS_ENU);
-        
-        // Set projection parameters
-        this.lat0 = (Double) def.getOrDefault("lat0", Values.DEFAULT_LAT0);
-        this.lat1 = (Double) def.getOrDefault("lat1", this.lat0);
-        this.lat2 = (Double) def.getOrDefault("lat2", this.lat0);
-        this.lat_ts = (Double) def.getOrDefault("lat_ts", 0.0);
-        this.long0 = (Double) def.getOrDefault("long0", Values.DEFAULT_LONG0);
-        this.long1 = (Double) def.getOrDefault("long1", this.long0);
-        this.long2 = (Double) def.getOrDefault("long2", this.long0);
-        this.alpha = (Double) def.getOrDefault("alpha", 0.0);
-        this.longc = (Double) def.getOrDefault("longc", 0.0);
-        this.rectifiedGridAngle = (Double) def.getOrDefault("rectifiedGridAngle", 0.0);
-        this.x0 = (Double) def.getOrDefault("x0", Values.DEFAULT_X0);
-        this.y0 = (Double) def.getOrDefault("y0", Values.DEFAULT_Y0);
-        this.k0 = (Double) def.getOrDefault("k0", Values.DEFAULT_K0);
-        
-        // Set boolean parameters
-        this.noOff = (Boolean) def.getOrDefault("noOff", false);
-        this.noRot = (Boolean) def.getOrDefault("noRot", false);
-        this.noUoff = (Boolean) def.getOrDefault("noUoff", false);
-        
-        // Set ellipsoid parameters
-        this.a = (Double) def.getOrDefault("a", Double.NaN);
-        this.b = (Double) def.getOrDefault("b", Double.NaN);
-        this.rf = (Double) def.getOrDefault("rf", Double.NaN);
-        
-        // If ellipsoid parameters are not provided, get them from the ellipsoid definition
-        if (Double.isNaN(this.a) || Double.isNaN(this.b) || Double.isNaN(this.rf)) {
-            Ellipsoid.EllipsoidDef ellipsoid = Ellipsoid.get(this.ellps);
-            if (ellipsoid != null) {
-                if (Double.isNaN(this.a)) {
-                    this.a = ellipsoid.a;
-                }
-                if (Double.isNaN(this.b)) {
-                    this.b = ellipsoid.b;
-                }
-                if (Double.isNaN(this.rf)) {
-                    this.rf = ellipsoid.rf;
-                }
-            }
-        }
-        
-        // Set unit conversion
+
+    // Set unit conversion
+    this.to_meter = Units.getToMeter(this.units);
+
+    // Set prime meridian offset
+    if (def.containsKey("from_greenwich")) {
+      this.from_greenwich = (Double) def.get("from_greenwich");
+    }
+
+    // Set datum parameters
+    String datumParams = (String) def.get("datum_params");
+    if (datumParams != null) {
+      this.datum_params = datumParams.split(",");
+    }
+
+    // Set NADGRIDS
+    this.nadgrids = (String) def.get("nadgrids");
+
+    // Set UTM parameters
+    if (def.containsKey("zone")) {
+      this.zone = ((Number) def.get("zone")).intValue();
+    }
+    if (def.containsKey("utmSouth")) {
+      this.utmSouth = (Boolean) def.get("utmSouth");
+    }
+
+    // Calculate derived parameters
+    calculateDerivedParameters();
+
+    // Set datum
+    this.datum = Datum.get(this.datumCode);
+    if (this.datum == null) {
+      this.datum = Datum.getWGS84();
+    }
+
+    // Set ellipsoid parameters in datum
+    if (this.datum != null) {
+      this.datum.setEllipsoidParams(this.a, this.b, this.es, this.ep2);
+    }
+
+    // Set transformation methods based on projection type
+    initializeProjectionMethods();
+  }
+
+  /**
+   * Initializes the projection from a WKT string.
+   *
+   * @param wktString the WKT string
+   */
+  private void initializeFromWKT(String wktString) {
+    try {
+      Map<String, Object> wktDef = WKTProcessor.process(wktString);
+
+      // Set basic properties
+      this.name = (String) wktDef.get("name");
+      this.title = (String) wktDef.get("title");
+      this.projName = (String) wktDef.get("projName");
+      this.ellps = (String) wktDef.get("ellps");
+      this.datumCode = (String) wktDef.get("datumCode");
+      this.axis = (String) wktDef.get("axis");
+      this.units = (String) wktDef.get("units");
+      this.nadgrids = (String) wktDef.get("nadgrids");
+
+      // Set ellipsoid parameters
+      if (wktDef.containsKey("a")) {
+        this.a = ((Number) wktDef.get("a")).doubleValue();
+      }
+      if (wktDef.containsKey("b")) {
+        this.b = ((Number) wktDef.get("b")).doubleValue();
+      }
+      if (wktDef.containsKey("rf")) {
+        this.rf = ((Number) wktDef.get("rf")).doubleValue();
+      }
+      if (wktDef.containsKey("es")) {
+        this.es = ((Number) wktDef.get("es")).doubleValue();
+      }
+      if (wktDef.containsKey("e")) {
+        this.e = ((Number) wktDef.get("e")).doubleValue();
+      }
+
+      // Set projection parameters
+      if (wktDef.containsKey("lat0")) {
+        this.lat0 = ((Number) wktDef.get("lat0")).doubleValue();
+      } else if (wktDef.containsKey("latitude_of_origin")) {
+        this.lat0 = Math.toRadians(((Number) wktDef.get("latitude_of_origin")).doubleValue());
+      }
+      if (wktDef.containsKey("lat1")) {
+        this.lat1 = ((Number) wktDef.get("lat1")).doubleValue();
+      } else if (wktDef.containsKey("standard_parallel_1")) {
+        this.lat1 = Math.toRadians(((Number) wktDef.get("standard_parallel_1")).doubleValue());
+      }
+      if (wktDef.containsKey("lat2")) {
+        this.lat2 = ((Number) wktDef.get("lat2")).doubleValue();
+      } else if (wktDef.containsKey("standard_parallel_2")) {
+        this.lat2 = Math.toRadians(((Number) wktDef.get("standard_parallel_2")).doubleValue());
+      }
+      if (wktDef.containsKey("long0")) {
+        this.long0 = ((Number) wktDef.get("long0")).doubleValue();
+      } else if (wktDef.containsKey("central_meridian")) {
+        this.long0 = Math.toRadians(((Number) wktDef.get("central_meridian")).doubleValue());
+      }
+      if (wktDef.containsKey("k0")) {
+        this.k0 = ((Number) wktDef.get("k0")).doubleValue();
+      }
+      if (wktDef.containsKey("x0")) {
+        this.x0 = ((Number) wktDef.get("x0")).doubleValue();
+      }
+      if (wktDef.containsKey("y0")) {
+        this.y0 = ((Number) wktDef.get("y0")).doubleValue();
+      }
+      if (wktDef.containsKey("alpha")) {
+        this.alpha = ((Number) wktDef.get("alpha")).doubleValue();
+      }
+      if (wktDef.containsKey("longc")) {
+        this.longc = ((Number) wktDef.get("longc")).doubleValue();
+      }
+      if (wktDef.containsKey("rectifiedGridAngle")) {
+        this.rectifiedGridAngle = ((Number) wktDef.get("rectifiedGridAngle")).doubleValue();
+      }
+
+      // Set unit conversion
+      if (wktDef.containsKey("to_meter")) {
+        this.to_meter = ((Number) wktDef.get("to_meter")).doubleValue();
+      } else {
         this.to_meter = Units.getToMeter(this.units);
-        
-        // Set prime meridian offset
-        if (def.containsKey("from_greenwich")) {
-            this.from_greenwich = (Double) def.get("from_greenwich");
+      }
+
+      // Set datum parameters
+      if (wktDef.containsKey("datum_params")) {
+        Object datumParams = wktDef.get("datum_params");
+        if (datumParams instanceof List) {
+          List<?> params = (List<?>) datumParams;
+          this.datum_params = new String[params.size()];
+          for (int i = 0; i < params.size(); i++) {
+            this.datum_params[i] = params.get(i).toString();
+          }
         }
-        
-        // Set datum parameters
-        String datumParams = (String) def.get("datum_params");
-        if (datumParams != null) {
-            this.datum_params = datumParams.split(",");
-        }
-        
-        // Set NADGRIDS
-        this.nadgrids = (String) def.get("nadgrids");
-        
-        // Set UTM parameters
-        if (def.containsKey("zone")) {
-            this.zone = ((Number) def.get("zone")).intValue();
-        }
-        if (def.containsKey("utmSouth")) {
-            this.utmSouth = (Boolean) def.get("utmSouth");
-        }
-        
-        // Calculate derived parameters
-        calculateDerivedParameters();
-        
-        // Set datum
-        this.datum = Datum.get(this.datumCode);
-        if (this.datum == null) {
-            this.datum = Datum.getWGS84();
-        }
-        
-        // Set ellipsoid parameters in datum
-        if (this.datum != null) {
-            this.datum.setEllipsoidParams(this.a, this.b, this.es, this.ep2);
-        }
-        
-        // Set transformation methods based on projection type
-        initializeProjectionMethods();
-    }
-    
-    /**
-     * Initializes the projection from a WKT string.
-     * @param wktString the WKT string
-     */
-    private void initializeFromWKT(String wktString) {
-        try {
-            Map<String, Object> wktDef = WKTProcessor.process(wktString);
-            
-            // Set basic properties
-            this.name = (String) wktDef.get("name");
-            this.title = (String) wktDef.get("title");
-            this.projName = (String) wktDef.get("projName");
-            this.ellps = (String) wktDef.get("ellps");
-            this.datumCode = (String) wktDef.get("datumCode");
-            this.axis = (String) wktDef.get("axis");
-            this.units = (String) wktDef.get("units");
-            this.nadgrids = (String) wktDef.get("nadgrids");
-            
-            // Set ellipsoid parameters
-            if (wktDef.containsKey("a")) {
-                this.a = ((Number) wktDef.get("a")).doubleValue();
-            }
-            if (wktDef.containsKey("b")) {
-                this.b = ((Number) wktDef.get("b")).doubleValue();
-            }
-            if (wktDef.containsKey("rf")) {
-                this.rf = ((Number) wktDef.get("rf")).doubleValue();
-            }
-            if (wktDef.containsKey("es")) {
-                this.es = ((Number) wktDef.get("es")).doubleValue();
-            }
-            if (wktDef.containsKey("e")) {
-                this.e = ((Number) wktDef.get("e")).doubleValue();
-            }
-            
-            
-            // Set projection parameters
-            if (wktDef.containsKey("lat0")) {
-                this.lat0 = ((Number) wktDef.get("lat0")).doubleValue();
-            } else if (wktDef.containsKey("latitude_of_origin")) {
-                this.lat0 = Math.toRadians(((Number) wktDef.get("latitude_of_origin")).doubleValue());
-            }
-            if (wktDef.containsKey("lat1")) {
-                this.lat1 = ((Number) wktDef.get("lat1")).doubleValue();
-            } else if (wktDef.containsKey("standard_parallel_1")) {
-                this.lat1 = Math.toRadians(((Number) wktDef.get("standard_parallel_1")).doubleValue());
-            }
-            if (wktDef.containsKey("lat2")) {
-                this.lat2 = ((Number) wktDef.get("lat2")).doubleValue();
-            } else if (wktDef.containsKey("standard_parallel_2")) {
-                this.lat2 = Math.toRadians(((Number) wktDef.get("standard_parallel_2")).doubleValue());
-            }
-            if (wktDef.containsKey("long0")) {
-                this.long0 = ((Number) wktDef.get("long0")).doubleValue();
-            } else if (wktDef.containsKey("central_meridian")) {
-                this.long0 = Math.toRadians(((Number) wktDef.get("central_meridian")).doubleValue());
-            }
-            if (wktDef.containsKey("k0")) {
-                this.k0 = ((Number) wktDef.get("k0")).doubleValue();
-            }
-            if (wktDef.containsKey("x0")) {
-                this.x0 = ((Number) wktDef.get("x0")).doubleValue();
-            }
-            if (wktDef.containsKey("y0")) {
-                this.y0 = ((Number) wktDef.get("y0")).doubleValue();
-            }
-            if (wktDef.containsKey("alpha")) {
-                this.alpha = ((Number) wktDef.get("alpha")).doubleValue();
-            }
-            if (wktDef.containsKey("longc")) {
-                this.longc = ((Number) wktDef.get("longc")).doubleValue();
-            }
-            if (wktDef.containsKey("rectifiedGridAngle")) {
-                this.rectifiedGridAngle = ((Number) wktDef.get("rectifiedGridAngle")).doubleValue();
-            }
-            
-            // Set unit conversion
-            if (wktDef.containsKey("to_meter")) {
-                this.to_meter = ((Number) wktDef.get("to_meter")).doubleValue();
-            } else {
-                this.to_meter = Units.getToMeter(this.units);
-            }
-            
-            // Set datum parameters
-            if (wktDef.containsKey("datum_params")) {
-                Object datumParams = wktDef.get("datum_params");
-                if (datumParams instanceof List) {
-                    List<?> params = (List<?>) datumParams;
-                    this.datum_params = new String[params.size()];
-                    for (int i = 0; i < params.size(); i++) {
-                        this.datum_params[i] = params.get(i).toString();
-                    }
-                }
-            }
-            
-            // Calculate derived parameters
-            calculateDerivedParameters();
-            
-            // Set datum
-            this.datum = Datum.get(this.datumCode);
-            if (this.datum == null) {
-                this.datum = Datum.getWGS84();
-            }
-            
-            // Set ellipsoid parameters in datum
-            if (this.datum != null) {
-                this.datum.setEllipsoidParams(this.a, this.b, this.es, this.ep2);
-            }
-            
-            // Set transformation methods based on projection type
-            initializeProjectionMethods();
-            
-            // Initialize projection-specific parameters
-            if (this.init != null) {
-                this.init.initialize(this);
-            }
-            
-        } catch (WKTParseException e) {
-            throw new IllegalArgumentException("Failed to parse WKT string: " + e.getMessage(), e);
-        }
-    }
-    
-    
-    /**
-     * Initializes projection-specific transformation methods.
-     */
-    private void initializeProjectionMethods() {
-        switch (this.projName) {
-            case "longlat":
-                this.forward = p -> new Point(p.x, p.y, p.z, p.m);
-                this.inverse = p -> new Point(p.x, p.y, p.z, p.m);
-                this.init = null;
-                break;
-            case "merc":
-                this.forward = this::mercatorForward;
-                this.inverse = this::mercatorInverse;
-                this.init = this::mercatorInit;
-                break;
-            case "lcc":
-                this.forward = p -> org.apache.sedona.proj.projections.LambertConformalConic.forward(this, p);
-                this.inverse = p -> org.apache.sedona.proj.projections.LambertConformalConic.inverse(this, p);
-                this.init = proj -> org.apache.sedona.proj.projections.LambertConformalConic.init(proj);
-                break;
-            case "aea":
-                this.forward = p -> org.apache.sedona.proj.projections.AlbersEqualArea.forward(this, p);
-                this.inverse = p -> org.apache.sedona.proj.projections.AlbersEqualArea.inverse(this, p);
-                this.init = proj -> org.apache.sedona.proj.projections.AlbersEqualArea.init(proj);
-                break;
-            case "tmerc":
-                this.forward = p -> org.apache.sedona.proj.projections.TransverseMercator.forward(this, p);
-                this.inverse = p -> org.apache.sedona.proj.projections.TransverseMercator.inverse(this, p);
-                this.init = proj -> org.apache.sedona.proj.projections.TransverseMercator.init(proj);
-                break;
-            case "utm":
-                this.forward = p -> org.apache.sedona.proj.projections.UTM.forward(this, p);
-                this.inverse = p -> org.apache.sedona.proj.projections.UTM.inverse(this, p);
-                this.init = proj -> org.apache.sedona.proj.projections.UTM.init(proj);
-                break;
-            case "omerc":
-            case "Hotine_Oblique_Mercator":
-            case "Hotine_Oblique_Mercator_Azimuth_Center":
-                this.forward = p -> org.apache.sedona.proj.projections.HotineObliqueMercator.forward(this, p);
-                this.inverse = p -> org.apache.sedona.proj.projections.HotineObliqueMercator.inverse(this, p);
-                this.init = proj -> org.apache.sedona.proj.projections.HotineObliqueMercator.init(proj);
-                break;
-            case "eqdc":
-            case "Equidistant_Conic":
-                this.forward = p -> org.apache.sedona.proj.projections.EquidistantConic.forward(this, p);
-                this.inverse = p -> org.apache.sedona.proj.projections.EquidistantConic.inverse(this, p);
-                this.init = proj -> org.apache.sedona.proj.projections.EquidistantConic.init(proj);
-                break;
-            case "sinu":
-            case "Sinusoidal":
-                this.forward = p -> org.apache.sedona.proj.projections.Sinusoidal.forward(this, p);
-                this.inverse = p -> org.apache.sedona.proj.projections.Sinusoidal.inverse(this, p);
-                this.init = proj -> org.apache.sedona.proj.projections.Sinusoidal.init(proj);
-                break;
-            default:
-                // For unsupported projections, use identity transformation
-                this.forward = p -> new Point(p.x, p.y, p.z, p.m);
-                this.inverse = p -> new Point(p.x, p.y, p.z, p.m);
-                this.init = null;
-                break;
-        }
-        
-        // Initialize the projection if needed
-        if (this.init != null) {
-            this.init.initialize(this);
-        }
-    }
-    
-    /**
-     * Initializes as a longitude/latitude projection.
-     */
-    private void initializeLongLat() {
-        this.projName = "longlat";
-        this.name = "longlat";
-        this.title = "Longitude/Latitude";
-        this.ellps = "WGS84";
-        this.datumCode = "WGS84";
-        this.units = "degrees";
-        
-        // Set ellipsoid parameters
-        Ellipsoid.EllipsoidDef ellipsoid = Ellipsoid.getWGS84();
-        this.a = ellipsoid.a;
-        this.b = ellipsoid.b;
-        this.rf = ellipsoid.rf;
-        
-        // Calculate derived parameters
-        calculateDerivedParameters();
-        
-        // Set datum
+      }
+
+      // Calculate derived parameters
+      calculateDerivedParameters();
+
+      // Set datum
+      this.datum = Datum.get(this.datumCode);
+      if (this.datum == null) {
         this.datum = Datum.getWGS84();
-        
-        // Set ellipsoid parameters in datum
-        if (this.datum != null) {
-            this.datum.setEllipsoidParams(this.a, this.b, this.es, this.ep2);
-        }
-        
-        // Set transformation methods (identity for longlat)
-        this.forward = p -> new Point(p.x, p.y, p.z, p.m); // Identity transformation
-        this.inverse = p -> new Point(p.x, p.y, p.z, p.m); // Identity transformation
-        this.init = null; // No initialization needed
+      }
+
+      // Set ellipsoid parameters in datum
+      if (this.datum != null) {
+        this.datum.setEllipsoidParams(this.a, this.b, this.es, this.ep2);
+      }
+
+      // Set transformation methods based on projection type
+      initializeProjectionMethods();
+
+      // Initialize projection-specific parameters
+      if (this.init != null) {
+        this.init.initialize(this);
+      }
+
+    } catch (WKTParseException e) {
+      throw new IllegalArgumentException("Failed to parse WKT string: " + e.getMessage(), e);
     }
-    
-    /**
-     * Initializes as a Mercator projection.
-     */
-    private void initializeMercator() {
-        this.projName = "merc";
-        this.name = "Mercator";
-        this.title = "Mercator";
-        this.ellps = "WGS84";
-        this.datumCode = "WGS84";
-        this.units = "m";
-        
-        // Set ellipsoid parameters
-        Ellipsoid.EllipsoidDef ellipsoid = Ellipsoid.getWGS84();
-        this.a = ellipsoid.a;
-        this.b = ellipsoid.b;
-        this.rf = ellipsoid.rf;
-        
-        // Calculate derived parameters
-        calculateDerivedParameters();
-        
-        // Set datum
-        this.datum = Datum.getWGS84();
-        
-        // Set ellipsoid parameters in datum
-        if (this.datum != null) {
-            this.datum.setEllipsoidParams(this.a, this.b, this.es, this.ep2);
-        }
-        
-        // Set transformation methods
+  }
+
+  /** Initializes projection-specific transformation methods. */
+  private void initializeProjectionMethods() {
+    switch (this.projName) {
+      case "longlat":
+        this.forward = p -> new Point(p.x, p.y, p.z, p.m);
+        this.inverse = p -> new Point(p.x, p.y, p.z, p.m);
+        this.init = null;
+        break;
+      case "merc":
         this.forward = this::mercatorForward;
         this.inverse = this::mercatorInverse;
         this.init = this::mercatorInit;
-        
-        // Initialize the projection
-        if (this.init != null) {
-            this.init.initialize(this);
-        }
+        break;
+      case "lcc":
+        this.forward =
+            p -> org.apache.sedona.proj.projections.LambertConformalConic.forward(this, p);
+        this.inverse =
+            p -> org.apache.sedona.proj.projections.LambertConformalConic.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.LambertConformalConic.init(proj);
+        break;
+      case "aea":
+        this.forward = p -> org.apache.sedona.proj.projections.AlbersEqualArea.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.AlbersEqualArea.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.AlbersEqualArea.init(proj);
+        break;
+      case "tmerc":
+        this.forward = p -> org.apache.sedona.proj.projections.TransverseMercator.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.TransverseMercator.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.TransverseMercator.init(proj);
+        break;
+      case "utm":
+        this.forward = p -> org.apache.sedona.proj.projections.UTM.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.UTM.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.UTM.init(proj);
+        break;
+      case "omerc":
+      case "Hotine_Oblique_Mercator":
+      case "Hotine_Oblique_Mercator_Azimuth_Center":
+        this.forward =
+            p -> org.apache.sedona.proj.projections.HotineObliqueMercator.forward(this, p);
+        this.inverse =
+            p -> org.apache.sedona.proj.projections.HotineObliqueMercator.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.HotineObliqueMercator.init(proj);
+        break;
+      case "eqdc":
+      case "Equidistant_Conic":
+        this.forward = p -> org.apache.sedona.proj.projections.EquidistantConic.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.EquidistantConic.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.EquidistantConic.init(proj);
+        break;
+      case "sinu":
+      case "Sinusoidal":
+        this.forward = p -> org.apache.sedona.proj.projections.Sinusoidal.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.Sinusoidal.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.Sinusoidal.init(proj);
+        break;
+      default:
+        // For unsupported projections, use identity transformation
+        this.forward = p -> new Point(p.x, p.y, p.z, p.m);
+        this.inverse = p -> new Point(p.x, p.y, p.z, p.m);
+        this.init = null;
+        break;
     }
-    
-    /**
-     * Calculates derived ellipsoid parameters.
-     */
-    private void calculateDerivedParameters() {
-        if (Double.isNaN(this.b) && !Double.isNaN(this.rf)) {
-            // Calculate b from a and rf
-            this.b = this.a * (1.0 - 1.0 / this.rf);
-        }
-        
-        if (!Double.isNaN(this.b)) {
-            this.es = 1.0 - (this.b * this.b) / (this.a * this.a);
-            this.e = Math.sqrt(this.es);
-            this.ep2 = (this.a * this.a - this.b * this.b) / (this.b * this.b);
-        }
-        
-        this.sphere = Values.equals(this.a, this.b);
+
+    // Initialize the projection if needed
+    if (this.init != null) {
+      this.init.initialize(this);
     }
-    
-    /**
-     * Mercator projection initialization.
-     */
-    private void mercatorInit(Projection proj) {
-        if (proj.lat_ts != 0) {
-            if (proj.sphere) {
-                proj.k0 = Math.cos(proj.lat_ts);
-            } else {
-                proj.k0 = MathUtils.msfnz(proj.e, Math.sin(proj.lat_ts), Math.cos(proj.lat_ts));
-            }
-        }
+  }
+
+  /** Initializes as a longitude/latitude projection. */
+  private void initializeLongLat() {
+    this.projName = "longlat";
+    this.name = "longlat";
+    this.title = "Longitude/Latitude";
+    this.ellps = "WGS84";
+    this.datumCode = "WGS84";
+    this.units = "degrees";
+
+    // Set ellipsoid parameters
+    Ellipsoid.EllipsoidDef ellipsoid = Ellipsoid.getWGS84();
+    this.a = ellipsoid.a;
+    this.b = ellipsoid.b;
+    this.rf = ellipsoid.rf;
+
+    // Calculate derived parameters
+    calculateDerivedParameters();
+
+    // Set datum
+    this.datum = Datum.getWGS84();
+
+    // Set ellipsoid parameters in datum
+    if (this.datum != null) {
+      this.datum.setEllipsoidParams(this.a, this.b, this.es, this.ep2);
     }
-    
-    /**
-     * Mercator forward transformation.
-     */
-    private Point mercatorForward(Point p) {
-        double lon = p.x;
-        double lat = p.y;
-        
-        // Check for invalid coordinates
-        if (lat * Values.R2D > 90 || lat * Values.R2D < -90) {
-            return null;
-        }
-        
-        if (Math.abs(Math.abs(lat) - Values.HALF_PI) <= Values.EPSLN) {
-            return null; // Cannot project poles
-        }
-        
-        double x, y;
-        if (this.sphere) {
-            x = this.x0 + this.a * this.k0 * adjustLon(lon - this.long0);
-            y = this.y0 + this.a * this.k0 * Math.log(Math.tan(Values.FORTPI + 0.5 * lat));
-        } else {
-            double sinphi = Math.sin(lat);
-            double ts = MathUtils.tsfnz(this.e, lat, sinphi);
-            x = this.x0 + this.a * this.k0 * adjustLon(lon - this.long0);
-            y = this.y0 - this.a * this.k0 * Math.log(ts);
-        }
-        
-        return new Point(x, y, p.z, p.m);
+
+    // Set transformation methods (identity for longlat)
+    this.forward = p -> new Point(p.x, p.y, p.z, p.m); // Identity transformation
+    this.inverse = p -> new Point(p.x, p.y, p.z, p.m); // Identity transformation
+    this.init = null; // No initialization needed
+  }
+
+  /** Initializes as a Mercator projection. */
+  private void initializeMercator() {
+    this.projName = "merc";
+    this.name = "Mercator";
+    this.title = "Mercator";
+    this.ellps = "WGS84";
+    this.datumCode = "WGS84";
+    this.units = "m";
+
+    // Set ellipsoid parameters
+    Ellipsoid.EllipsoidDef ellipsoid = Ellipsoid.getWGS84();
+    this.a = ellipsoid.a;
+    this.b = ellipsoid.b;
+    this.rf = ellipsoid.rf;
+
+    // Calculate derived parameters
+    calculateDerivedParameters();
+
+    // Set datum
+    this.datum = Datum.getWGS84();
+
+    // Set ellipsoid parameters in datum
+    if (this.datum != null) {
+      this.datum.setEllipsoidParams(this.a, this.b, this.es, this.ep2);
     }
-    
-    /**
-     * Mercator inverse transformation.
-     */
-    private Point mercatorInverse(Point p) {
-        double x = p.x - this.x0;
-        double y = p.y - this.y0;
-        
-        double lat, lon;
-        if (this.sphere) {
-            lat = Values.HALF_PI - 2 * Math.atan(Math.exp(-y / (this.a * this.k0)));
-        } else {
-            double ts = Math.exp(-y / (this.a * this.k0));
-            lat = MathUtils.phi2z(this.e, ts);
-            if (lat == -9999) {
-                return null;
-            }
-        }
-        
-        lon = adjustLon(this.long0 + x / (this.a * this.k0));
-        
-        return new Point(lon, lat, p.z, p.m);
+
+    // Set transformation methods
+    this.forward = this::mercatorForward;
+    this.inverse = this::mercatorInverse;
+    this.init = this::mercatorInit;
+
+    // Initialize the projection
+    if (this.init != null) {
+      this.init.initialize(this);
     }
-    
-    /**
-     * Adjusts longitude to valid range.
-     */
-    private double adjustLon(double lon) {
-        return MathUtils.adjustLon(lon);
+  }
+
+  /** Calculates derived ellipsoid parameters. */
+  private void calculateDerivedParameters() {
+    if (Double.isNaN(this.b) && !Double.isNaN(this.rf)) {
+      // Calculate b from a and rf
+      this.b = this.a * (1.0 - 1.0 / this.rf);
     }
-    
-    /**
-     * Registers a projection factory.
-     * @param name the projection name
-     * @param factory the projection factory
-     */
-    public static void registerProjection(String name, ProjectionFactory factory) {
-        PROJECTIONS.put(name, factory);
+
+    if (!Double.isNaN(this.b)) {
+      this.es = 1.0 - (this.b * this.b) / (this.a * this.a);
+      this.e = Math.sqrt(this.es);
+      this.ep2 = (this.a * this.a - this.b * this.b) / (this.b * this.b);
     }
-    
-    /**
-     * Gets a projection factory by name.
-     * @param name the projection name
-     * @return the projection factory, or null if not found
-     */
-    public static ProjectionFactory getProjectionFactory(String name) {
-        return PROJECTIONS.get(name);
+
+    this.sphere = Values.equals(this.a, this.b);
+  }
+
+  /** Mercator projection initialization. */
+  private void mercatorInit(Projection proj) {
+    if (proj.lat_ts != 0) {
+      if (proj.sphere) {
+        proj.k0 = Math.cos(proj.lat_ts);
+      } else {
+        proj.k0 = MathUtils.msfnz(proj.e, Math.sin(proj.lat_ts), Math.cos(proj.lat_ts));
+      }
     }
-    
-    /**
-     * Gets all registered projection names.
-     * @return list of projection names
-     */
-    public static List<String> getProjectionNames() {
-        return new ArrayList<>(PROJECTIONS.keySet());
+  }
+
+  /** Mercator forward transformation. */
+  private Point mercatorForward(Point p) {
+    double lon = p.x;
+    double lat = p.y;
+
+    // Check for invalid coordinates
+    if (lat * Values.R2D > 90 || lat * Values.R2D < -90) {
+      return null;
     }
+
+    if (Math.abs(Math.abs(lat) - Values.HALF_PI) <= Values.EPSLN) {
+      return null; // Cannot project poles
+    }
+
+    double x, y;
+    if (this.sphere) {
+      x = this.x0 + this.a * this.k0 * adjustLon(lon - this.long0);
+      y = this.y0 + this.a * this.k0 * Math.log(Math.tan(Values.FORTPI + 0.5 * lat));
+    } else {
+      double sinphi = Math.sin(lat);
+      double ts = MathUtils.tsfnz(this.e, lat, sinphi);
+      x = this.x0 + this.a * this.k0 * adjustLon(lon - this.long0);
+      y = this.y0 - this.a * this.k0 * Math.log(ts);
+    }
+
+    return new Point(x, y, p.z, p.m);
+  }
+
+  /** Mercator inverse transformation. */
+  private Point mercatorInverse(Point p) {
+    double x = p.x - this.x0;
+    double y = p.y - this.y0;
+
+    double lat, lon;
+    if (this.sphere) {
+      lat = Values.HALF_PI - 2 * Math.atan(Math.exp(-y / (this.a * this.k0)));
+    } else {
+      double ts = Math.exp(-y / (this.a * this.k0));
+      lat = MathUtils.phi2z(this.e, ts);
+      if (lat == -9999) {
+        return null;
+      }
+    }
+
+    lon = adjustLon(this.long0 + x / (this.a * this.k0));
+
+    return new Point(lon, lat, p.z, p.m);
+  }
+
+  /** Adjusts longitude to valid range. */
+  private double adjustLon(double lon) {
+    return MathUtils.adjustLon(lon);
+  }
+
+  /**
+   * Registers a projection factory.
+   *
+   * @param name the projection name
+   * @param factory the projection factory
+   */
+  public static void registerProjection(String name, ProjectionFactory factory) {
+    PROJECTIONS.put(name, factory);
+  }
+
+  /**
+   * Gets a projection factory by name.
+   *
+   * @param name the projection name
+   * @return the projection factory, or null if not found
+   */
+  public static ProjectionFactory getProjectionFactory(String name) {
+    return PROJECTIONS.get(name);
+  }
+
+  /**
+   * Gets all registered projection names.
+   *
+   * @return list of projection names
+   */
+  public static List<String> getProjectionNames() {
+    return new ArrayList<>(PROJECTIONS.keySet());
+  }
 }
