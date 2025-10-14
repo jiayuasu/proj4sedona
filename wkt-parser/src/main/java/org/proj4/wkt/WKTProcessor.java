@@ -105,12 +105,45 @@ public class WKTProcessor {
         } else {
             if (wkt.containsKey("PROJECTION")) {
                 Object projection = wkt.get("PROJECTION");
+                String projName;
                 if (projection instanceof Map) {
                     Map<String, Object> projMap = (Map<String, Object>) projection;
-                    wkt.put("projName", projMap.keySet().iterator().next());
+                    projName = projMap.keySet().iterator().next();
                 } else {
-                    wkt.put("projName", projection);
+                    projName = projection.toString();
                 }
+                
+                // Map WKT projection names to proj4 names
+                if ("Hotine_Oblique_Mercator_Azimuth_Center".equals(projName) ||
+                    "Hotine_Oblique_Mercator".equals(projName) ||
+                    "Hotine_Oblique_Mercator_variant_A".equals(projName)) {
+                    projName = "omerc";
+                } else if ("Lambert_Conformal_Conic_2SP".equals(projName) ||
+                          "Lambert_Conformal_Conic".equals(projName)) {
+                    projName = "lcc";
+                } else if ("Albers_Conic_Equal_Area".equals(projName) ||
+                          "Albers".equals(projName)) {
+                    projName = "aea";
+                } else if ("Transverse_Mercator".equals(projName)) {
+                    // Check if this is a UTM projection
+                    if (isUTMProjection(wkt)) {
+                        projName = "utm";
+                    } else {
+                        projName = "tmerc";
+                    }
+                } else if ("Equidistant_Conic".equals(projName)) {
+                    projName = "eqdc";
+                } else if ("Sinusoidal".equals(projName)) {
+                    projName = "sinu";
+                } else if ("Lambert_Azimuthal_Equal_Area".equals(projName)) {
+                    projName = "laea";
+                } else if ("Mollweide".equals(projName)) {
+                    projName = "moll";
+                } else if ("Azimuthal_Equidistant".equals(projName)) {
+                    projName = "aeqd";
+                }
+                
+                wkt.put("projName", projName);
             }
         }
         
@@ -233,6 +266,17 @@ public class WKTProcessor {
                     wkt.put("ellps", ellpsName);
                     wkt.put("a", spheroid.get("a"));
                     wkt.put("rf", Double.parseDouble(spheroid.get("rf").toString()));
+                    
+                    // Calculate derived ellipsoid parameters
+                    double a = ((Number) spheroid.get("a")).doubleValue();
+                    double rf = Double.parseDouble(spheroid.get("rf").toString());
+                    double b = a * (1.0 - 1.0 / rf);
+                    double es = 1.0 - (b * b) / (a * a);
+                    double e = Math.sqrt(es);
+                    
+                    wkt.put("b", b);
+                    wkt.put("es", es);
+                    wkt.put("e", e);
                 }
                 
                 // Process TOWGS84 parameters
@@ -275,6 +319,8 @@ public class WKTProcessor {
             {"standard_parallel_1", "Latitude of 1st standard parallel"},
             {"standard_parallel_2", "Standard_Parallel_2"},
             {"standard_parallel_2", "Latitude of 2nd standard parallel"},
+            {"lat1", "standard_parallel_1"},
+            {"lat2", "standard_parallel_2"},
             {"false_easting", "False_Easting"},
             {"false_easting", "False easting"},
             {"false-easting", "Easting at false origin"},
@@ -295,7 +341,11 @@ public class WKTProcessor {
             {"longitude_of_center", "Longitude_Of_Center"},
             {"longitude_of_center", "Longitude_of_center"},
             {"azimuth", "Azimuth"},
-            {"srsCode", "name"}
+            {"srsCode", "name"},
+            // Hotine Oblique Mercator specific mappings
+            {"lat0", "latitude_of_center"},
+            {"longc", "longitude_of_center"},
+            {"alpha", "azimuth"}
         };
         
         for (String[] mapping : mappings) {
@@ -348,5 +398,87 @@ public class WKTProcessor {
             double toMeter = wkt.containsKey("to_meter") ? ((Number) wkt.get("to_meter")).doubleValue() : 1.0;
             wkt.put("y0", ((Number) wkt.get("false_northing")).doubleValue() * toMeter);
         }
+        
+        // Handle UTM-specific parameters
+        if ("utm".equals(wkt.get("projName"))) {
+            // Extract UTM zone from central meridian
+            if (wkt.containsKey("central_meridian")) {
+                double centralMeridian = ((Number) wkt.get("central_meridian")).doubleValue();
+                int zone = (int) Math.round((centralMeridian + 177.0) / 6.0) + 1;
+                wkt.put("zone", zone);
+            }
+            
+            // Determine if this is southern hemisphere based on false northing
+            if (wkt.containsKey("y0")) {
+                double y0 = ((Number) wkt.get("y0")).doubleValue();
+                wkt.put("utmSouth", y0 > 5000000.0); // Southern hemisphere has false northing of 10,000,000
+            }
+        }
+    }
+    
+    /**
+     * Determines if a Transverse Mercator projection is actually a UTM projection.
+     * UTM projections have specific characteristics:
+     * - Scale factor of 0.9996
+     * - False easting of 500000
+     * - False northing of 0 (northern hemisphere) or 10000000 (southern hemisphere)
+     * - Central meridian that corresponds to a UTM zone
+     * @param wkt the WKT object to check
+     * @return true if this is a UTM projection
+     */
+    @SuppressWarnings("unchecked")
+    private static boolean isUTMProjection(Map<String, Object> wkt) {
+        // Check for UTM-specific parameters
+        double scaleFactor = 0.9996;
+        double falseEasting = 500000.0;
+        
+        // Get scale factor
+        double k0 = 1.0;
+        if (wkt.containsKey("scale_factor")) {
+            k0 = ((Number) wkt.get("scale_factor")).doubleValue();
+        } else if (wkt.containsKey("k0")) {
+            k0 = ((Number) wkt.get("k0")).doubleValue();
+        }
+        
+        // Get false easting
+        double x0 = 0.0;
+        if (wkt.containsKey("false_easting")) {
+            x0 = ((Number) wkt.get("false_easting")).doubleValue();
+        } else if (wkt.containsKey("x0")) {
+            x0 = ((Number) wkt.get("x0")).doubleValue();
+        }
+        
+        // Get false northing
+        double y0 = 0.0;
+        if (wkt.containsKey("false_northing")) {
+            y0 = ((Number) wkt.get("false_northing")).doubleValue();
+        } else if (wkt.containsKey("y0")) {
+            y0 = ((Number) wkt.get("y0")).doubleValue();
+        }
+        
+        // Check if parameters match UTM characteristics
+        boolean hasUTMScaleFactor = Math.abs(k0 - scaleFactor) < 1e-6;
+        boolean hasUTMFalseEasting = Math.abs(x0 - falseEasting) < 1e-6;
+        boolean hasUTMFalseNorthing = Math.abs(y0) < 1e-6 || Math.abs(y0 - 10000000.0) < 1e-6;
+        
+        // Check if central meridian corresponds to a UTM zone
+        boolean hasUTMCentralMeridian = false;
+        if (wkt.containsKey("central_meridian")) {
+            double centralMeridian = ((Number) wkt.get("central_meridian")).doubleValue();
+            // UTM zones have central meridians at -177, -171, -165, ..., 177 degrees
+            // (every 6 degrees starting from -177)
+            double zoneMeridian = (centralMeridian + 177.0) / 6.0;
+            hasUTMCentralMeridian = Math.abs(zoneMeridian - Math.round(zoneMeridian)) < 1e-6;
+        }
+        
+        // Also check the name for UTM indicators
+        boolean hasUTMName = false;
+        if (wkt.containsKey("name")) {
+            String name = wkt.get("name").toString().toLowerCase();
+            hasUTMName = name.contains("utm") || name.contains("universal transverse mercator");
+        }
+        
+        return (hasUTMScaleFactor && hasUTMFalseEasting && hasUTMFalseNorthing) || 
+               (hasUTMName && hasUTMScaleFactor && hasUTMFalseEasting);
     }
 }

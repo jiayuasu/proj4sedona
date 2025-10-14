@@ -146,8 +146,7 @@ public class PerformanceTest {
         
         // Batch method should be faster (though this is not guaranteed in unit tests)
         // In real scenarios with larger datasets, the difference would be more pronounced
-        System.out.println("Individual transformations: " + (time1 / 1_000_000) + " ms");
-        System.out.println("Batch transformations: " + (time2 / 1_000_000) + " ms");
+        // Performance metrics are available but not printed in unit tests
     }
     
     @Test

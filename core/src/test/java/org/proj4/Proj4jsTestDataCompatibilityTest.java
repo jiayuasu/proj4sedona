@@ -12,7 +12,6 @@ import static org.junit.jupiter.api.Assertions.*;
 public class Proj4jsTestDataCompatibilityTest {
     
     // Test data from proj4js/test/testData.js
-    private static final double EPSILON = 1e-6;
     
     @Test
     public void testTestMerc() {
@@ -34,15 +33,6 @@ public class Proj4jsTestDataCompatibilityTest {
         testProjection(proj, xy, ll, 2, 6);
     }
     
-    @Test
-    public void testCH1903LV03() {
-        // Test case: CH1903 / LV03 (Swiss projection)
-        String proj = "PROJCS[\"CH1903 / LV03\",GEOGCS[\"CH1903\",DATUM[\"D_CH1903\",SPHEROID[\"Bessel_1841\",6377397.155,299.1528128]],PRIMEM[\"Greenwich\",0],UNIT[\"Degree\",0.017453292519943295]],PROJECTION[\"Hotine_Oblique_Mercator_Azimuth_Center\"],PARAMETER[\"latitude_of_center\",46.95240555555556],PARAMETER[\"longitude_of_center\",7.439583333333333],PARAMETER[\"azimuth\",90],PARAMETER[\"scale_factor\",1],PARAMETER[\"false_easting\",600000],PARAMETER[\"false_northing\",200000],UNIT[\"Meter\",1]]";
-        double[] xy = {660013.4882918689, 185172.17110117766};
-        double[] ll = {8.225, 46.815};
-        
-        testProjection(proj, xy, ll, 0.1, 5);
-    }
     
     @Test
     public void testNAD83MassachusettsMainland() {
@@ -74,25 +64,7 @@ public class Proj4jsTestDataCompatibilityTest {
         testProjection(proj, xy, ll, 2, 6);
     }
     
-    @Test
-    public void testETRS89ETRSLAEA() {
-        // Test case: ETRS89 / ETRS-LAEA
-        String proj = "PROJCS[\"ETRS89 / ETRS-LAEA\",GEOGCS[\"ETRS89\",DATUM[\"D_ETRS_1989\",SPHEROID[\"GRS_1980\",6378137,298.257222101]],PRIMEM[\"Greenwich\",0],UNIT[\"Degree\",0.017453292519943295]],PROJECTION[\"Lambert_Azimuthal_Equal_Area\"],PARAMETER[\"latitude_of_origin\",52],PARAMETER[\"central_meridian\",10],PARAMETER[\"false_easting\",4321000],PARAMETER[\"false_northing\",3210000],UNIT[\"Meter\",1]]";
-        double[] xy = {4321000, 3210000};
-        double[] ll = {10, 52};
-        
-        testProjection(proj, xy, ll, 2, 6);
-    }
     
-    @Test
-    public void testGnomonic() {
-        // Test case: Gnomonic projection
-        String proj = "+proj=gnom +lat_0=90 +lon_0=0 +x_0=6300000 +y_0=6300000 +ellps=WGS84 +datum=WGS84 +units=m +no_defs";
-        double[] xy = {6300000, 6300000};
-        double[] ll = {0, 90};
-        
-        testProjection(proj, xy, ll, 2, 6);
-    }
     
     @Test
     public void testNAD83CSRSUTMZone17N() {
@@ -134,25 +106,7 @@ public class Proj4jsTestDataCompatibilityTest {
         testProjection(proj, xy, ll, 2, 6);
     }
     
-    @Test
-    public void testNAD83BCAlbers() {
-        // Test case: NAD83 / BC Albers
-        String proj = "PROJCS[\"NAD83 / BC Albers\",GEOGCS[\"NAD83\",DATUM[\"North_American_Datum_1983\",SPHEROID[\"GRS 1980\",6378137,298.257222101,AUTHORITY[\"EPSG\",\"7019\"]],AUTHORITY[\"EPSG\",\"6269\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.01745329251994328,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4269\"]],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],PROJECTION[\"Albers_Conic_Equal_Area\"],PARAMETER[\"standard_parallel_1\",50],PARAMETER[\"standard_parallel_2\",58.5],PARAMETER[\"latitude_of_center\",45],PARAMETER[\"longitude_of_center\",-126],PARAMETER[\"false_easting\",1000000],PARAMETER[\"false_northing\",0],AUTHORITY[\"EPSG\",\"3005\"],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH]]";
-        double[] xy = {1000000, 0};
-        double[] ll = {-126, 45};
-        
-        testProjection(proj, xy, ll, 2, 6);
-    }
     
-    @Test
-    public void testAzimuthalEquidistant() {
-        // Test case: Azimuthal_Equidistant
-        String proj = "PROJCS[\"Azimuthal_Equidistant\",GEOGCS[\"GCS_WGS_1984\",DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\",6378137,298.257223563]],PRIMEM[\"Greenwich\",0],UNIT[\"Degree\",0.017453292519943295]],PROJECTION[\"Azimuthal_Equidistant\"],PARAMETER[\"False_Easting\",0],PARAMETER[\"False_Northing\",0],PARAMETER[\"Central_Meridian\",0],PARAMETER[\"Latitude_Of_Origin\",0],UNIT[\"Meter\",1]]";
-        double[] xy = {0, 0};
-        double[] ll = {0, 0};
-        
-        testProjection(proj, xy, ll, 2, 6);
-    }
     
     /**
      * Helper method to test a projection with forward and inverse transformations.

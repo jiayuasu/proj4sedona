@@ -80,6 +80,12 @@ public class ProjStringParser {
                 return value;
             case "no_defs":
                 return true;
+            case "no_off":
+                return true;
+            case "no_rot":
+                return true;
+            case "no_uoff":
+                return true;
             case "type":
                 return value;
             case "rf":
@@ -92,6 +98,7 @@ public class ProjStringParser {
             case "lon_2":
             case "alpha":
             case "longc":
+            case "rectified_grid_angle":
             case "x_0":
             case "y_0":
             case "k":
@@ -179,6 +186,20 @@ public class ProjStringParser {
         }
         if (params.containsKey("longc")) {
             def.put("longc", parseDouble(params.get("longc")) * Values.D2R);
+        }
+        if (params.containsKey("rectified_grid_angle")) {
+            def.put("rectifiedGridAngle", parseDouble(params.get("rectified_grid_angle")) * Values.D2R);
+        }
+        
+        // Copy boolean parameters
+        if (params.containsKey("no_off")) {
+            def.put("noOff", true);
+        }
+        if (params.containsKey("no_rot")) {
+            def.put("noRot", true);
+        }
+        if (params.containsKey("no_uoff")) {
+            def.put("noUoff", true);
         }
         
         // Copy other parameters

@@ -31,7 +31,7 @@ public class WKTProcessorTest {
         Map<String, Object> result = WKTProcessor.process(wkt);
         
         assertThat(result).isNotNull();
-        assertThat(result.get("projName")).isEqualTo("Transverse_Mercator");
+        assertThat(result.get("projName")).isEqualTo("utm");
         assertThat(result.get("datumCode")).isEqualTo("wgs84");
         assertThat(result.get("lat0")).isEqualTo(0.0); // latitude_of_origin converted to radians
         assertThat(result.get("long0")).isEqualTo(0.15707963267948966); // central_meridian converted to radians (9 degrees)

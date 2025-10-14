@@ -3,7 +3,6 @@ package org.proj4.core;
 import org.proj4.constants.Datum;
 import org.proj4.constants.Ellipsoid;
 import org.proj4.constants.Values;
-import org.proj4.constants.PrimeMeridian;
 import org.proj4.constants.Units;
 import org.proj4.common.MathUtils;
 import org.proj4.parse.ProjStringParser;
@@ -73,10 +72,25 @@ public class Projection {
     public boolean utmSouth; // UTM southern hemisphere flag
     public double ns0;    // Albers Equal Area cone constant
     
+    // Hotine Oblique Mercator parameters
+    public boolean noOff; // No offset flag
+    public boolean noRot; // No rotation flag
+    public boolean noUoff; // No U offset flag
+    public double rectifiedGridAngle; // Rectified grid angle
+    
     // Projection methods (to be set by specific projection implementations)
     public ProjectionMethod forward;
     public ProjectionMethod inverse;
     public ProjectionInitializer init;
+    
+    // Projection-specific instances
+    public Object omerc; // Hotine Oblique Mercator instance
+    public Object eqdc; // Equidistant Conic instance
+    public Object laea; // Lambert Azimuthal Equal Area instance
+    public Object gnom; // Gnomonic instance
+    public Object utm; // UTM instance
+    public Object aea; // Albers Equal Area instance
+    public Object sinu; // Sinusoidal instance
     
     // Registry of available projections
     private static final Map<String, ProjectionFactory> PROJECTIONS = new ConcurrentHashMap<>();
@@ -184,9 +198,15 @@ public class Projection {
         this.long2 = (Double) def.getOrDefault("long2", this.long0);
         this.alpha = (Double) def.getOrDefault("alpha", 0.0);
         this.longc = (Double) def.getOrDefault("longc", 0.0);
+        this.rectifiedGridAngle = (Double) def.getOrDefault("rectifiedGridAngle", 0.0);
         this.x0 = (Double) def.getOrDefault("x0", Values.DEFAULT_X0);
         this.y0 = (Double) def.getOrDefault("y0", Values.DEFAULT_Y0);
         this.k0 = (Double) def.getOrDefault("k0", Values.DEFAULT_K0);
+        
+        // Set boolean parameters
+        this.noOff = (Boolean) def.getOrDefault("noOff", false);
+        this.noRot = (Boolean) def.getOrDefault("noRot", false);
+        this.noUoff = (Boolean) def.getOrDefault("noUoff", false);
         
         // Set ellipsoid parameters
         this.a = (Double) def.getOrDefault("a", Double.NaN);
@@ -274,22 +294,40 @@ public class Projection {
             if (wktDef.containsKey("a")) {
                 this.a = ((Number) wktDef.get("a")).doubleValue();
             }
+            if (wktDef.containsKey("b")) {
+                this.b = ((Number) wktDef.get("b")).doubleValue();
+            }
             if (wktDef.containsKey("rf")) {
                 this.rf = ((Number) wktDef.get("rf")).doubleValue();
             }
+            if (wktDef.containsKey("es")) {
+                this.es = ((Number) wktDef.get("es")).doubleValue();
+            }
+            if (wktDef.containsKey("e")) {
+                this.e = ((Number) wktDef.get("e")).doubleValue();
+            }
+            
             
             // Set projection parameters
             if (wktDef.containsKey("lat0")) {
                 this.lat0 = ((Number) wktDef.get("lat0")).doubleValue();
+            } else if (wktDef.containsKey("latitude_of_origin")) {
+                this.lat0 = Math.toRadians(((Number) wktDef.get("latitude_of_origin")).doubleValue());
             }
             if (wktDef.containsKey("lat1")) {
                 this.lat1 = ((Number) wktDef.get("lat1")).doubleValue();
+            } else if (wktDef.containsKey("standard_parallel_1")) {
+                this.lat1 = Math.toRadians(((Number) wktDef.get("standard_parallel_1")).doubleValue());
             }
             if (wktDef.containsKey("lat2")) {
                 this.lat2 = ((Number) wktDef.get("lat2")).doubleValue();
+            } else if (wktDef.containsKey("standard_parallel_2")) {
+                this.lat2 = Math.toRadians(((Number) wktDef.get("standard_parallel_2")).doubleValue());
             }
             if (wktDef.containsKey("long0")) {
                 this.long0 = ((Number) wktDef.get("long0")).doubleValue();
+            } else if (wktDef.containsKey("central_meridian")) {
+                this.long0 = Math.toRadians(((Number) wktDef.get("central_meridian")).doubleValue());
             }
             if (wktDef.containsKey("k0")) {
                 this.k0 = ((Number) wktDef.get("k0")).doubleValue();
@@ -299,6 +337,15 @@ public class Projection {
             }
             if (wktDef.containsKey("y0")) {
                 this.y0 = ((Number) wktDef.get("y0")).doubleValue();
+            }
+            if (wktDef.containsKey("alpha")) {
+                this.alpha = ((Number) wktDef.get("alpha")).doubleValue();
+            }
+            if (wktDef.containsKey("longc")) {
+                this.longc = ((Number) wktDef.get("longc")).doubleValue();
+            }
+            if (wktDef.containsKey("rectifiedGridAngle")) {
+                this.rectifiedGridAngle = ((Number) wktDef.get("rectifiedGridAngle")).doubleValue();
             }
             
             // Set unit conversion
@@ -336,6 +383,11 @@ public class Projection {
             
             // Set transformation methods based on projection type
             initializeProjectionMethods();
+            
+            // Initialize projection-specific parameters
+            if (this.init != null) {
+                this.init.initialize(this);
+            }
             
         } catch (WKTParseException e) {
             throw new IllegalArgumentException("Failed to parse WKT string: " + e.getMessage(), e);
@@ -377,6 +429,25 @@ public class Projection {
                 this.forward = p -> org.proj4.projections.UTM.forward(this, p);
                 this.inverse = p -> org.proj4.projections.UTM.inverse(this, p);
                 this.init = proj -> org.proj4.projections.UTM.init(proj);
+                break;
+            case "omerc":
+            case "Hotine_Oblique_Mercator":
+            case "Hotine_Oblique_Mercator_Azimuth_Center":
+                this.forward = p -> org.proj4.projections.HotineObliqueMercator.forward(this, p);
+                this.inverse = p -> org.proj4.projections.HotineObliqueMercator.inverse(this, p);
+                this.init = proj -> org.proj4.projections.HotineObliqueMercator.init(proj);
+                break;
+            case "eqdc":
+            case "Equidistant_Conic":
+                this.forward = p -> org.proj4.projections.EquidistantConic.forward(this, p);
+                this.inverse = p -> org.proj4.projections.EquidistantConic.inverse(this, p);
+                this.init = proj -> org.proj4.projections.EquidistantConic.init(proj);
+                break;
+            case "sinu":
+            case "Sinusoidal":
+                this.forward = p -> org.proj4.projections.Sinusoidal.forward(this, p);
+                this.inverse = p -> org.proj4.projections.Sinusoidal.inverse(this, p);
+                this.init = proj -> org.proj4.projections.Sinusoidal.init(proj);
                 break;
             default:
                 // For unsupported projections, use identity transformation

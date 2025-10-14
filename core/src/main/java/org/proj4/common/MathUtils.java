@@ -225,8 +225,10 @@ public final class MathUtils {
         double phi = arg;
         for (int i = 0; i < 20; i++) {
             double s = Math.sin(phi);
+            double c = Math.cos(phi);
             double t = 1 - es * s * s;
-            t = (mlfn(phi, s, Math.cos(phi), en) - arg) * (t * Math.sqrt(t)) * k;
+            // Use the same mlfn method as the forward transformation
+            t = (mlfn(phi, s, c, en) - arg) * (t * Math.sqrt(t)) * k;
             phi -= t;
             if (Math.abs(t) <= Values.EPSLN) {
                 return phi;
@@ -405,6 +407,7 @@ public final class MathUtils {
     public static double mlfn(double e0, double e1, double e2, double e3, double phi) {
         return e0 * phi - e1 * Math.sin(2 * phi) + e2 * Math.sin(4 * phi) - e3 * Math.sin(6 * phi);
     }
+    
     
     /**
      * Calculates the meridian length using the proj4js algorithm.
@@ -634,5 +637,28 @@ public final class MathUtils {
         double lon3 = lon1 + Math.atan2(by, Math.cos(lat1) + bx);
         
         return new double[]{lat3, lon3};
+    }
+    
+    /**
+     * Arc sine function that handles values outside [-1, 1] range.
+     * Ported from asinz.js
+     * @param x the value
+     * @return arc sine of x, clamped to valid range
+     */
+    public static double asinz(double x) {
+        if (Math.abs(x) > 1.0) {
+            x = x > 1.0 ? 1.0 : -1.0;
+        }
+        return Math.asin(x);
+    }
+    
+    /**
+     * Adjusts latitude to valid range [-PI/2, PI/2].
+     * Ported from adjust_lat.js
+     * @param x latitude in radians
+     * @return adjusted latitude
+     */
+    public static double adjustLat(double x) {
+        return (Math.abs(x) <= Values.HALF_PI) ? x : (x - (sign(x) * Values.PI));
     }
 }
