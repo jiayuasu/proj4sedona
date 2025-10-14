@@ -103,7 +103,64 @@ Point utm = Proj4Sedona.transform(
     "+proj=utm +zone=19 +datum=NAD83",
     point
 );
+
+// Load and use GeoTIFF datum grids from PROJ CDN
+GeoTiffReader.GeoTiffGrid grid = Proj4Sedona.downloadGrid("ca_nrc_NA83SCRS.tif");
+Point withGrid = Proj4Sedona.transform(
+    "+proj=longlat +datum=WGS84",
+    "+proj=longlat +datum=NAD83 +nadgrids=ca_nrc_NA83SCRS.tif",
+    point
+);
 ```
+
+## GeoTIFF Datum Grid Support
+
+Proj4Sedona now supports reading GeoTIFF datum grids, similar to proj4js. This allows you to use high-precision datum transformations by downloading grids from the PROJ CDN.
+
+### Basic Usage
+
+```java
+// Download a datum grid from PROJ CDN
+GeoTiffReader.GeoTiffGrid grid = Proj4Sedona.downloadGrid("ca_nrc_NA83SCRS.tif");
+
+// Use the grid in transformations
+Point point = new Point(-79.3832, 43.6532); // Toronto
+Point transformed = Proj4Sedona.transform(
+    "+proj=longlat +datum=WGS84",
+    "+proj=longlat +datum=NAD83 +nadgrids=ca_nrc_NA83SCRS.tif",
+    point
+);
+```
+
+### Loading from Local Files
+
+```java
+// Load from a local file
+try (FileInputStream fis = new FileInputStream("path/to/grid.tif")) {
+    GeoTiffReader.GeoTiffGrid grid = Proj4Sedona.nadgrid("my_grid", fis);
+}
+```
+
+### Cache Management
+
+```java
+// Check cache status
+int cacheSize = Proj4Sedona.getGridCacheSize();
+String[] cachedGrids = Proj4Sedona.getCachedGridKeys();
+
+// Clear cache if needed
+Proj4Sedona.clearGridCache();
+```
+
+### Available Grids
+
+The PROJ CDN hosts many datum grids from various countries and organizations. Some examples:
+
+- `ca_nrc_NA83SCRS.tif` - Canadian NAD83 to NAD83(CSRS) transformation
+- `us_noaa_NAD83_NAD83_CSRS.tif` - US NAD83 transformations
+- `au_ga_GDA94_GDA2020_conformal.tif` - Australian datum transformation
+
+For a complete list, visit the [PROJ-data repository](https://github.com/OSGeo/PROJ-data).
 
 ## Architecture
 
@@ -113,6 +170,8 @@ Point utm = Proj4Sedona.transform(
 - **`Projection`**: Represents a map projection with transformation methods
 - **`Proj4Sedona`**: Main entry point with static transformation methods
 - **`Converter`**: Provides forward/inverse transformation capabilities
+- **`GeoTiffReader`**: Reads and processes GeoTIFF datum grids
+- **`ProjCdnClient`**: Downloads grids from the PROJ CDN
 
 ### Constants
 
@@ -128,6 +187,8 @@ org.proj4/
 ├── constants/      # Mathematical constants and definitions
 ├── projections/    # Projection implementations
 ├── datum/          # Datum transformation logic
+│   ├── GeoTiffReader.java    # GeoTIFF grid reading
+│   └── ProjCdnClient.java    # PROJ CDN integration
 ├── parse/          # PROJ string parsing
 ├── wkt/            # WKT parsing and processing
 └── common/         # Common mathematical utilities
@@ -147,7 +208,8 @@ Currently implemented:
 
 - **3-Parameter Helmert**: Translation-only transformations (dx, dy, dz)
 - **7-Parameter Helmert**: Full Helmert transformations (dx, dy, dz, rx, ry, rz, scale)
-- **Grid-Based**: NTv2 and other grid-based datum adjustments
+- **Grid-Based**: NTv2 and GeoTIFF grid-based datum adjustments
+- **GeoTIFF Support**: Download and use datum grids from PROJ CDN
 - **Built-in Datums**: WGS84, NAD83, NAD27, and other common datums
 
 ## Building

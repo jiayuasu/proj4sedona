@@ -8,6 +8,8 @@ import org.proj4.projjson.ProjJsonParser;
 import org.proj4.mgrs.Mgrs;
 import org.proj4.cache.ProjectionCache;
 import org.proj4.optimization.BatchTransformer;
+import org.proj4.datum.GeoTiffReader;
+import org.proj4.datum.ProjCdnClient;
 
 import java.io.IOException;
 import java.util.function.Function;
@@ -492,5 +494,165 @@ public class Proj4Sedona {
     public static Point fromMGRS(String mgrs) {
         double[] coords = Mgrs.toPoint(mgrs);
         return new Point(coords[0], coords[1]);
+    }
+    
+    // ===== GeoTIFF Datum Grid Support =====
+    
+    /**
+     * Loads a GeoTIFF datum grid from a URL (e.g., from PROJ CDN).
+     * This is equivalent to proj4js nadgrid() function for GeoTIFF files.
+     * @param key the key to associate with the loaded grid
+     * @param url the URL of the GeoTIFF file
+     * @return the loaded GeoTIFF grid
+     * @throws IOException if reading fails
+     */
+    public static GeoTiffReader.GeoTiffGrid nadgrid(String key, String url) throws IOException {
+        return GeoTiffReader.loadFromUrl(key, url);
+    }
+    
+    /**
+     * Loads a GeoTIFF datum grid from an input stream.
+     * @param key the key to associate with the loaded grid
+     * @param inputStream the input stream containing the GeoTIFF data
+     * @return the loaded GeoTIFF grid
+     * @throws IOException if reading fails
+     */
+    public static GeoTiffReader.GeoTiffGrid nadgrid(String key, java.io.InputStream inputStream) throws IOException {
+        return GeoTiffReader.loadFromStream(key, inputStream);
+    }
+    
+    /**
+     * Registers a GeoTIFF datum grid for use in transformations.
+     * @param key the grid name/key
+     * @param grid the GeoTIFF grid data
+     */
+    public static void registerNadgrid(String key, GeoTiffReader.GeoTiffGrid grid) {
+        GeoTiffReader.registerGrid(key, grid);
+    }
+    
+    /**
+     * Gets a registered GeoTIFF datum grid.
+     * @param key the grid name/key
+     * @return the GeoTIFF grid, or null if not found
+     */
+    public static GeoTiffReader.GeoTiffGrid getNadgrid(String key) {
+        return GeoTiffReader.getGrid(key);
+    }
+    
+    /**
+     * Checks if a GeoTIFF datum grid is registered.
+     * @param key the grid name/key
+     * @return true if the grid is registered
+     */
+    public static boolean hasNadgrid(String key) {
+        return GeoTiffReader.hasGrid(key);
+    }
+    
+    /**
+     * Removes a GeoTIFF datum grid from the registry.
+     * @param key the grid name/key
+     * @return the removed GeoTIFF grid, or null if not found
+     */
+    public static GeoTiffReader.GeoTiffGrid removeNadgrid(String key) {
+        return GeoTiffReader.removeGrid(key);
+    }
+    
+    /**
+     * Gets all registered GeoTIFF datum grid names.
+     * @return array of grid names
+     */
+    public static String[] getNadgridNames() {
+        return GeoTiffReader.getGridNames();
+    }
+    
+    /**
+     * Gets the number of registered GeoTIFF datum grids.
+     * @return the number of registered grids
+     */
+    public static int getNadgridCount() {
+        return GeoTiffReader.getGridCount();
+    }
+    
+    /**
+     * Clears all registered GeoTIFF datum grids.
+     */
+    public static void clearNadgrids() {
+        GeoTiffReader.clearGrids();
+    }
+    
+    // ===== PROJ CDN Support =====
+    
+    /**
+     * Downloads and loads a datum grid from the PROJ CDN.
+     * This is a convenience method that downloads grids from https://cdn.proj.org/
+     * @param gridName the name of the grid file (e.g., "ca_nrc_NA83SCRS.tif")
+     * @return the loaded GeoTIFF grid
+     * @throws IOException if downloading or parsing fails
+     */
+    public static GeoTiffReader.GeoTiffGrid downloadGrid(String gridName) throws IOException {
+        return ProjCdnClient.downloadGrid(gridName);
+    }
+    
+    /**
+     * Downloads and loads a datum grid from the PROJ CDN with a custom key.
+     * @param key the key to associate with the loaded grid
+     * @param gridName the name of the grid file (e.g., "ca_nrc_NA83SCRS.tif")
+     * @return the loaded GeoTIFF grid
+     * @throws IOException if downloading or parsing fails
+     */
+    public static GeoTiffReader.GeoTiffGrid downloadGrid(String key, String gridName) throws IOException {
+        return ProjCdnClient.downloadGrid(key, gridName);
+    }
+    
+    /**
+     * Downloads and loads a datum grid from a custom CDN URL.
+     * @param key the key to associate with the loaded grid
+     * @param url the full URL to the grid file
+     * @return the loaded GeoTIFF grid
+     * @throws IOException if downloading or parsing fails
+     */
+    public static GeoTiffReader.GeoTiffGrid downloadGridFromUrl(String key, String url) throws IOException {
+        return ProjCdnClient.downloadGridFromUrl(key, url);
+    }
+    
+    /**
+     * Checks if a grid is available in the CDN cache.
+     * @param key the grid key
+     * @return true if the grid is cached
+     */
+    public static boolean isGridCached(String key) {
+        return ProjCdnClient.isGridCached(key);
+    }
+    
+    /**
+     * Removes a grid from the CDN cache.
+     * @param key the grid key
+     * @return the removed grid, or null if not found
+     */
+    public static GeoTiffReader.GeoTiffGrid removeFromCache(String key) {
+        return ProjCdnClient.removeFromCache(key);
+    }
+    
+    /**
+     * Clears the CDN grid cache.
+     */
+    public static void clearGridCache() {
+        ProjCdnClient.clearCache();
+    }
+    
+    /**
+     * Gets the number of grids in the CDN cache.
+     * @return the cache size
+     */
+    public static int getGridCacheSize() {
+        return ProjCdnClient.getCacheSize();
+    }
+    
+    /**
+     * Gets all cached grid keys from the CDN cache.
+     * @return array of cached grid keys
+     */
+    public static String[] getCachedGridKeys() {
+        return ProjCdnClient.getCachedGridKeys();
     }
 }

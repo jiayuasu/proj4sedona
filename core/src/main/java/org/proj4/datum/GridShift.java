@@ -56,10 +56,77 @@ public class GridShift {
             return 0; // No grid shift needed
         }
         
-        // For now, we'll implement a simplified version
-        // In a full implementation, this would parse and apply NTv2 grid files
-        // For Phase 2, we'll return success but not apply actual grid shifts
-        return 0;
+        // Parse the grids string (comma-separated list)
+        String[] gridNames = datum.grids.split(",");
+        
+        // Try to find a registered grid for this datum
+        for (String gridName : gridNames) {
+            // Remove @ prefix if present (indicates optional grid)
+            String cleanGridName = gridName.trim();
+            if (cleanGridName.startsWith("@")) {
+                cleanGridName = cleanGridName.substring(1);
+            }
+            
+            // Check for GeoTIFF grid first
+            GeoTiffReader.GeoTiffGrid geoTiffGrid = GeoTiffReader.getGrid(cleanGridName);
+            if (geoTiffGrid != null) {
+                return applyGeoTiffGridShift(geoTiffGrid, inverse, point);
+            }
+            
+            // Check for traditional NTv2 grid
+            GridFile gridFile = getGrid(cleanGridName);
+            if (gridFile != null) {
+                return applyNTV2GridShift(gridFile, inverse, point);
+            }
+        }
+        
+        return 0; // No matching grid found, assume no shift needed
+    }
+    
+    /**
+     * Applies GeoTIFF grid shift transformation to a point.
+     */
+    private static int applyGeoTiffGridShift(GeoTiffReader.GeoTiffGrid grid, boolean inverse, Point point) {
+        double[] shifts = GeoTiffReader.interpolateGrid(grid, point.y, point.x);
+        if (shifts == null) {
+            return 0; // Point outside grid, no shift applied
+        }
+        
+        double latShift = shifts[0];
+        double lonShift = shifts[1];
+        
+        if (inverse) {
+            // Apply inverse transformation
+            point = new Point(point.x - lonShift, point.y - latShift, point.z, point.m);
+        } else {
+            // Apply forward transformation
+            point = new Point(point.x + lonShift, point.y + latShift, point.z, point.m);
+        }
+        
+        return 0; // Success
+    }
+    
+    /**
+     * Applies NTv2 grid shift transformation to a point.
+     */
+    private static int applyNTV2GridShift(GridFile grid, boolean inverse, Point point) {
+        double[] shifts = interpolateGrid(grid, point.y, point.x);
+        if (shifts == null) {
+            return 0; // Point outside grid, no shift applied
+        }
+        
+        double latShift = shifts[0];
+        double lonShift = shifts[1];
+        
+        if (inverse) {
+            // Apply inverse transformation
+            point = new Point(point.x - lonShift, point.y - latShift, point.z, point.m);
+        } else {
+            // Apply forward transformation
+            point = new Point(point.x + lonShift, point.y + latShift, point.z, point.m);
+        }
+        
+        return 0; // Success
     }
     
     /**

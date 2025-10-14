@@ -61,6 +61,7 @@ public final class Values {
     public static final double SRS_WGS84_SEMIMINOR = 6356752.314;
     public static final double SRS_WGS84_ESQUARED = 0.0066943799901413165;
     public static final double SEC_TO_RAD = 4.84813681109535993589914102357e-6;
+    public static final double ARCSEC_TO_RAD = SEC_TO_RAD; // Arcseconds to radians conversion
     public static final double SIXTH = 0.1666666666666666667;
     public static final double RA4 = 0.04722222222222222222;
     public static final double RA6 = 0.02215608465608465608;
