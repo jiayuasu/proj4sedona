@@ -209,7 +209,14 @@ public class HotineObliqueMercator {
     return proj.noUoff || proj.noOff;
   }
 
-  /** Forward transformation: lat,long to x,y. */
+  /**
+   * Forward transformation: lat,long to x,y.
+   *
+   * @param lon longitude in radians
+   * @param lat latitude in radians
+   * @param proj projection parameters
+   * @return array containing [x, y] coordinates
+   */
   public double[] forward(double lon, double lat, Projection proj) {
     double S, T, U, V, W, temp, u, v;
     lon = lon - this.lam0;
@@ -257,7 +264,14 @@ public class HotineObliqueMercator {
     return new double[] {x, y};
   }
 
-  /** Inverse transformation: x,y to lat,long. */
+  /**
+   * Inverse transformation: x,y to lat,long.
+   *
+   * @param x x coordinate
+   * @param y y coordinate
+   * @param proj projection parameters
+   * @return array containing [longitude, latitude] in radians
+   */
   public double[] inverse(double x, double y, Projection proj) {
     double u, v, Qp, Sp, Tp, Vp, Up;
 
@@ -302,7 +316,11 @@ public class HotineObliqueMercator {
 
   // Static methods to match the pattern used by other projections
 
-  /** Initialize the Hotine Oblique Mercator projection. */
+  /**
+   * Initialize the Hotine Oblique Mercator projection.
+   *
+   * @param proj projection parameters to initialize
+   */
   public static void init(Projection proj) {
     HotineObliqueMercator omerc = new HotineObliqueMercator();
     omerc.initialize(proj);
@@ -311,7 +329,13 @@ public class HotineObliqueMercator {
     proj.omerc = omerc;
   }
 
-  /** Forward transformation for Hotine Oblique Mercator. */
+  /**
+   * Forward transformation for Hotine Oblique Mercator.
+   *
+   * @param proj projection parameters
+   * @param point input point with longitude and latitude
+   * @return transformed point with x and y coordinates
+   */
   public static Point forward(Projection proj, Point point) {
     HotineObliqueMercator omerc = (HotineObliqueMercator) proj.omerc;
     if (omerc == null) {
@@ -322,7 +346,13 @@ public class HotineObliqueMercator {
     return new Point(result[0], result[1], point.z, point.m);
   }
 
-  /** Inverse transformation for Hotine Oblique Mercator. */
+  /**
+   * Inverse transformation for Hotine Oblique Mercator.
+   *
+   * @param proj projection parameters
+   * @param point input point with x and y coordinates
+   * @return transformed point with longitude and latitude
+   */
   public static Point inverse(Projection proj, Point point) {
     HotineObliqueMercator omerc = (HotineObliqueMercator) proj.omerc;
     if (omerc == null) {

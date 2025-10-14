@@ -47,6 +47,7 @@ public class WKTProcessor {
    * @return the processed projection definition
    * @throws WKTParseException if parsing fails
    */
+  @SuppressWarnings("unchecked")
   public static Map<String, Object> process(Object wkt) throws WKTParseException {
     if (wkt instanceof Map) {
       // TODO: Handle PROJJSON transformation

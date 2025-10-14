@@ -42,6 +42,13 @@ public class Proj4Sedona {
     private final Projection toProj;
     private final boolean single;
 
+    /**
+     * Creates a new Converter instance.
+     *
+     * @param fromProj source projection
+     * @param toProj target projection
+     * @param single whether to use single precision
+     */
     public Converter(Projection fromProj, Projection toProj, boolean single) {
       this.fromProj = fromProj;
       this.toProj = toProj;

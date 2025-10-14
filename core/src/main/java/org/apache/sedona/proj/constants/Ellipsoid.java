@@ -29,11 +29,23 @@ public final class Ellipsoid {
 
   /** Represents an ellipsoid with its parameters. */
   public static class EllipsoidDef {
-    public final double a; // Semi-major axis
-    public final double b; // Semi-minor axis (optional)
-    public final double rf; // Reciprocal of flattening (optional)
-    public final String ellipseName; // Human-readable name
+    /** Semi-major axis */
+    public final double a;
+    /** Semi-minor axis (optional) */
+    public final double b;
+    /** Reciprocal of flattening (optional) */
+    public final double rf;
+    /** Human-readable name */
+    public final String ellipseName;
 
+    /**
+     * Creates a new EllipsoidDef with all parameters.
+     *
+     * @param a Semi-major axis
+     * @param b Semi-minor axis
+     * @param rf Reciprocal of flattening
+     * @param ellipseName Human-readable name
+     */
     public EllipsoidDef(double a, double b, double rf, String ellipseName) {
       this.a = a;
       this.b = b;
@@ -41,6 +53,13 @@ public final class Ellipsoid {
       this.ellipseName = ellipseName;
     }
 
+    /**
+     * Creates a new EllipsoidDef without semi-minor axis.
+     *
+     * @param a Semi-major axis
+     * @param rf Reciprocal of flattening
+     * @param ellipseName Human-readable name
+     */
     public EllipsoidDef(double a, double rf, String ellipseName) {
       this(a, Double.NaN, rf, ellipseName);
     }

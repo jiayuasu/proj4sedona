@@ -29,8 +29,14 @@ public final class Units {
 
   /** Represents a unit with its conversion factor to meters. */
   public static class UnitDef {
+    /** Conversion factor to meters */
     public final double to_meter;
 
+    /**
+     * Creates a new UnitDef with the specified conversion factor.
+     *
+     * @param to_meter conversion factor to meters
+     */
     public UnitDef(double to_meter) {
       this.to_meter = to_meter;
     }

@@ -35,13 +35,44 @@ public class GridShift {
 
   /** Represents a grid file for datum transformations. */
   public static class GridFile {
+    /** Grid file name */
     public final String name;
-    public final double minLat, maxLat, minLon, maxLon;
-    public final double latStep, lonStep;
-    public final int latCount, lonCount;
+    /** Minimum latitude */
+    public final double minLat;
+    /** Maximum latitude */
+    public final double maxLat;
+    /** Minimum longitude */
+    public final double minLon;
+    /** Maximum longitude */
+    public final double maxLon;
+    /** Latitude step */
+    public final double latStep;
+    /** Longitude step */
+    public final double lonStep;
+    /** Latitude count */
+    public final int latCount;
+    /** Longitude count */
+    public final int lonCount;
+    /** Latitude shifts */
     public final double[] latShifts;
+    /** Longitude shifts */
     public final double[] lonShifts;
 
+    /**
+     * Creates a new GridFile.
+     *
+     * @param name Grid file name
+     * @param minLat Minimum latitude
+     * @param maxLat Maximum latitude
+     * @param minLon Minimum longitude
+     * @param maxLon Maximum longitude
+     * @param latStep Latitude step
+     * @param lonStep Longitude step
+     * @param latCount Latitude count
+     * @param lonCount Longitude count
+     * @param latShifts Latitude shifts
+     * @param lonShifts Longitude shifts
+     */
     public GridFile(
         String name,
         double minLat,

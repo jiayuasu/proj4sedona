@@ -43,9 +43,17 @@ public class GeoTiffReader {
 
   /** Represents a GeoTIFF datum grid with subgrids. */
   public static class GeoTiffGrid {
+    /** Grid name */
     public final String name;
+    /** Array of subgrids */
     public final GeoTiffSubgrid[] subgrids;
 
+    /**
+     * Creates a new GeoTiffGrid.
+     *
+     * @param name Grid name
+     * @param subgrids Array of subgrids
+     */
     public GeoTiffGrid(String name, GeoTiffSubgrid[] subgrids) {
       this.name = name;
       this.subgrids = subgrids;
@@ -54,12 +62,41 @@ public class GeoTiffReader {
 
   /** Represents a subgrid within a GeoTIFF datum grid. */
   public static class GeoTiffSubgrid {
-    public final double minLon, maxLon, minLat, maxLat;
-    public final double lonStep, latStep;
-    public final int width, height;
-    public final double[] latShifts; // latitude shifts in radians
-    public final double[] lonShifts; // longitude shifts in radians
+    /** Minimum longitude */
+    public final double minLon;
+    /** Maximum longitude */
+    public final double maxLon;
+    /** Minimum latitude */
+    public final double minLat;
+    /** Maximum latitude */
+    public final double maxLat;
+    /** Longitude step */
+    public final double lonStep;
+    /** Latitude step */
+    public final double latStep;
+    /** Grid width */
+    public final int width;
+    /** Grid height */
+    public final int height;
+    /** Latitude shifts in radians */
+    public final double[] latShifts;
+    /** Longitude shifts in radians */
+    public final double[] lonShifts;
 
+    /**
+     * Creates a new GeoTiffSubgrid.
+     *
+     * @param minLon Minimum longitude
+     * @param maxLon Maximum longitude
+     * @param minLat Minimum latitude
+     * @param maxLat Maximum latitude
+     * @param lonStep Longitude step
+     * @param latStep Latitude step
+     * @param width Grid width
+     * @param height Grid height
+     * @param latShifts Latitude shifts in radians
+     * @param lonShifts Longitude shifts in radians
+     */
     public GeoTiffSubgrid(
         double minLon,
         double maxLon,

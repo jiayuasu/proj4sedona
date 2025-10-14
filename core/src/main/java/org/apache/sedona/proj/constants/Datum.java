@@ -30,18 +30,38 @@ public final class Datum {
 
   /** Represents a datum definition with transformation parameters. */
   public static class DatumDef {
-    public final String towgs84; // Helmert transformation parameters
-    public final String nadgrids; // Grid-based transformation files
-    public final String ellipse; // Associated ellipsoid
-    public final String datumName; // Human-readable name
-    public final int datumType; // Type of datum transformation
-    public double a; // Semi-major axis
-    public double b; // Semi-minor axis
-    public double es; // Eccentricity squared
-    public double ep2; // Second eccentricity squared
-    public final double[] datum_params; // Parsed datum parameters
-    public final String grids; // Grid files string
+    /** Helmert transformation parameters */
+    public final String towgs84;
+    /** Grid-based transformation files */
+    public final String nadgrids;
+    /** Associated ellipsoid */
+    public final String ellipse;
+    /** Human-readable name */
+    public final String datumName;
+    /** Type of datum transformation */
+    public final int datumType;
+    /** Semi-major axis */
+    public double a;
+    /** Semi-minor axis */
+    public double b;
+    /** Eccentricity squared */
+    public double es;
+    /** Second eccentricity squared */
+    public double ep2;
+    /** Parsed datum parameters */
+    public final double[] datum_params;
+    /** Grid files string */
+    public final String grids;
 
+    /**
+     * Creates a new DatumDef with the specified parameters.
+     *
+     * @param towgs84 Helmert transformation parameters
+     * @param nadgrids Grid-based transformation files
+     * @param ellipse Associated ellipsoid
+     * @param datumName Human-readable name
+     * @param datumType Type of datum transformation
+     */
     public DatumDef(
         String towgs84, String nadgrids, String ellipse, String datumName, int datumType) {
       this.towgs84 = towgs84;
@@ -80,6 +100,13 @@ public final class Datum {
       this.ep2 = Double.NaN;
     }
 
+    /**
+     * Creates a new DatumDef with simplified parameters.
+     *
+     * @param towgs84 Helmert transformation parameters
+     * @param ellipse Associated ellipsoid
+     * @param datumName Human-readable name
+     */
     public DatumDef(String towgs84, String ellipse, String datumName) {
       this(
           towgs84,

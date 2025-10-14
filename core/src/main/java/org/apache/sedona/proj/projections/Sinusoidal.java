@@ -62,7 +62,14 @@ public class Sinusoidal {
     }
   }
 
-  /** Forward transformation: lat,long to x,y. */
+  /**
+   * Forward transformation: lat,long to x,y.
+   *
+   * @param lon longitude in radians
+   * @param lat latitude in radians
+   * @param proj projection parameters
+   * @return array containing [x, y] coordinates
+   */
   public double[] forward(double lon, double lat, Projection proj) {
     double x, y;
 
@@ -97,7 +104,14 @@ public class Sinusoidal {
     return new double[] {x, y};
   }
 
-  /** Inverse transformation: x,y to lat,long. */
+  /**
+   * Inverse transformation: x,y to lat,long.
+   *
+   * @param x x coordinate
+   * @param y y coordinate
+   * @param proj projection parameters
+   * @return array containing [longitude, latitude] in radians
+   */
   public double[] inverse(double x, double y, Projection proj) {
     double lat, temp, lon, s;
 
@@ -134,7 +148,11 @@ public class Sinusoidal {
 
   // Static methods to match the pattern used by other projections
 
-  /** Initialize the Sinusoidal projection. */
+  /**
+   * Initialize the Sinusoidal projection.
+   *
+   * @param proj projection parameters to initialize
+   */
   public static void init(Projection proj) {
     Sinusoidal sinu = new Sinusoidal();
     sinu.initialize(proj);
@@ -143,7 +161,13 @@ public class Sinusoidal {
     proj.sinu = sinu;
   }
 
-  /** Forward transformation for Sinusoidal. */
+  /**
+   * Forward transformation for Sinusoidal.
+   *
+   * @param proj projection parameters
+   * @param point input point with longitude and latitude
+   * @return transformed point with x and y coordinates
+   */
   public static Point forward(Projection proj, Point point) {
     Sinusoidal sinu = (Sinusoidal) proj.sinu;
     if (sinu == null) {
@@ -154,7 +178,13 @@ public class Sinusoidal {
     return new Point(result[0], result[1], point.z, point.m);
   }
 
-  /** Inverse transformation for Sinusoidal. */
+  /**
+   * Inverse transformation for Sinusoidal.
+   *
+   * @param proj projection parameters
+   * @param point input point with x and y coordinates
+   * @return transformed point with longitude and latitude
+   */
   public static Point inverse(Projection proj, Point point) {
     Sinusoidal sinu = (Sinusoidal) proj.sinu;
     if (sinu == null) {

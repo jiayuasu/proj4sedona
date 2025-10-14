@@ -349,7 +349,12 @@ public class Mgrs {
     }
   }
 
-  /** Calculates the MGRS letter designator for the given latitude. */
+  /**
+   * Calculates the MGRS letter designator for the given latitude.
+   *
+   * @param latitude the latitude in degrees
+   * @return the MGRS letter designator
+   */
   public static char getLetterDesignator(double latitude) {
     if (latitude <= 84 && latitude >= 72) {
       // the X band is 12 degrees high

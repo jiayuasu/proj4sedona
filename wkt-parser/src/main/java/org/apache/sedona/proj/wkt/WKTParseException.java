@@ -21,10 +21,21 @@ package org.apache.sedona.proj.wkt;
 /** Exception thrown when WKT parsing fails. */
 public class WKTParseException extends Exception {
 
+  /**
+   * Creates a new WKTParseException with the specified message.
+   *
+   * @param message the detail message
+   */
   public WKTParseException(String message) {
     super(message);
   }
 
+  /**
+   * Creates a new WKTParseException with the specified message and cause.
+   *
+   * @param message the detail message
+   * @param cause the cause of the exception
+   */
   public WKTParseException(String message, Throwable cause) {
     super(message, cause);
   }

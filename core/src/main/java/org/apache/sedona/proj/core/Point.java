@@ -26,9 +26,13 @@ import org.apache.sedona.proj.mgrs.Mgrs;
  * equivalent of the JavaScript Point class.
  */
 public class Point {
+  /** X coordinate */
   public double x;
+  /** Y coordinate */
   public double y;
+  /** Z coordinate */
   public double z;
+  /** M coordinate (measure) */
   public double m;
 
   /** Creates a new Point with default values (0, 0, 0, 0). */
