@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>org.proj4</groupId>
+        <groupId>org.apache.sedona.proj</groupId>
         <artifactId>proj4sedona</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
@@ -25,14 +25,14 @@
     <dependencies>
         <!-- WKT parser dependency -->
         <dependency>
-            <groupId>org.proj4</groupId>
+            <groupId>org.apache.sedona.proj</groupId>
             <artifactId>wkt-parser</artifactId>
             <version>${project.version}</version>
         </dependency>
         
         <!-- MGRS dependency -->
         <dependency>
-            <groupId>org.proj4</groupId>
+            <groupId>org.apache.sedona.proj</groupId>
             <artifactId>proj4sedona-mgrs</artifactId>
             <version>${project.version}</version>
         </dependency>

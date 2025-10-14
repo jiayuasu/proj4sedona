@@ -26,7 +26,7 @@ Add this to your `pom.xml`:
 
 ```xml
 <dependency>
-    <groupId>org.proj4</groupId>
+    <groupId>org.apache.sedona.proj</groupId>
     <artifactId>proj4sedona</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
@@ -35,8 +35,8 @@ Add this to your `pom.xml`:
 ### Basic Usage
 
 ```java
-import org.proj4.Proj4Sedona;
-import org.proj4.core.Point;
+import org.apache.sedona.proj.Proj4Sedona;
+import org.apache.sedona.proj.core.Point;
 
 // Create a point
 Point point = new Point(-71.0, 41.0); // Longitude, Latitude
@@ -182,7 +182,7 @@ For a complete list, visit the [PROJ-data repository](https://github.com/OSGeo/P
 ### Package Structure
 
 ```
-org.proj4/
+org.apache.sedona.proj/
 ├── core/           # Core transformation classes
 ├── constants/      # Mathematical constants and definitions
 ├── projections/    # Projection implementations
