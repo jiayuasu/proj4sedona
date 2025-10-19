@@ -40,134 +40,185 @@ public class Projection {
   // Projection parameters
   /** Projection name */
   public String name;
+
   /** Projection title */
   public String title;
+
   /** Projection type name */
   public String projName;
+
   /** Ellipsoid name */
   public String ellps;
+
   /** Datum code */
   public String datumCode;
+
   /** Datum name */
   public String datumName;
+
   /** Axis orientation */
   public String axis;
+
   /** Units */
   public String units;
+
   /** NAD grid files */
   public String nadgrids;
 
   // Ellipsoid parameters
   /** Semi-major axis */
   public double a;
+
   /** Semi-minor axis */
   public double b;
+
   /** Reciprocal of flattening */
   public double rf;
+
   /** Eccentricity squared */
   public double es;
+
   /** Eccentricity */
   public double e;
+
   /** Second eccentricity squared */
   public double ep2;
+
   /** Whether using spherical approximation */
   public boolean sphere;
 
   // Projection parameters
   /** Latitude of origin */
   public double lat0;
+
   /** First standard parallel */
   public double lat1;
+
   /** Second standard parallel */
   public double lat2;
+
   /** Latitude of true scale */
   public double lat_ts;
+
   /** Central meridian */
   public double long0;
+
   /** First longitude */
   public double long1;
+
   /** Second longitude */
   public double long2;
+
   /** Azimuth */
   public double alpha;
+
   /** Longitude of center */
   public double longc;
+
   /** False easting */
   public double x0;
+
   /** False northing */
   public double y0;
+
   /** Scale factor */
   public double k0;
+
   /** Unit conversion factor */
   public double to_meter;
+
   /** Prime meridian offset */
   public double from_greenwich;
 
   // Datum and transformation
   /** Datum definition */
   public Datum.DatumDef datum;
+
   /** Datum parameters */
   public String[] datum_params;
 
   // Additional projection parameters
   /** Cone constant for conic projections */
   public double n;
+
   /** Constant for equal area projections */
   public double c;
+
   /** Radius at origin latitude */
   public double rho0;
+
   /** Scale factor for LCC */
   public double f0;
+
   /** Ellipsoid coefficient e0 */
   public double e0;
+
   /** Ellipsoid coefficient e1 */
   public double e1;
+
   /** Ellipsoid coefficient e2 */
   public double e2;
+
   /** Ellipsoid coefficient e3 */
   public double e3;
+
   /** Meridian length coefficients */
   public double[] en;
+
   /** Meridian length at origin */
   public double ml0;
+
   /** UTM zone */
   public int zone;
+
   /** UTM southern hemisphere flag */
   public boolean utmSouth;
+
   /** Albers Equal Area cone constant */
   public double ns0;
 
   // Hotine Oblique Mercator parameters
   /** No offset flag */
   public boolean noOff;
+
   /** No rotation flag */
   public boolean noRot;
+
   /** No U offset flag */
   public boolean noUoff;
+
   /** Rectified grid angle */
   public double rectifiedGridAngle;
 
   // Projection methods (to be set by specific projection implementations)
   /** Forward projection method */
   public ProjectionMethod forward;
+
   /** Inverse projection method */
   public ProjectionMethod inverse;
+
   /** Projection initializer */
   public ProjectionInitializer init;
 
   // Projection-specific instances
   /** Hotine Oblique Mercator instance */
   public Object omerc;
+
   /** Equidistant Conic instance */
   public Object eqdc;
+
   /** Lambert Azimuthal Equal Area instance */
   public Object laea;
+
   /** Gnomonic instance */
   public Object gnom;
+
   /** UTM instance */
   public Object utm;
+
   /** Albers Equal Area instance */
   public Object aea;
+
   /** Sinusoidal instance */
   public Object sinu;
 

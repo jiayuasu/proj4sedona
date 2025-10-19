@@ -32,24 +32,34 @@ public final class Datum {
   public static class DatumDef {
     /** Helmert transformation parameters */
     public final String towgs84;
+
     /** Grid-based transformation files */
     public final String nadgrids;
+
     /** Associated ellipsoid */
     public final String ellipse;
+
     /** Human-readable name */
     public final String datumName;
+
     /** Type of datum transformation */
     public final int datumType;
+
     /** Semi-major axis */
     public double a;
+
     /** Semi-minor axis */
     public double b;
+
     /** Eccentricity squared */
     public double es;
+
     /** Second eccentricity squared */
     public double ep2;
+
     /** Parsed datum parameters */
     public final double[] datum_params;
+
     /** Grid files string */
     public final String grids;
 

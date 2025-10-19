@@ -31,10 +31,13 @@ public final class Ellipsoid {
   public static class EllipsoidDef {
     /** Semi-major axis */
     public final double a;
+
     /** Semi-minor axis (optional) */
     public final double b;
+
     /** Reciprocal of flattening (optional) */
     public final double rf;
+
     /** Human-readable name */
     public final String ellipseName;
 

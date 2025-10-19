@@ -37,24 +37,34 @@ public class GridShift {
   public static class GridFile {
     /** Grid file name */
     public final String name;
+
     /** Minimum latitude */
     public final double minLat;
+
     /** Maximum latitude */
     public final double maxLat;
+
     /** Minimum longitude */
     public final double minLon;
+
     /** Maximum longitude */
     public final double maxLon;
+
     /** Latitude step */
     public final double latStep;
+
     /** Longitude step */
     public final double lonStep;
+
     /** Latitude count */
     public final int latCount;
+
     /** Longitude count */
     public final int lonCount;
+
     /** Latitude shifts */
     public final double[] latShifts;
+
     /** Longitude shifts */
     public final double[] lonShifts;
 

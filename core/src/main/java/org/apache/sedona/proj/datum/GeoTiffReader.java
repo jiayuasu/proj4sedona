@@ -45,6 +45,7 @@ public class GeoTiffReader {
   public static class GeoTiffGrid {
     /** Grid name */
     public final String name;
+
     /** Array of subgrids */
     public final GeoTiffSubgrid[] subgrids;
 
@@ -64,22 +65,31 @@ public class GeoTiffReader {
   public static class GeoTiffSubgrid {
     /** Minimum longitude */
     public final double minLon;
+
     /** Maximum longitude */
     public final double maxLon;
+
     /** Minimum latitude */
     public final double minLat;
+
     /** Maximum latitude */
     public final double maxLat;
+
     /** Longitude step */
     public final double lonStep;
+
     /** Latitude step */
     public final double latStep;
+
     /** Grid width */
     public final int width;
+
     /** Grid height */
     public final int height;
+
     /** Latitude shifts in radians */
     public final double[] latShifts;
+
     /** Longitude shifts in radians */
     public final double[] lonShifts;
 

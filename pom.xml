@@ -107,7 +107,7 @@
                 <configuration>
                     <java>
                         <googleJavaFormat>
-                            <version>1.15.0</version>
+                            <version>1.22.0</version>
                         </googleJavaFormat>
                         <licenseHeader>
                             <file>tools/maven/license-header.txt</file>
