@@ -22,12 +22,32 @@ Proj4Sedona is a Java library that provides coordinate system transformations, s
 
 ### Maven Dependency
 
-Add this to your `pom.xml`:
+Add this to your `pom.xml` for the core functionality:
 
 ```xml
 <dependency>
     <groupId>org.apache.sedona.proj</groupId>
-    <artifactId>proj4sedona</artifactId>
+    <artifactId>proj4sedona-core</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+For MGRS support, also add:
+
+```xml
+<dependency>
+    <groupId>org.apache.sedona.proj</groupId>
+    <artifactId>proj4sedona-mgrs</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+For WKT parsing support, also add:
+
+```xml
+<dependency>
+    <groupId>org.apache.sedona.proj</groupId>
+    <artifactId>proj4sedona-wkt-parser</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
@@ -162,6 +182,140 @@ The PROJ CDN hosts many datum grids from various countries and organizations. So
 
 For a complete list, visit the [PROJ-data repository](https://github.com/OSGeo/PROJ-data).
 
+## MGRS Coordinate Support
+
+Proj4Sedona includes full support for MGRS (Military Grid Reference System) coordinates, allowing conversion between WGS84 lat/lng coordinates and MGRS strings.
+
+### Basic Usage
+
+```java
+// Convert lat/lon to MGRS
+String mgrs = Proj4Sedona.mgrsForward(-71.0, 41.0); // Boston, MA
+System.out.println(mgrs); // "19TCH 12345 67890"
+
+// Convert with custom accuracy (5 digits = 1 meter, 4 digits = 10 meters, etc.)
+String mgrs1m = Proj4Sedona.mgrsForward(-71.0, 41.0, 5); // 1 meter accuracy
+String mgrs10m = Proj4Sedona.mgrsForward(-71.0, 41.0, 4); // 10 meter accuracy
+
+// Convert MGRS back to lat/lon
+double[] coords = Proj4Sedona.mgrsToPoint("19TCH 12345 67890");
+System.out.println("Longitude: " + coords[0] + ", Latitude: " + coords[1]);
+
+// Get bounding box for MGRS string
+double[] bbox = Proj4Sedona.mgrsInverse("19TCH 12345 67890");
+// Returns [left, bottom, right, top] in WGS84 degrees
+
+// Create Point from MGRS
+Point point = Proj4Sedona.fromMGRS("19TCH 12345 67890");
+```
+
+### MGRS Features
+
+- **Accuracy Control**: Specify precision from 100km to 1 meter
+- **Bidirectional Conversion**: Convert between lat/lon and MGRS
+- **Bounding Box Support**: Get spatial extent of MGRS grid cells
+- **UTM Zone Handling**: Automatic UTM zone detection and management
+- **Hemisphere Support**: Both northern and southern hemisphere coordinates
+
+## PROJJSON Support
+
+Proj4Sedona supports the modern PROJJSON format for coordinate reference system definitions, providing a more structured and interoperable way to define projections.
+
+### Basic Usage
+
+```java
+// Parse PROJJSON string
+String projJson = """
+{
+  "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+  "type": "ProjectedCRS",
+  "name": "WGS 84 / UTM zone 19N",
+  "base_crs": {
+    "type": "GeographicCRS",
+    "name": "WGS 84"
+  },
+  "conversion": {
+    "name": "UTM zone 19N",
+    "method": {
+      "name": "Transverse Mercator"
+    },
+    "parameters": [
+      {"name": "Latitude of natural origin", "value": 0},
+      {"name": "Longitude of natural origin", "value": -69},
+      {"name": "Scale factor at natural origin", "value": 0.9996},
+      {"name": "False easting", "value": 500000},
+      {"name": "False northing", "value": 0}
+    ]
+  }
+}
+""";
+
+Projection proj = Proj4Sedona.fromProjJson(projJson);
+
+// Convert PROJ string to PROJJSON
+ProjJsonDefinition definition = Proj4Sedona.toProjJson("+proj=utm +zone=19 +datum=WGS84");
+
+// Convert PROJJSON to PROJ string
+String projString = Proj4Sedona.toProjString(definition);
+```
+
+### PROJJSON Features
+
+- **Full PROJJSON Support**: Parse and create PROJJSON definitions
+- **Bidirectional Conversion**: Convert between PROJ strings and PROJJSON
+- **Schema Validation**: Support for PROJJSON schema validation
+- **Modern Format**: Use the latest coordinate reference system format
+- **Interoperability**: Compatible with other PROJJSON implementations
+
+## Performance Optimizations
+
+Proj4Sedona includes several performance optimization features for processing large datasets efficiently.
+
+### Batch Processing
+
+```java
+// Create a batch transformer for repeated transformations
+BatchTransformer transformer = Proj4Sedona.createBatchTransformer("WGS84", "EPSG:3857");
+
+// Transform multiple points efficiently
+List<Point> points = Arrays.asList(
+    new Point(-71.0, 41.0),
+    new Point(-70.0, 42.0),
+    new Point(-69.0, 43.0)
+);
+List<Point> transformed = transformer.transformBatch(points);
+
+// Transform coordinate arrays
+double[] xCoords = {-71.0, -70.0, -69.0};
+double[] yCoords = {41.0, 42.0, 43.0};
+Point[] results = Proj4Sedona.transformArrays("WGS84", "EPSG:3857", xCoords, yCoords);
+```
+
+### Cache Management
+
+```java
+// Check projection cache size
+int cacheSize = Proj4Sedona.getProjectionCacheSize();
+
+// Clear projection cache to free memory
+Proj4Sedona.clearProjectionCache();
+
+// Check grid cache status
+int gridCacheSize = Proj4Sedona.getGridCacheSize();
+String[] cachedGrids = Proj4Sedona.getCachedGridKeys();
+
+// Clear grid cache
+Proj4Sedona.clearGridCache();
+```
+
+### Performance Features
+
+- **Batch Transformation**: Process multiple points efficiently
+- **Projection Caching**: Cache parsed projections for reuse
+- **Grid Caching**: Cache downloaded datum grids
+- **Memory Management**: Clear caches to free memory
+- **Optimized Math**: Fast mathematical operations for transformations
+
 ## Architecture
 
 ### Core Classes
@@ -179,6 +333,32 @@ For a complete list, visit the [PROJ-data repository](https://github.com/OSGeo/P
 - **`Ellipsoid`**: Ellipsoid definitions for various reference systems
 - **`Datum`**: Datum definitions with transformation parameters
 
+### Module Structure
+
+Proj4Sedona is organized as a multi-module Maven project:
+
+```
+proj4sedona/
+├── core/           # Core transformation functionality
+│   └── src/main/java/org/apache/sedona/proj/
+│       ├── core/           # Core transformation classes
+│       ├── constants/      # Mathematical constants and definitions
+│       ├── projections/    # Projection implementations
+│       ├── datum/          # Datum transformation logic
+│       ├── parse/          # PROJ string parsing
+│       ├── projjson/       # PROJJSON support
+│       ├── optimization/  # Performance optimizations
+│       └── cache/         # Projection caching
+├── mgrs/           # MGRS coordinate support
+│   └── src/main/java/org/apache/sedona/proj/mgrs/
+│       └── Mgrs.java      # MGRS coordinate conversion
+└── wkt-parser/     # WKT parsing functionality
+    └── src/main/java/org/apache/sedona/proj/wkt/
+        ├── WKTParser.java     # WKT parsing
+        ├── WKTProcessor.java  # WKT processing
+        └── WKTUtils.java      # WKT utilities
+```
+
 ### Package Structure
 
 ```
@@ -190,7 +370,9 @@ org.apache.sedona.proj/
 │   ├── GeoTiffReader.java    # GeoTIFF grid reading
 │   └── ProjCdnClient.java    # PROJ CDN integration
 ├── parse/          # PROJ string parsing
-├── wkt/            # WKT parsing and processing
+├── projjson/       # PROJJSON support
+├── optimization/   # Performance optimizations
+├── cache/          # Projection caching
 └── common/         # Common mathematical utilities
 ```
 
@@ -203,6 +385,9 @@ Currently implemented:
 - **UTM**: Universal Transverse Mercator projection
 - **Transverse Mercator**: Base projection for UTM
 - **Albers Equal Area**: Equal-area conic projection
+- **Sinusoidal**: Sinusoidal projection for equal-area mapping
+- **Equidistant Conic**: Conic projection with equidistant meridians
+- **Hotine Oblique Mercator**: Oblique Mercator projection
 
 ## Supported Datum Transformations
 
@@ -258,11 +443,11 @@ Test coverage includes:
 - ✅ Datum transformations
 - ✅ Grid-based datum adjustments
 
-### Phase 3 (Future)
-- [ ] PROJJSON support
-- [ ] MGRS coordinate support
-- [ ] Performance optimizations
-- [ ] Additional mathematical utilities
+### Phase 3 (Completed)
+- ✅ PROJJSON support
+- ✅ MGRS coordinate support
+- ✅ Performance optimizations
+- ✅ Additional mathematical utilities
 
 ## Contributing
 
@@ -289,13 +474,58 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 #### Static Methods
 
+**Core Transformation Methods:**
 - `transform(String toProj, Point coords)` - Transform coordinates from WGS84 to specified projection
 - `transform(String fromProj, String toProj, Point coords)` - Transform between two projections
 - `converter(String toProj)` - Create a converter from WGS84 to specified projection
 - `converter(String fromProj, String toProj)` - Create a converter between two projections
 - `toPoint(double x, double y)` - Create a point from coordinates
+- `toPoint(double x, double y, double z)` - Create a point from coordinates with Z
 - `toPoint(double[] coords)` - Create a point from coordinate array
 - `getVersion()` - Get library version
+
+**MGRS Methods:**
+- `mgrsForward(double lon, double lat)` - Convert lat/lon to MGRS with default accuracy
+- `mgrsForward(double lon, double lat, int accuracy)` - Convert lat/lon to MGRS with custom accuracy
+- `mgrsInverse(String mgrs)` - Convert MGRS to lat/lon bounding box
+- `mgrsToPoint(String mgrs)` - Convert MGRS to lat/lon point
+- `fromMGRS(String mgrs)` - Create Point from MGRS string
+
+**PROJJSON Methods:**
+- `fromProjJson(String projJsonString)` - Create projection from PROJJSON string
+- `fromProjJson(ProjJsonDefinition definition)` - Create projection from PROJJSON definition
+- `toProjJson(String projString)` - Convert PROJ string to PROJJSON definition
+- `toProjString(ProjJsonDefinition definition)` - Convert PROJJSON to PROJ string
+
+**Performance Methods:**
+- `createBatchTransformer(String fromProj, String toProj)` - Create batch transformer
+- `transformBatch(String fromProj, String toProj, List<Point> points)` - Transform multiple points
+- `transformArrays(String fromProj, String toProj, double[] xCoords, double[] yCoords)` - Transform coordinate arrays
+
+**Cache Management:**
+- `clearProjectionCache()` - Clear projection cache
+- `getProjectionCacheSize()` - Get projection cache size
+- `clearGridCache()` - Clear grid cache
+- `getGridCacheSize()` - Get grid cache size
+- `getCachedGridKeys()` - Get cached grid keys
+
+**GeoTIFF Grid Methods:**
+- `nadgrid(String key, String url)` - Load grid from URL
+- `nadgrid(String key, InputStream inputStream)` - Load grid from stream
+- `registerNadgrid(String key, GeoTiffGrid grid)` - Register grid
+- `getNadgrid(String key)` - Get registered grid
+- `hasNadgrid(String key)` - Check if grid is registered
+- `removeNadgrid(String key)` - Remove grid
+- `getNadgridNames()` - Get all grid names
+- `getNadgridCount()` - Get grid count
+- `clearNadgrids()` - Clear all grids
+
+**PROJ CDN Methods:**
+- `downloadGrid(String gridName)` - Download grid from PROJ CDN
+- `downloadGrid(String key, String gridName)` - Download grid with custom key
+- `downloadGridFromUrl(String key, String url)` - Download grid from custom URL
+- `isGridCached(String key)` - Check if grid is cached
+- `removeFromCache(String key)` - Remove grid from cache
 
 ### Point Class
 
