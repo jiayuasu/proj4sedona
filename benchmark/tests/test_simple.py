@@ -112,8 +112,8 @@ def test_scenario_structure(test_scenarios):
     
     for scenario in test_scenarios:
         assert "name" in scenario, f"Scenario missing name: {scenario}"
-        assert "from_crs" in scenario, f"Scenario missing from_crs: {scenario}"
-        assert "to_crs" in scenario, f"Scenario missing to_crs: {scenario}"
+        assert "epsg_from" in scenario, f"Scenario missing epsg_from: {scenario}"
+        assert "epsg_to" in scenario, f"Scenario missing epsg_to: {scenario}"
         assert "test_points" in scenario, f"Scenario missing test_points: {scenario}"
         assert len(scenario["test_points"]) > 0, f"Scenario has no test points: {scenario}"
         

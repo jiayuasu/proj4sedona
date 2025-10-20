@@ -61,15 +61,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 markers = [
     "performance: Performance benchmark tests",
-    "accuracy: Accuracy benchmark tests", 
-    "slow: Slow running tests",
-    "concurrent: Concurrent execution tests",
-    "local_cache: Tests using local cache (no external downloads)",
-    "cdn_grid: Tests using PROJ CDN grid files (datum shift transformations)",
-    "wkt2: WKT2 CRS transformation tests",
-    "projjson: PROJJSON CRS transformation tests",
-    "datum_shift: Datum shift transformation tests",
-    "batch: Batch transformation tests",
+    "accuracy: Accuracy benchmark tests"
 ]
 addopts = [
     "-v",

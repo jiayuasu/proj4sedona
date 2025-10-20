@@ -76,8 +76,15 @@ def run_benchmark_test(test_name, markers, iterations, parallel=1):
             }
         else:
             print(f"❌ {test_name} failed in {duration:.2f}s")
+            # Print stdout to show summary tables even for failed tests
+            if result.stdout:
+                print("\n" + "="*60)
+                print("📊 TEST OUTPUT (INCLUDING SUMMARY TABLES):")
+                print("="*60)
+                print(result.stdout)
+                print("="*60)
             if result.stderr:
-                print(f"Error output: {result.stderr}")
+                print(f"\n⚠️  Error details: {result.stderr[:500]}")  # Truncate long errors
             return {
                 "test": test_name,
                 "status": "FAILED",
@@ -173,8 +180,8 @@ def main():
     parser.add_argument(
         "--markers", 
         nargs="+", 
-        default=["performance", "accuracy", "comprehensive"],
-        help="Pytest markers to run (default: performance accuracy comprehensive). Options: performance, accuracy, comprehensive, wkt2, projjson, datum_shift, batch"
+        default=["performance", "accuracy"],
+        help="Pytest markers to run (default: performance accuracy). Options: performance, accuracy"
     )
     parser.add_argument(
         "--iterations", 

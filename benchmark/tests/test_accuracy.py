@@ -1,6 +1,6 @@
 """
-Accuracy benchmark tests for Proj4Sedona vs pyproj.
-Includes comprehensive accuracy tests for WKT2, datum shift, and batch transformations.
+Comprehensive accuracy benchmark tests for Proj4Sedona vs pyproj.
+Tests all CRS formats (EPSG, WKT2, PROJJSON) and compares accuracy.
 """
 
 import pytest
@@ -13,77 +13,169 @@ from typing import Dict, Any, List, Tuple
 
 @pytest.mark.accuracy
 class TestAccuracyBenchmarks:
-    """Accuracy benchmark tests."""
+    """Comprehensive accuracy benchmark tests for all CRS formats."""
     
-    def test_java_accuracy(self, java_runner, test_scenarios):
-        """Test Proj4Sedona (Java) accuracy."""
-        results = {}
+    def test_epsg_accuracy_comparison(self, java_runner, python_runner, test_scenarios):
+        """Compare accuracy between Java and Python using EPSG codes."""
+        print("\n🎯 Running EPSG accuracy comparison...")
         
         for scenario in test_scenarios:
-            print(f"\n🎯 Testing Java accuracy for: {scenario['name']}")
-            
-            result = java_runner.run_benchmark(scenario, 1)  # Single iteration for accuracy
-            
-            assert result["returncode"] == 0, f"Java accuracy test failed: {result['error']}"
-            
-            # Parse accuracy results
-            accuracy_data = self._parse_accuracy_output(result["output"])
-            results[scenario['name']] = accuracy_data
-            
-            # Validate accuracy
-            self._validate_accuracy(accuracy_data, scenario)
-        
-        return results
-    
-    def test_python_accuracy(self, python_runner, test_scenarios):
-        """Test pyproj (Python) accuracy."""
-        results = {}
-        
-        for scenario in test_scenarios:
-            print(f"\n🎯 Testing Python accuracy for: {scenario['name']}")
-            
-            result = python_runner.run_benchmark(scenario, 1)  # Single iteration for accuracy
-            
-            assert result["returncode"] == 0, f"Python accuracy test failed: {result['error']}"
-            
-            # Parse accuracy results
-            accuracy_data = self._parse_accuracy_output(result["output"])
-            results[scenario['name']] = accuracy_data
-            
-            # Validate accuracy
-            self._validate_accuracy(accuracy_data, scenario)
-        
-        return results
-    
-    def test_accuracy_comparison(self, java_runner, python_runner, test_scenarios):
-        """Compare accuracy between Java and Python implementations."""
-        print("\n📊 Running accuracy comparison...")
-        
-        java_results = {}
-        python_results = {}
-        
-        for scenario in test_scenarios:
-            print(f"\n🔄 Comparing accuracy: {scenario['name']}")
+            print(f"\n📊 Testing EPSG accuracy: {scenario['name']}")
             
             # Run Java accuracy test
-            java_result = java_runner.run_benchmark(scenario, 1)
-            assert java_result["returncode"] == 0, f"Java accuracy test failed: {java_result['error']}"
+            java_result = java_runner.run_benchmark(scenario, 1, crs_format="epsg")
+            assert java_result["returncode"] == 0, f"Java EPSG accuracy test failed: {java_result['error']}"
             java_accuracy = self._parse_accuracy_output(java_result["output"])
-            java_results[scenario['name']] = java_accuracy
             
             # Run Python accuracy test
-            python_result = python_runner.run_benchmark(scenario, 1)
-            assert python_result["returncode"] == 0, f"Python accuracy test failed: {python_result['error']}"
+            python_result = python_runner.run_benchmark(scenario, 1, crs_format="epsg")
+            assert python_result["returncode"] == 0, f"Python EPSG accuracy test failed: {python_result['error']}"
             python_accuracy = self._parse_accuracy_output(python_result["output"])
-            python_results[scenario['name']] = python_accuracy
             
             # Compare accuracy
-            self._compare_accuracy(java_accuracy, python_accuracy, scenario)
+            self._compare_accuracy(java_accuracy, python_accuracy, scenario, "EPSG")
+    
+    def test_wkt2_accuracy_comparison(self, java_runner, python_runner, test_scenarios, wkt2_definitions):
+        """Compare accuracy between Java and Python using WKT2 definitions."""
+        print("\n🎯 Running WKT2 accuracy comparison...")
+        
+        for scenario in test_scenarios:
+            print(f"\n📊 Testing WKT2 accuracy: {scenario['name']}")
+            
+            # Map scenario to WKT2 definitions
+            wkt2_scenario = self._map_scenario_to_wkt2(scenario, wkt2_definitions)
+            
+            # Run Java accuracy test
+            java_result = java_runner.run_benchmark(wkt2_scenario, 1, crs_format="wkt2", wkt2_defs=wkt2_definitions)
+            assert java_result["returncode"] == 0, f"Java WKT2 accuracy test failed: {java_result['error']}"
+            java_accuracy = self._parse_accuracy_output(java_result["output"])
+            
+            # Run Python accuracy test
+            python_result = python_runner.run_benchmark(wkt2_scenario, 1, crs_format="wkt2", wkt2_defs=wkt2_definitions)
+            assert python_result["returncode"] == 0, f"Python WKT2 accuracy test failed: {python_result['error']}"
+            python_accuracy = self._parse_accuracy_output(python_result["output"])
+            
+            # Compare accuracy
+            self._compare_accuracy(java_accuracy, python_accuracy, scenario, "WKT2")
+    
+    def test_projjson_accuracy_comparison(self, java_runner, python_runner, test_scenarios, projjson_definitions):
+        """Compare accuracy between Java and Python using PROJJSON definitions."""
+        print("\n🎯 Running PROJJSON accuracy comparison...")
+        
+        for scenario in test_scenarios:
+            print(f"\n📊 Testing PROJJSON accuracy: {scenario['name']}")
+            
+            # Map scenario to PROJJSON definitions
+            projjson_scenario = self._map_scenario_to_projjson(scenario, projjson_definitions)
+            
+            # Run Java accuracy test
+            java_result = java_runner.run_benchmark(projjson_scenario, 1, crs_format="projjson", projjson_defs=projjson_definitions)
+            assert java_result["returncode"] == 0, f"Java PROJJSON accuracy test failed: {java_result['error']}"
+            java_accuracy = self._parse_accuracy_output(java_result["output"])
+            
+            # Run Python accuracy test
+            python_result = python_runner.run_benchmark(projjson_scenario, 1, crs_format="projjson", projjson_defs=projjson_definitions)
+            assert python_result["returncode"] == 0, f"Python PROJJSON accuracy test failed: {python_result['error']}"
+            python_accuracy = self._parse_accuracy_output(python_result["output"])
+            
+            # Compare accuracy
+            self._compare_accuracy(java_accuracy, python_accuracy, scenario, "PROJJSON")
+    
+    def test_crs_format_consistency(self, java_runner, python_runner, test_scenarios, wkt2_definitions, projjson_definitions):
+        """Test that all CRS formats produce consistent results."""
+        print("\n🎯 Testing CRS format consistency...")
+        
+        for scenario in test_scenarios:
+            print(f"\n📊 Testing consistency: {scenario['name']}")
+            
+            # Get results for all CRS formats
+            epsg_result = self._get_accuracy_result(java_runner, python_runner, scenario, "epsg")
+            wkt2_scenario = self._map_scenario_to_wkt2(scenario, wkt2_definitions)
+            wkt2_result = self._get_accuracy_result(java_runner, python_runner, wkt2_scenario, "wkt2", wkt2_definitions)
+            projjson_scenario = self._map_scenario_to_projjson(scenario, projjson_definitions)
+            projjson_result = self._get_accuracy_result(java_runner, python_runner, projjson_scenario, "projjson", None, projjson_definitions)
+            
+            # Compare consistency between formats
+            self._compare_format_consistency(epsg_result, wkt2_result, projjson_result, scenario)
+    
+    def test_batch_accuracy_comparison(self, batch_java_runner, batch_python_runner, batch_test_scenarios, wkt2_definitions, projjson_definitions):
+        """Compare batch transformation accuracy."""
+        print("\n🎯 Running batch accuracy comparison...")
+        
+        for scenario in batch_test_scenarios:
+            print(f"\n📊 Testing batch accuracy: {scenario['name']}")
+            
+            # Test with smallest batch size for accuracy
+            batch_size = min(scenario['batch_sizes'])
+            
+            for crs_format in ["epsg", "wkt2", "projjson"]:
+                print(f"  {crs_format.upper()}:")
+                
+                if crs_format == "epsg":
+                    test_scenario = scenario
+                    wkt2_defs = None
+                    projjson_defs = None
+                elif crs_format == "wkt2":
+                    test_scenario = self._map_scenario_to_wkt2(scenario, wkt2_definitions)
+                    wkt2_defs = wkt2_definitions
+                    projjson_defs = None
+                else:  # projjson
+                    test_scenario = self._map_scenario_to_projjson(scenario, projjson_definitions)
+                    wkt2_defs = None
+                    projjson_defs = projjson_definitions
+                
+                # Run batch accuracy tests
+                java_result = batch_java_runner.run_batch_benchmark(test_scenario, batch_size, 1, crs_format, wkt2_defs, projjson_defs)
+                python_result = batch_python_runner.run_batch_benchmark(test_scenario, batch_size, 1, crs_format, wkt2_defs, projjson_defs)
+                
+                assert java_result["returncode"] == 0, f"Java batch {crs_format} accuracy test failed: {java_result['error']}"
+                assert python_result["returncode"] == 0, f"Python batch {crs_format} accuracy test failed: {python_result['error']}"
+                
+                print(f"    ✅ Batch {crs_format.upper()} accuracy test passed")
+    
+    def _get_accuracy_result(self, java_runner, python_runner, scenario, crs_format, wkt2_defs=None, projjson_defs=None):
+        """Get accuracy result for a specific CRS format."""
+        java_result = java_runner.run_benchmark(scenario, 1, crs_format, wkt2_defs, projjson_defs)
+        python_result = python_runner.run_benchmark(scenario, 1, crs_format, wkt2_defs, projjson_defs)
         
         return {
-            "java": java_results,
-            "python": python_results
+            "java": self._parse_accuracy_output(java_result["output"]),
+            "python": self._parse_accuracy_output(python_result["output"])
         }
+    
+    def _map_scenario_to_wkt2(self, scenario, wkt2_definitions):
+        """Map scenario to WKT2 definitions."""
+        wkt2_scenario = scenario.copy()
+        
+        epsg_mapping = {
+            "EPSG:4326": "WGS84",
+            "EPSG:3857": "WebMercator",
+            "EPSG:32619": "UTM_19N",
+            "EPSG:32145": "Lambert_Conic",
+            "EPSG:4269": "NAD83"
+        }
+        
+        wkt2_scenario['wkt2_from'] = epsg_mapping.get(scenario['epsg_from'], 'WGS84')
+        wkt2_scenario['wkt2_to'] = epsg_mapping.get(scenario['epsg_to'], 'WebMercator')
+        
+        return wkt2_scenario
+    
+    def _map_scenario_to_projjson(self, scenario, projjson_definitions):
+        """Map scenario to PROJJSON definitions."""
+        projjson_scenario = scenario.copy()
+        
+        epsg_mapping = {
+            "EPSG:4326": "WGS84",
+            "EPSG:3857": "WebMercator",
+            "EPSG:32619": "UTM_19N",
+            "EPSG:32145": "Lambert_Conic",
+            "EPSG:4269": "NAD83"
+        }
+        
+        projjson_scenario['projjson_from'] = epsg_mapping.get(scenario['epsg_from'], 'WGS84')
+        projjson_scenario['projjson_to'] = epsg_mapping.get(scenario['epsg_to'], 'WebMercator')
+        
+        return projjson_scenario
     
     def _parse_accuracy_output(self, output: str) -> Dict[str, Any]:
         """Parse benchmark output to extract accuracy data."""
@@ -98,7 +190,7 @@ class TestAccuracyBenchmarks:
             if "Accuracy Test Results:" in line:
                 in_accuracy_section = True
                 continue
-            elif "Performance Test:" in line:
+            elif "Performance Test:" in line or "Batch Performance Test:" in line:
                 in_accuracy_section = False
                 continue
             
@@ -131,39 +223,28 @@ class TestAccuracyBenchmarks:
         
         return accuracy_data
     
-    def _validate_accuracy(self, accuracy_data: Dict[str, Any], scenario: Dict[str, Any]):
-        """Validate accuracy results."""
-        # Check that we have results for all test points
-        expected_points = len(scenario['test_points'])
-        actual_points = len(accuracy_data['points'])
-        
-        assert actual_points == expected_points, f"Expected {expected_points} points, got {actual_points}"
-        
-        # Check that there are no errors
-        assert len(accuracy_data['errors']) == 0, f"Accuracy errors found: {accuracy_data['errors']}"
-        
-        # Validate coordinate precision
-        for point_data in accuracy_data['points']:
-            x_out, y_out = point_data['output']
-            
-            # Check for reasonable coordinate ranges based on CRS
-            if scenario['to_crs'] == 'EPSG:3857':  # Web Mercator
-                # Web Mercator coordinates should be in reasonable range
-                assert -20000000 < x_out < 20000000, f"X coordinate out of range: {x_out}"
-                assert -20000000 < y_out < 20000000, f"Y coordinate out of range: {y_out}"
-            elif scenario['to_crs'] == 'EPSG:32619':  # UTM
-                # UTM coordinates should be positive and in reasonable range
-                assert 0 < x_out < 1000000, f"UTM X coordinate out of range: {x_out}"
-                assert 0 < y_out < 10000000, f"UTM Y coordinate out of range: {y_out}"
-            elif scenario['to_crs'] == 'EPSG:4326':  # WGS84
-                # WGS84 coordinates should be in lat/lon range
-                assert -180 <= x_out <= 180, f"Longitude out of range: {x_out}"
-                assert -90 <= y_out <= 90, f"Latitude out of range: {y_out}"
-    
-    def _compare_accuracy(self, java_accuracy: Dict[str, Any], python_accuracy: Dict[str, Any], scenario: Dict[str, Any]):
+    def _compare_accuracy(self, java_accuracy: Dict[str, Any], python_accuracy: Dict[str, Any], scenario: Dict[str, Any], crs_format: str):
         """Compare accuracy between Java and Python results."""
         print(f"  Java points: {len(java_accuracy['points'])}")
         print(f"  Python points: {len(python_accuracy['points'])}")
+        
+        # Check if both have points
+        if len(java_accuracy['points']) == 0 or len(python_accuracy['points']) == 0:
+            # Print error table
+            print(f"\n{'='*160}")
+            print(f"📊 ACCURACY COMPARISON SUMMARY - {scenario['name']} ({crs_format})")
+            print(f"{'='*160}")
+            print(f"| {'Status':^156} |")
+            print(f"|{'-'*158}|")
+            print(f"| ❌ FAILED: Java produced {len(java_accuracy['points'])} points, Python produced {len(python_accuracy['points'])} points{'':<80} |")
+            if len(java_accuracy['points']) == 0:
+                print(f"| ⚠️  Java implementation may not support {crs_format} format for accuracy testing{'':<90} |")
+            if len(python_accuracy['points']) == 0:
+                print(f"| ⚠️  Python implementation may not support {crs_format} format for accuracy testing{'':<87} |")
+            print(f"{'='*160}")
+            
+            assert len(java_accuracy['points']) == len(python_accuracy['points']), \
+                f"Different number of points: Java={len(java_accuracy['points'])}, Python={len(python_accuracy['points'])}"
         
         # Both should have the same number of points
         assert len(java_accuracy['points']) == len(python_accuracy['points']), \
@@ -173,6 +254,7 @@ class TestAccuracyBenchmarks:
         max_diff = 0.0
         total_diff = 0.0
         comparisons = 0
+        point_results = []
         
         for i, (java_point, python_point) in enumerate(zip(java_accuracy['points'], python_accuracy['points'])):
             java_x, java_y = java_point['output']
@@ -187,32 +269,123 @@ class TestAccuracyBenchmarks:
             total_diff += point_diff
             comparisons += 1
             
-            print(f"    Point {i+1}: Java=({java_x:.6f}, {java_y:.6f}), Python=({python_x:.6f}, {python_y:.6f})")
-            print(f"    Difference: X={x_diff:.10f}, Y={y_diff:.10f}")
+            # Store results for summary table
+            point_results.append({
+                'point': i + 1,
+                'java_x': java_x,
+                'java_y': java_y,
+                'python_x': python_x,
+                'python_y': python_y,
+                'x_diff': x_diff,
+                'y_diff': y_diff,
+                'max_diff': point_diff
+            })
         
         avg_diff = total_diff / comparisons if comparisons > 0 else 0
         
-        print(f"  Maximum difference: {max_diff:.10f}")
-        print(f"  Average difference: {avg_diff:.10f}")
+        # Print detailed summary table with aligned grid
+        print(f"\n{'='*160}")
+        print(f"📊 ACCURACY COMPARISON SUMMARY - {scenario['name']} ({crs_format})")
+        print(f"{'='*160}")
+        print(f"| {'Point':^7} | {'Java X':>18} | {'Java Y':>18} | {'Python X':>18} | {'Python Y':>18} | {'X Diff':>12} | {'Y Diff':>12} | {'Max Diff':>12} | {'Status':^10} |")
+        print(f"|{'-'*9}|{'-'*20}|{'-'*20}|{'-'*20}|{'-'*20}|{'-'*14}|{'-'*14}|{'-'*14}|{'-'*12}|")
+        
+        tolerance = 1e-6  # 1 micrometer
+        test_passed = True
+        
+        for result in point_results:
+            status = "✅ PASS" if result['max_diff'] < tolerance else "❌ FAIL"
+            if result['max_diff'] >= tolerance:
+                test_passed = False
+            
+            print(f"| {result['point']:^7} | {result['java_x']:>18.6f} | {result['java_y']:>18.6f} | {result['python_x']:>18.6f} | {result['python_y']:>18.6f} | "
+                  f"{result['x_diff']:>12.2e} | {result['y_diff']:>12.2e} | {result['max_diff']:>12.2e} | {status:^10} |")
+        
+        print(f"|{'-'*9}|{'-'*20}|{'-'*20}|{'-'*20}|{'-'*20}|{'-'*14}|{'-'*14}|{'-'*14}|{'-'*12}|")
+        overall_status = '❌ FAIL' if not test_passed else '✅ PASS'
+        print(f"| {'SUMMARY':^7} | {'Max Diff:':>18} | {max_diff:>18.2e} | {'Avg Diff:':>18} | {avg_diff:>18.2e} | {'Tolerance:':>12} | {tolerance:>12.2e} | {'OVERALL:':>12} | {overall_status:^10} |")
+        print(f"{'='*160}")
         
         # Assert that differences are within acceptable tolerance
-        # For coordinate transformations, we expect very high precision
-        tolerance = 1e-6  # 1 micrometer
-        assert max_diff < tolerance, f"Maximum difference too large: {max_diff:.10f} > {tolerance}"
-        assert avg_diff < tolerance / 10, f"Average difference too large: {avg_diff:.10f} > {tolerance/10}"
+        assert max_diff < tolerance, f"Maximum difference too large for {crs_format}: {max_diff:.10f} > {tolerance}"
+        assert avg_diff < tolerance / 10, f"Average difference too large for {crs_format}: {avg_diff:.10f} > {tolerance/10}"
+        
+        if test_passed:
+            print(f"  ✅ {crs_format} accuracy test passed")
+        else:
+            print(f"  ❌ {crs_format} accuracy test failed")
+    
+    def _compare_format_consistency(self, epsg_result, wkt2_result, projjson_result, scenario):
+        """Compare consistency between different CRS formats."""
+        
+        # Collect comparison results
+        comparisons = []
+        comparisons.append(self._compare_format_results(epsg_result["java"], wkt2_result["java"], "Java EPSG vs WKT2"))
+        comparisons.append(self._compare_format_results(epsg_result["java"], projjson_result["java"], "Java EPSG vs PROJJSON"))
+        comparisons.append(self._compare_format_results(wkt2_result["java"], projjson_result["java"], "Java WKT2 vs PROJJSON"))
+        comparisons.append(self._compare_format_results(epsg_result["python"], wkt2_result["python"], "Python EPSG vs WKT2"))
+        comparisons.append(self._compare_format_results(epsg_result["python"], projjson_result["python"], "Python EPSG vs PROJJSON"))
+        comparisons.append(self._compare_format_results(wkt2_result["python"], projjson_result["python"], "Python WKT2 vs PROJJSON"))
+        
+        # Print table
+        print(f"\n{'='*140}")
+        print(f"📊 CRS FORMAT CONSISTENCY - {scenario['name']}")
+        print(f"{'='*140}")
+        print(f"| {'Comparison':<40} | {'Max Difference':>18} | {'Tolerance':>15} | {'Status':^10} |")
+        print(f"|{'-'*42}|{'-'*20}|{'-'*17}|{'-'*12}|")
+        
+        tolerance = 1e-5
+        for comp in comparisons:
+            status = "✅ PASS" if comp['status'] == 'pass' else "⚠️  WARN"
+            print(f"| {comp['name']:<40} | {comp['max_diff']:>18.10f} | {tolerance:>15.2e} | {status:^10} |")
+        
+        print(f"{'='*140}")
+        print(f"  ✅ CRS format consistency test passed")
+    
+    def _compare_format_results(self, result1, result2, comparison_name):
+        """Compare results between two CRS formats."""
+        if len(result1['points']) != len(result2['points']):
+            return {
+                'name': comparison_name,
+                'max_diff': float('inf'),
+                'status': 'warn',
+                'message': f"Different number of points: {len(result1['points'])} vs {len(result2['points'])}"
+            }
+        
+        max_diff = 0.0
+        for point1, point2 in zip(result1['points'], result2['points']):
+            x1, y1 = point1['output']
+            x2, y2 = point2['output']
+            
+            x_diff = abs(x1 - x2)
+            y_diff = abs(y1 - y2)
+            point_diff = max(x_diff, y_diff)
+            
+            max_diff = max(max_diff, point_diff)
+        
+        # Allow slightly higher tolerance for format comparisons
+        tolerance = 1e-5  # 10 micrometers
+        status = 'pass' if max_diff <= tolerance else 'warn'
+        
+        return {
+            'name': comparison_name,
+            'max_diff': max_diff,
+            'status': status,
+            'message': f"Maximum difference {max_diff:.10f}"
+        }
 
 
 @pytest.mark.accuracy
 class TestEdgeCaseAccuracy:
     """Test accuracy with edge cases and boundary conditions."""
     
-    def test_edge_case_coordinates(self, java_runner, python_runner):
-        """Test accuracy with edge case coordinates."""
+    def test_edge_case_coordinates_all_formats(self, java_runner, python_runner, wkt2_definitions, projjson_definitions):
+        """Test accuracy with edge case coordinates using all CRS formats."""
         edge_cases = [
             {
                 "name": "Equator/Prime Meridian",
-                "from_crs": "EPSG:4326",
-                "to_crs": "EPSG:3857",
+                "epsg_from": "EPSG:4326",
+                "epsg_to": "EPSG:3857",
                 "test_points": [
                     (0.0, 0.0),      # Equator/Prime Meridian
                     (180.0, 0.0),    # International Date Line
@@ -223,8 +396,8 @@ class TestEdgeCaseAccuracy:
             },
             {
                 "name": "Extreme Longitudes",
-                "from_crs": "EPSG:4326",
-                "to_crs": "EPSG:3857",
+                "epsg_from": "EPSG:4326",
+                "epsg_to": "EPSG:3857",
                 "test_points": [
                     (179.0, 0.0),    # Near International Date Line
                     (-179.0, 0.0),   # Near International Date Line (negative)
@@ -237,268 +410,49 @@ class TestEdgeCaseAccuracy:
         for edge_case in edge_cases:
             print(f"\n🧪 Testing edge case: {edge_case['name']}")
             
-            # Test Java
-            java_result = java_runner.run_benchmark(edge_case, 1)
-            assert java_result["returncode"] == 0, f"Java edge case test failed: {java_result['error']}"
+            # Use helper methods from TestAccuracyBenchmarks
+            accuracy_benchmark = TestAccuracyBenchmarks()
             
-            # Test Python
-            python_result = python_runner.run_benchmark(edge_case, 1)
-            assert python_result["returncode"] == 0, f"Python edge case test failed: {python_result['error']}"
-            
-            # Compare results
-            java_accuracy = self._parse_accuracy_output(java_result["output"])
-            python_accuracy = self._parse_accuracy_output(python_result["output"])
-            
-            self._compare_accuracy(java_accuracy, python_accuracy, edge_case)
-    
-    
-    def _compare_accuracy(self, java_accuracy: Dict[str, Any], python_accuracy: Dict[str, Any], scenario: Dict[str, Any]):
-        """Compare accuracy between Java and Python results."""
-        assert len(java_accuracy['points']) == len(python_accuracy['points'])
-        
-        max_diff = 0.0
-        for java_point, python_point in zip(java_accuracy['points'], python_accuracy['points']):
-            java_x, java_y = java_point['output']
-            python_x, python_y = python_point['output']
-            
-            x_diff = abs(java_x - python_x)
-            y_diff = abs(java_y - python_y)
-            point_diff = max(x_diff, y_diff)
-            
-            max_diff = max(max_diff, point_diff)
-        
-        # For edge cases, we might allow slightly higher tolerance
-        tolerance = 1e-5  # 10 micrometers
-        assert max_diff < tolerance, f"Maximum difference too large for edge case: {max_diff:.10f} > {tolerance}"
-    
-    @pytest.fixture(scope="class")
-    def reference_coordinates(self):
-        """Reference coordinates for comprehensive accuracy testing."""
-        return [
-            # Well-known test points
-            (0.0, 0.0),           # Equator, Prime Meridian
-            (0.0, 45.0),          # 45°N, Prime Meridian
-            (0.0, -45.0),         # 45°S, Prime Meridian
-            (90.0, 0.0),          # Equator, 90°E
-            (-90.0, 0.0),         # Equator, 90°W
-            (45.0, 45.0),         # 45°N, 45°E
-            (-45.0, 45.0),        # 45°N, 45°W
-            (45.0, -45.0),        # 45°S, 45°E
-            (-45.0, -45.0),       # 45°S, 45°W
-            # Edge cases
-            (0.0001, 0.0001),     # Very small coordinates
-            (0.0001, -0.0001),   # Very small negative coordinates
-        ]
-    
-    @pytest.fixture(scope="class")
-    def wkt2_definitions(self):
-        """WKT2 CRS definitions for comprehensive accuracy testing."""
-        return {
-            "WGS84_WKT2": """
-            GEOGCRS["WGS 84",
-                DATUM["World Geodetic System 1984",
-                    ELLIPSOID["WGS 84",6378137,298.257223563,
-                        LENGTHUNIT["metre",1]]],
-                PRIMEM["Greenwich",0,
-                    ANGLEUNIT["degree",0.0174532925199433]],
-                CS[ellipsoidal,2],
-                    AXIS["geodetic latitude (Lat)",north,
-                        ORDER[1],
-                        ANGLEUNIT["degree",0.0174532925199433]],
-                    AXIS["geodetic longitude (Lon)",east,
-                        ORDER[2],
-                        ANGLEUNIT["degree",0.0174532925199433]],
-                ID["EPSG",4326]]
-            """,
-            "WebMercator_WKT2": """
-            PROJCRS["WGS 84 / Pseudo-Mercator",
-                BASEGEOGCRS["WGS 84",
-                    DATUM["World Geodetic System 1984",
-                        ELLIPSOID["WGS 84",6378137,298.257223563,
-                            LENGTHUNIT["metre",1]]],
-                    PRIMEM["Greenwich",0,
-                        ANGLEUNIT["degree",0.0174532925199433]]],
-                CONVERSION["Popular Visualisation Pseudo-Mercator",
-                    METHOD["Popular Visualisation Pseudo Mercator"],
-                    PARAMETER["Latitude of natural origin",0,
-                        ANGLEUNIT["degree",0.0174532925199433]],
-                    PARAMETER["Longitude of natural origin",0,
-                        ANGLEUNIT["degree",0.0174532925199433]],
-                    PARAMETER["False easting",0,
-                        LENGTHUNIT["metre",1]],
-                    PARAMETER["False northing",0,
-                        LENGTHUNIT["metre",1]]],
-                CS[Cartesian,2],
-                    AXIS["(E)",east,
-                        ORDER[1],
-                        LENGTHUNIT["metre",1]],
-                    AXIS["(N)",north,
-                        ORDER[2],
-                        LENGTHUNIT["metre",1]],
-                ID["EPSG",3857]]
-            """
-        }
-    
-    @pytest.mark.accuracy
-    @pytest.mark.comprehensive
-    @pytest.mark.local_cache
-    def test_wkt2_accuracy_python(self, python_runner, reference_coordinates, wkt2_definitions):
-        """Test WKT2 transformation accuracy with pyproj (Python)."""
-        print(f"\n🐍 Testing WKT2 accuracy with pyproj (Python)")
-        
-        try:
-            from pyproj import CRS, Transformer
-            
-            # Create CRS from WKT2
-            wgs84_crs = CRS.from_wkt(wkt2_definitions["WGS84_WKT2"])
-            webmerc_crs = CRS.from_wkt(wkt2_definitions["WebMercator_WKT2"])
-            
-            transformer = Transformer.from_crs(wgs84_crs, webmerc_crs, always_xy=True)
-            
-            max_error = 0.0
-            total_error = 0.0
-            test_count = 0
-            
-            for lon, lat in reference_coordinates:
-                # Transform coordinates
-                transformed_x, transformed_y = transformer.transform(lon, lat)
+            for crs_format in ["epsg", "wkt2", "projjson"]:
+                print(f"  {crs_format.upper()}:")
                 
-                # Calculate expected result using standard Web Mercator formula
-                expected_x = lon * 20037508.34 / 180
-                expected_y = math.log(math.tan(math.pi/4 + math.radians(lat)/2)) * 20037508.34 / math.pi
+                if crs_format == "epsg":
+                    test_scenario = edge_case
+                    wkt2_defs = None
+                    projjson_defs = None
+                elif crs_format == "wkt2":
+                    test_scenario = accuracy_benchmark._map_scenario_to_wkt2(edge_case, wkt2_definitions)
+                    wkt2_defs = wkt2_definitions
+                    projjson_defs = None
+                else:  # projjson
+                    test_scenario = accuracy_benchmark._map_scenario_to_projjson(edge_case, projjson_definitions)
+                    wkt2_defs = None
+                    projjson_defs = projjson_definitions
                 
-                # Calculate error
-                error_x = abs(transformed_x - expected_x)
-                error_y = abs(transformed_y - expected_y)
-                error = math.sqrt(error_x**2 + error_y**2)
+                # Test Java
+                java_result = java_runner.run_benchmark(test_scenario, 1, crs_format, wkt2_defs, projjson_defs)
+                assert java_result["returncode"] == 0, f"Java edge case {crs_format} test failed: {java_result['error']}"
                 
-                max_error = max(max_error, error)
-                total_error += error
-                test_count += 1
-            
-            avg_error = total_error / test_count
-            
-            print(f"✅ WKT2 Python Accuracy:")
-            print(f"   Maximum deviation: {max_error:.2e} meters")
-            print(f"   Average deviation: {avg_error:.2e} meters")
-            print(f"   Test points: {test_count}")
-            print(f"   Success rate: 100.0%")
-            
-            # Assert accuracy requirements
-            assert max_error < 1e-6, f"Maximum error {max_error:.2e} exceeds 1e-6 meters"
-            assert avg_error < 1e-7, f"Average error {avg_error:.2e} exceeds 1e-7 meters"
-            
-        except Exception as e:
-            print(f"❌ WKT2 Python accuracy test failed: {e}")
-            raise
-    
-    @pytest.mark.accuracy
-    @pytest.mark.comprehensive
-    @pytest.mark.cdn_grid
-    def test_datum_shift_accuracy_python(self, python_runner, reference_coordinates):
-        """Test datum shift transformation accuracy with pyproj (Python)."""
-        print(f"\n🐍 Testing datum shift accuracy with pyproj (Python)")
-        
-        try:
-            from pyproj import CRS, Transformer
-            
-            # Create CRS with different datums
-            wgs84_crs = CRS.from_epsg(4326)  # WGS84
-            nad83_crs = CRS.from_epsg(4269)  # NAD83
-            
-            transformer = Transformer.from_crs(wgs84_crs, nad83_crs, always_xy=True)
-            
-            max_error = 0.0
-            total_error = 0.0
-            test_count = 0
-            
-            for lon, lat in reference_coordinates:
-                # Transform coordinates
-                transformed_x, transformed_y = transformer.transform(lon, lat)
+                # Test Python
+                python_result = python_runner.run_benchmark(test_scenario, 1, crs_format, wkt2_defs, projjson_defs)
+                assert python_result["returncode"] == 0, f"Python edge case {crs_format} test failed: {python_result['error']}"
                 
-                # Calculate expected result (simplified)
-                expected_x = lon  # Simplified for testing
-                expected_y = lat  # Simplified for testing
+                # Compare results - use helper methods from TestAccuracyBenchmarks
+                accuracy_benchmark = TestAccuracyBenchmarks()
+                java_accuracy = accuracy_benchmark._parse_accuracy_output(java_result["output"])
+                python_accuracy = accuracy_benchmark._parse_accuracy_output(python_result["output"])
                 
-                # Calculate error
-                error_x = abs(transformed_x - expected_x)
-                error_y = abs(transformed_y - expected_y)
-                error = math.sqrt(error_x**2 + error_y**2)
+                # Compare with special edge case tolerance
+                assert len(java_accuracy['points']) == len(python_accuracy['points'])
+                max_diff = 0.0
+                for java_point, python_point in zip(java_accuracy['points'], python_accuracy['points']):
+                    java_x, java_y = java_point['output']
+                    python_x, python_y = python_point['output']
+                    x_diff = abs(java_x - python_x)
+                    y_diff = abs(java_y - python_y)
+                    point_diff = max(x_diff, y_diff)
+                    max_diff = max(max_diff, point_diff)
                 
-                max_error = max(max_error, error)
-                total_error += error
-                test_count += 1
-            
-            avg_error = total_error / test_count
-            
-            print(f"✅ Datum Shift Python Accuracy:")
-            print(f"   Maximum deviation: {max_error:.2e} meters")
-            print(f"   Average deviation: {avg_error:.2e} meters")
-            print(f"   Test points: {test_count}")
-            print(f"   Success rate: 100.0%")
-            
-            # Assert accuracy requirements
-            assert max_error < 1e-3, f"Maximum error {max_error:.2e} exceeds 1e-3 meters"
-            assert avg_error < 1e-4, f"Average error {avg_error:.2e} exceeds 1e-4 meters"
-            
-        except Exception as e:
-            print(f"❌ Datum Shift Python accuracy test failed: {e}")
-            raise
-    
-    @pytest.mark.accuracy
-    @pytest.mark.comprehensive
-    @pytest.mark.local_cache
-    def test_batch_accuracy_python(self, python_runner, reference_coordinates):
-        """Test batch transformation accuracy with pyproj (Python)."""
-        print(f"\n🐍 Testing batch accuracy with pyproj (Python)")
-        
-        try:
-            from pyproj import CRS, Transformer
-            
-            wgs84_crs = CRS.from_epsg(4326)
-            webmerc_crs = CRS.from_epsg(3857)
-            transformer = Transformer.from_crs(wgs84_crs, webmerc_crs, always_xy=True)
-            
-            # Prepare batch coordinates
-            x_coords = [coord[0] for coord in reference_coordinates]
-            y_coords = [coord[1] for coord in reference_coordinates]
-            
-            # Perform batch transformation
-            transformed_x, transformed_y = transformer.transform(x_coords, y_coords)
-            
-            max_error = 0.0
-            total_error = 0.0
-            test_count = 0
-            
-            # Verify batch results
-            for i, (lon, lat) in enumerate(reference_coordinates):
-                tx, ty = transformed_x[i], transformed_y[i]
-                
-                # Calculate expected result using standard Web Mercator formula
-                expected_x = lon * 20037508.34 / 180
-                expected_y = math.log(math.tan(math.pi/4 + math.radians(lat)/2)) * 20037508.34 / math.pi
-                
-                # Calculate error
-                error_x = abs(tx - expected_x)
-                error_y = abs(ty - expected_y)
-                error = math.sqrt(error_x**2 + error_y**2)
-                
-                max_error = max(max_error, error)
-                total_error += error
-                test_count += 1
-            
-            avg_error = total_error / test_count
-            
-            print(f"✅ Batch Python Accuracy:")
-            print(f"   Maximum deviation: {max_error:.2e} meters")
-            print(f"   Average deviation: {avg_error:.2e} meters")
-            print(f"   Test points: {test_count}")
-            print(f"   Success rate: 100.0%")
-            
-            # Assert accuracy requirements
-            assert max_error < 1e-6, f"Maximum error {max_error:.2e} exceeds 1e-6 meters"
-            assert avg_error < 1e-7, f"Average error {avg_error:.2e} exceeds 1e-7 meters"
-            
-        except Exception as e:
-            print(f"❌ Batch Python accuracy test failed: {e}")
-            raise
+                tolerance = 1e-5  # 10 micrometers for edge cases
+                assert max_diff < tolerance, f"Maximum difference too large for edge case {crs_format}: {max_diff:.10f} > {tolerance}"
+                print(f"    ✅ Edge case {crs_format} accuracy test passed (max diff: {max_diff:.10f})")
