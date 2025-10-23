@@ -104,4 +104,112 @@ public class WKTProcessorTest {
     assertThatThrownBy(() -> WKTProcessor.process(null))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  public void testProcessWKT2GeographicCRS() throws WKTParseException {
+    String wkt =
+        "GEOGCRS[\"WGS 84\","
+            + "DATUM[\"World Geodetic System 1984\","
+            + "ELLIPSOID[\"WGS 84\",6378137,298.257223563,"
+            + "LENGTHUNIT[\"metre\",1]]],"
+            + "PRIMEM[\"Greenwich\",0,"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "CS[ellipsoidal,2],"
+            + "AXIS[\"geodetic latitude (Lat)\",north,"
+            + "ORDER[1],"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "AXIS[\"geodetic longitude (Lon)\",east,"
+            + "ORDER[2],"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "ID[\"EPSG\",4326]]";
+
+    Map<String, Object> result = WKTProcessor.process(wkt);
+
+    assertThat(result).isNotNull();
+    assertThat(result.get("projName")).isEqualTo("longlat");
+    assertThat(result.get("name")).isEqualTo("WGS 84");
+    assertThat(result.get("ellps")).isEqualTo("WGS84"); // Normalized
+    assertThat(result.get("a")).isEqualTo(6378137.0);
+    assertThat(result.get("rf")).isEqualTo(298.257223563);
+    assertThat(result.get("title")).isEqualTo("EPSG:4326");
+  }
+
+  @Test
+  public void testProcessWKT2ProjectedCRSUTM() throws WKTParseException {
+    String wkt =
+        "PROJCRS[\"WGS 84 / UTM zone 19N\","
+            + "BASEGEOGCRS[\"WGS 84\","
+            + "DATUM[\"World Geodetic System 1984\","
+            + "ELLIPSOID[\"WGS 84\",6378137,298.257223563,"
+            + "LENGTHUNIT[\"metre\",1]]],"
+            + "PRIMEM[\"Greenwich\",0,"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433]]],"
+            + "CONVERSION[\"UTM zone 19N\","
+            + "METHOD[\"Transverse Mercator\"],"
+            + "PARAMETER[\"Latitude of natural origin\",0,"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "PARAMETER[\"Longitude of natural origin\",-69,"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "PARAMETER[\"Scale factor at natural origin\",0.9996,"
+            + "SCALEUNIT[\"unity\",1]],"
+            + "PARAMETER[\"False easting\",500000,"
+            + "LENGTHUNIT[\"metre\",1]],"
+            + "PARAMETER[\"False northing\",0,"
+            + "LENGTHUNIT[\"metre\",1]]],"
+            + "CS[Cartesian,2],"
+            + "AXIS[\"(E)\",east,ORDER[1],LENGTHUNIT[\"metre\",1]],"
+            + "AXIS[\"(N)\",north,ORDER[2],LENGTHUNIT[\"metre\",1]],"
+            + "ID[\"EPSG\",32619]]";
+
+    Map<String, Object> result = WKTProcessor.process(wkt);
+
+    assertThat(result).isNotNull();
+    assertThat(result.get("projName")).isEqualTo("tmerc");
+    assertThat(result.get("name")).isEqualTo("WGS 84 / UTM zone 19N");
+    assertThat(result.get("ellps")).isEqualTo("WGS84");
+    assertThat(result.get("a")).isEqualTo(6378137.0);
+    assertThat(result.get("rf")).isEqualTo(298.257223563);
+    assertThat(result.get("k0")).isEqualTo(0.9996);
+    assertThat(result.get("lat0")).isEqualTo(0.0);
+    assertThat((Double) result.get("long0"))
+        .isCloseTo(-1.2042771838760877, within(1e-10)); // -69 degrees in radians
+    assertThat(result.get("x0")).isEqualTo(500000.0);
+    assertThat(result.get("y0")).isEqualTo(0.0);
+    assertThat(result.get("units")).isEqualTo("meter");
+    assertThat(result.get("title")).isEqualTo("EPSG:32619");
+  }
+
+  @Test
+  public void testProcessWKT2WebMercator() throws WKTParseException {
+    String wkt =
+        "PROJCRS[\"WGS 84 / Pseudo-Mercator\","
+            + "BASEGEOGCRS[\"WGS 84\","
+            + "DATUM[\"World Geodetic System 1984\","
+            + "ELLIPSOID[\"WGS 84\",6378137,298.257223563,"
+            + "LENGTHUNIT[\"metre\",1]]],"
+            + "PRIMEM[\"Greenwich\",0,"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433]]],"
+            + "CONVERSION[\"Popular Visualisation Pseudo-Mercator\","
+            + "METHOD[\"Popular Visualisation Pseudo Mercator\"],"
+            + "PARAMETER[\"Latitude of natural origin\",0,"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "PARAMETER[\"Longitude of natural origin\",0,"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "PARAMETER[\"False easting\",0,LENGTHUNIT[\"metre\",1]],"
+            + "PARAMETER[\"False northing\",0,LENGTHUNIT[\"metre\",1]]],"
+            + "CS[Cartesian,2],"
+            + "AXIS[\"(E)\",east,ORDER[1],LENGTHUNIT[\"metre\",1]],"
+            + "AXIS[\"(N)\",north,ORDER[2],LENGTHUNIT[\"metre\",1]],"
+            + "ID[\"EPSG\",3857]]";
+
+    Map<String, Object> result = WKTProcessor.process(wkt);
+
+    assertThat(result).isNotNull();
+    assertThat(result.get("projName")).isEqualTo("merc");
+    assertThat(result.get("name")).isEqualTo("WGS 84 / Pseudo-Mercator");
+    assertThat(result.get("ellps")).isEqualTo("WGS84");
+    assertThat(result.get("a")).isEqualTo(6378137.0);
+    assertThat(result.get("rf")).isEqualTo(298.257223563);
+    assertThat(result.get("title")).isEqualTo("EPSG:3857");
+  }
 }
