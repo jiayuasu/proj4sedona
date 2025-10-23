@@ -129,6 +129,10 @@ public class ProjJsonParser {
     methodMap.put("Mercator", "merc");
     methodMap.put("Mercator 1SP", "merc");
     methodMap.put("Mercator 2SP", "merc");
+    methodMap.put("Mercator_1SP", "merc");
+    methodMap.put("Mercator_Auxiliary_Sphere", "merc");
+    methodMap.put("Popular Visualisation Pseudo Mercator", "merc");
+    methodMap.put("Popular Visualisation Pseudo-Mercator", "merc");
     methodMap.put("Albers Equal Area", "aea");
     methodMap.put("Miller Cylindrical", "mill");
     methodMap.put("Stereographic", "stere");
@@ -142,14 +146,38 @@ public class ProjJsonParser {
 
   /** Add ellipsoid and datum information to the PROJ string. */
   private static void addEllipsoidInfo(StringBuilder proj, ProjJsonDefinition definition) {
+    // Special handling for Web Mercator - use sphere instead of ellipsoid
+    boolean isWebMercator = false;
+    if (definition.getConversion() != null && definition.getConversion().getMethod() != null) {
+      String methodName = definition.getConversion().getMethod().getName();
+      if ("Popular Visualisation Pseudo Mercator".equals(methodName)
+          || "Popular Visualisation Pseudo-Mercator".equals(methodName)
+          || "Mercator_Auxiliary_Sphere".equals(methodName)) {
+        isWebMercator = true;
+        // Use sphere for Web Mercator
+        proj.append(" +a=6378137 +b=6378137");
+        return;
+      }
+    }
+
     // Check for datum information
+    ProjJsonDefinition.Ellipsoid ellipsoid = null;
     if (definition.getDatum() != null && definition.getDatum().getEllipsoid() != null) {
-      ProjJsonDefinition.Ellipsoid ellipsoid = definition.getDatum().getEllipsoid();
-      addEllipsoidParameters(proj, ellipsoid);
-    } else if (definition.getBaseCrs() != null
-        && definition.getBaseCrs().getDatum() != null
-        && definition.getBaseCrs().getDatum().getEllipsoid() != null) {
-      ProjJsonDefinition.Ellipsoid ellipsoid = definition.getBaseCrs().getDatum().getEllipsoid();
+      ellipsoid = definition.getDatum().getEllipsoid();
+    } else if (definition.getDatumEnsemble() != null
+        && definition.getDatumEnsemble().getEllipsoid() != null) {
+      ellipsoid = definition.getDatumEnsemble().getEllipsoid();
+    } else if (definition.getBaseCrs() != null) {
+      if (definition.getBaseCrs().getDatum() != null
+          && definition.getBaseCrs().getDatum().getEllipsoid() != null) {
+        ellipsoid = definition.getBaseCrs().getDatum().getEllipsoid();
+      } else if (definition.getBaseCrs().getDatumEnsemble() != null
+          && definition.getBaseCrs().getDatumEnsemble().getEllipsoid() != null) {
+        ellipsoid = definition.getBaseCrs().getDatumEnsemble().getEllipsoid();
+      }
+    }
+
+    if (ellipsoid != null) {
       addEllipsoidParameters(proj, ellipsoid);
     } else {
       // Default to WGS84
