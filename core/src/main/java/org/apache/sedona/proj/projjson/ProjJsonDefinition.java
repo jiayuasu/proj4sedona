@@ -38,6 +38,8 @@ public class ProjJsonDefinition {
   private BoundingBox bbox;
   private List<ProjJsonDefinition> components;
   private Datum datum;
+
+  @JsonProperty("datum_ensemble")
   private DatumEnsemble datumEnsemble;
 
   @JsonProperty("coordinate_system")
@@ -902,6 +904,7 @@ public class ProjJsonDefinition {
     /** Represents a method in a conversion */
     public static class Method {
       private String name;
+      private Id id;
 
       /**
        * Gets the name of the method.
@@ -919,6 +922,24 @@ public class ProjJsonDefinition {
        */
       public void setName(String name) {
         this.name = name;
+      }
+
+      /**
+       * Gets the ID of the method.
+       *
+       * @return the method ID
+       */
+      public Id getId() {
+        return id;
+      }
+
+      /**
+       * Sets the ID of the method.
+       *
+       * @param id the method ID
+       */
+      public void setId(Id id) {
+        this.id = id;
       }
     }
 
@@ -1066,6 +1087,7 @@ public class ProjJsonDefinition {
     /** Represents a method in a transformation */
     public static class Method {
       private String name;
+      private Id id;
 
       /**
        * Gets the name of the method.
@@ -1083,6 +1105,24 @@ public class ProjJsonDefinition {
        */
       public void setName(String name) {
         this.name = name;
+      }
+
+      /**
+       * Gets the ID of the method.
+       *
+       * @return the method ID
+       */
+      public Id getId() {
+        return id;
+      }
+
+      /**
+       * Sets the ID of the method.
+       *
+       * @param id the method ID
+       */
+      public void setId(Id id) {
+        this.id = id;
       }
     }
 
@@ -1212,7 +1252,13 @@ public class ProjJsonDefinition {
   public static class BaseCrs {
     private String type;
     private String name;
+    private Id id;
     private Datum datum;
+
+    @JsonProperty("datum_ensemble")
+    private DatumEnsemble datumEnsemble;
+
+    @JsonProperty("coordinate_system")
     private CoordinateSystem coordinateSystem;
 
     /**
@@ -1252,6 +1298,24 @@ public class ProjJsonDefinition {
     }
 
     /**
+     * Gets the ID of the base CRS.
+     *
+     * @return the base CRS ID
+     */
+    public Id getId() {
+      return id;
+    }
+
+    /**
+     * Sets the ID of the base CRS.
+     *
+     * @param id the base CRS ID
+     */
+    public void setId(Id id) {
+      this.id = id;
+    }
+
+    /**
      * Gets the datum of the base CRS.
      *
      * @return the base CRS datum
@@ -1267,6 +1331,24 @@ public class ProjJsonDefinition {
      */
     public void setDatum(Datum datum) {
       this.datum = datum;
+    }
+
+    /**
+     * Gets the datum ensemble of the base CRS.
+     *
+     * @return the base CRS datum ensemble
+     */
+    public DatumEnsemble getDatumEnsemble() {
+      return datumEnsemble;
+    }
+
+    /**
+     * Sets the datum ensemble of the base CRS.
+     *
+     * @param datumEnsemble the base CRS datum ensemble
+     */
+    public void setDatumEnsemble(DatumEnsemble datumEnsemble) {
+      this.datumEnsemble = datumEnsemble;
     }
 
     /**

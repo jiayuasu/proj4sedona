@@ -16,3 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+package org.apache.sedona.proj.wkt;
+
+/** Enum representing different WKT versions. */
+public enum WKTVersion {
+  WKT1,
+  WKT2_2015,
+  WKT2_2019
+}

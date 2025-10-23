@@ -281,6 +281,13 @@ public class Projection {
     this.ellps = "wgs84";
     this.datumCode = "WGS84";
     this.units = "m";
+
+    // Initialize ellipsoid parameters to NaN to distinguish between unset and explicitly set to 0
+    // NaN allows us to detect missing values and fall back to ellipsoid definitions
+    // Validation in calculateDerivedParameters() ensures these are properly set before use
+    this.a = Double.NaN;
+    this.b = Double.NaN;
+    this.rf = Double.NaN;
   }
 
   /**
@@ -300,17 +307,84 @@ public class Projection {
     // Handle WKT strings (start with GEOGCS, PROJCS, etc.)
     else if (srsCode.startsWith("GEOGCS")
         || srsCode.startsWith("PROJCS")
+        || srsCode.startsWith("GEOGCRS")
         || srsCode.startsWith("GEODCRS")
         || srsCode.startsWith("PROJCRS")) {
       initializeFromWKT(srsCode);
     }
-    // Handle simple cases
+    // Handle EPSG codes
     else if ("WGS84".equals(srsCode) || "EPSG:4326".equals(srsCode)) {
       initializeLongLat();
     } else if ("EPSG:3857".equals(srsCode) || "GOOGLE".equals(srsCode)) {
       initializeMercator();
+    } else if ("EPSG:4269".equals(srsCode)) {
+      // NAD83 (long/lat)
+      initializeFromProjString(
+          "+title=NAD83 (long/lat) +proj=longlat +a=6378137.0 +b=6356752.31414036 +ellps=GRS80 +datum=NAD83 +units=degrees");
+    } else if (srsCode.startsWith("EPSG:326") || srsCode.startsWith("EPSG:327")) {
+      // UTM zones (EPSG:32601-32660 for North, EPSG:32701-32760 for South)
+      handleUTMZone(srsCode);
+    } else if (srsCode.startsWith("EPSG:")) {
+      // Try to fetch from spatialreference.org as fallback
+      fetchFromSpatialReference(srsCode);
     } else {
       throw new IllegalArgumentException("Unsupported SRS code: " + srsCode);
+    }
+  }
+
+  /**
+   * Fetches CRS definition from spatialreference.org for unknown EPSG codes. Uses the
+   * EpsgDefinitionCache to avoid redundant network calls for the same EPSG code.
+   *
+   * @param srsCode the EPSG code to fetch
+   */
+  private void fetchFromSpatialReference(String srsCode) {
+    try {
+      // Use the dedicated EPSG definition cache
+      String projString = org.apache.sedona.proj.cache.EpsgDefinitionCache.getDefinition(srsCode);
+
+      // Initialize the projection from the cached/fetched PROJ string
+      initializeFromProjString(projString);
+
+    } catch (java.io.IOException e) {
+      throw new IllegalArgumentException(
+          "Failed to fetch EPSG code from spatialreference.org: "
+              + srsCode
+              + " - "
+              + e.getMessage());
+    }
+  }
+
+  /**
+   * Handles UTM zone EPSG codes (EPSG:32601-32660 for North, EPSG:32701-32760 for South).
+   *
+   * @param srsCode the EPSG code for a UTM zone
+   */
+  private void handleUTMZone(String srsCode) {
+    try {
+      int epsgCode = Integer.parseInt(srsCode.substring(5)); // Extract number after "EPSG:"
+
+      int zone;
+      boolean south = false;
+
+      if (epsgCode >= 32601 && epsgCode <= 32660) {
+        // Northern hemisphere
+        zone = epsgCode - 32600;
+        south = false;
+      } else if (epsgCode >= 32701 && epsgCode <= 32760) {
+        // Southern hemisphere
+        zone = epsgCode - 32700;
+        south = true;
+      } else {
+        throw new IllegalArgumentException("Invalid UTM zone EPSG code: " + srsCode);
+      }
+
+      // Build PROJ string for UTM zone
+      String projString =
+          "+proj=utm +zone=" + zone + (south ? " +south" : "") + " +datum=WGS84 +units=m";
+      initializeFromProjString(projString);
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("Invalid EPSG code format: " + srsCode);
     }
   }
 
@@ -527,6 +601,12 @@ public class Projection {
       // Set transformation methods based on projection type
       initializeProjectionMethods();
 
+      // For Web Mercator (EPSG:3857), force spherical approximation
+      if ("merc".equals(this.projName)
+          && (wktDef.get("title") != null && wktDef.get("title").toString().contains("3857"))) {
+        this.sphere = true;
+      }
+
       // Initialize projection-specific parameters
       if (this.init != null) {
         this.init.initialize(this);
@@ -657,6 +737,10 @@ public class Projection {
     // Calculate derived parameters
     calculateDerivedParameters();
 
+    // For EPSG:3857 (Web Mercator), force spherical approximation
+    // This is the standard for Web Mercator as defined by EPSG
+    this.sphere = true;
+
     // Set datum
     this.datum = Datum.getWGS84();
 
@@ -678,6 +762,14 @@ public class Projection {
 
   /** Calculates derived ellipsoid parameters. */
   private void calculateDerivedParameters() {
+    // Validate that the semi-major axis has been properly initialized
+    // This parameter is critical for all projection calculations
+    if (Double.isNaN(this.a)) {
+      throw new IllegalStateException(
+          "Ellipsoid semi-major axis (a) must be defined. "
+              + "Ensure a valid ellipsoid is specified or provide explicit ellipsoid parameters.");
+    }
+
     if (Double.isNaN(this.b) && !Double.isNaN(this.rf)) {
       // Calculate b from a and rf
       this.b = this.a * (1.0 - 1.0 / this.rf);

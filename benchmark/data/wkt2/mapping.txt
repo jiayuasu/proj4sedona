@@ -1,0 +1,7 @@
+# WKT2 key to filename mapping
+WGS84=wgs84.wkt
+WebMercator=webmercator.wkt
+UTM_19N=utm_19n.wkt
+NAD83_Vermont=nad83_vermont.wkt
+NAD83=nad83.wkt
+

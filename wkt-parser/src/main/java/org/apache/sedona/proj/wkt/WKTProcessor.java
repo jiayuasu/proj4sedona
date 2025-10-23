@@ -30,6 +30,7 @@ public class WKTProcessor {
     "PROJECTEDCRS",
     "PROJCRS",
     "GEOGCS",
+    "GEOGCRS", // WKT2 version of GEOGCS
     "GEOCCS",
     "PROJCS",
     "LOCAL_CS",
@@ -50,8 +51,8 @@ public class WKTProcessor {
   @SuppressWarnings("unchecked")
   public static Map<String, Object> process(Object wkt) throws WKTParseException {
     if (wkt instanceof Map) {
-      // TODO: Handle PROJJSON transformation
-      return (Map<String, Object>) wkt;
+      // Handle PROJJSON transformation
+      return PROJJSONTransformer.transform((Map<String, Object>) wkt);
     }
 
     if (!(wkt instanceof String)) {
@@ -60,9 +61,19 @@ public class WKTProcessor {
 
     String wktString = (String) wkt;
 
+    // Detect WKT version
+    WKTVersion version = WKTVersionDetector.detectVersion(wktString);
+
     // Parse the WKT string
     List<Object> lisp = WKTParser.parseString(wktString);
 
+    // If WKT2, use PROJJSON builder approach
+    if (version == WKTVersion.WKT2_2015 || version == WKTVersion.WKT2_2019) {
+      Map<String, Object> projjson = PROJJSONBuilder.build(lisp);
+      return PROJJSONTransformer.transform(projjson);
+    }
+
+    // Otherwise use WKT1 approach
     // Convert to object structure
     Map<String, Object> obj = new HashMap<>();
     SExpressionProcessor.sExpr(lisp, obj);
@@ -128,7 +139,7 @@ public class WKTProcessor {
     }
 
     // Set projection name
-    if ("GEOGCS".equals(wkt.get("type"))) {
+    if ("GEOGCS".equals(wkt.get("type")) || "GEOGCRS".equals(wkt.get("type"))) {
       wkt.put("projName", "longlat");
     } else if ("LOCAL_CS".equals(wkt.get("type"))) {
       wkt.put("projName", "identity");

@@ -11,6 +11,7 @@ import sys
 import psutil
 import math
 from typing import Dict, Any, List, Tuple
+from conftest import map_scenario_to_crs_format
 
 
 @pytest.mark.performance
@@ -53,7 +54,7 @@ class TestPerformanceBenchmarks:
             print(f"\n📊 Testing WKT2: {scenario['name']}")
             
             # Map scenario to WKT2 definitions
-            wkt2_scenario = self._map_scenario_to_crs_format(scenario, "wkt2")
+            wkt2_scenario = map_scenario_to_crs_format(scenario, "wkt2")
             
             # Run Java benchmark
             java_result = java_runner.run_benchmark(wkt2_scenario, benchmark_iterations, crs_format="wkt2", wkt2_defs=wkt2_definitions)
@@ -81,7 +82,7 @@ class TestPerformanceBenchmarks:
             print(f"\n📊 Testing PROJJSON: {scenario['name']}")
             
             # Map scenario to PROJJSON definitions
-            projjson_scenario = self._map_scenario_to_crs_format(scenario, "projjson")
+            projjson_scenario = map_scenario_to_crs_format(scenario, "projjson")
             
             # Run Java benchmark
             java_result = java_runner.run_benchmark(projjson_scenario, benchmark_iterations, crs_format="projjson", projjson_defs=projjson_definitions)
@@ -117,13 +118,13 @@ class TestPerformanceBenchmarks:
                 results_row["epsg_python"] = epsg_python_tps
                 
                 # Test WKT2
-                wkt2_scenario = self._map_scenario_to_crs_format(scenario, "wkt2")
+                wkt2_scenario = map_scenario_to_crs_format(scenario, "wkt2")
                 wkt2_java_tps, wkt2_python_tps = self._run_batch_format_test(batch_java_runner, batch_python_runner, wkt2_scenario, batch_size, "wkt2", wkt2_definitions, benchmark_iterations=benchmark_iterations)
                 results_row["wkt2_java"] = wkt2_java_tps
                 results_row["wkt2_python"] = wkt2_python_tps
                 
                 # Test PROJJSON
-                projjson_scenario = self._map_scenario_to_crs_format(scenario, "projjson")
+                projjson_scenario = map_scenario_to_crs_format(scenario, "projjson")
                 projjson_java_tps, projjson_python_tps = self._run_batch_format_test(batch_java_runner, batch_python_runner, projjson_scenario, batch_size, "projjson", None, projjson_definitions, benchmark_iterations=benchmark_iterations)
                 results_row["projjson_java"] = projjson_java_tps
                 results_row["projjson_python"] = projjson_python_tps
@@ -153,28 +154,6 @@ class TestPerformanceBenchmarks:
         
         return java_tps, python_tps
     
-    def _map_scenario_to_crs_format(self, scenario, crs_format):
-        """Map scenario to a specific CRS format (wkt2 or projjson)."""
-        mapped_scenario = scenario.copy()
-        
-        # Map EPSG codes to CRS format keys
-        epsg_mapping = {
-            "EPSG:4326": "WGS84",
-            "EPSG:3857": "WebMercator",
-            "EPSG:32619": "UTM_19N",
-            "EPSG:32145": "Lambert_Conic",
-            "EPSG:4269": "NAD83"
-        }
-        
-        if crs_format == "wkt2":
-            mapped_scenario['wkt2_from'] = epsg_mapping.get(scenario['epsg_from'], 'WGS84')
-            mapped_scenario['wkt2_to'] = epsg_mapping.get(scenario['epsg_to'], 'WebMercator')
-        elif crs_format == "projjson":
-            mapped_scenario['projjson_from'] = epsg_mapping.get(scenario['epsg_from'], 'WGS84')
-            mapped_scenario['projjson_to'] = epsg_mapping.get(scenario['epsg_to'], 'WebMercator')
-        
-        return mapped_scenario
-    
     def _parse_benchmark_output(self, output: str) -> Dict[str, Any]:
         """Parse benchmark output to extract metrics (works for Java, Python, and batch)."""
         lines = output.split('\n')
@@ -203,21 +182,36 @@ class TestPerformanceBenchmarks:
         for row in batch_results:
             batch_size = row["batch_size"]
             
+            # Helper to ensure numeric values
+            # Returns 0 for conversion failures, which is acceptable for missing/invalid 
+            # throughput values as they indicate no performance data was collected
+            def to_float(val):
+                try:
+                    return float(val) if val else 0
+                except (TypeError, ValueError):
+                    return 0
+            
             # EPSG
-            epsg_speedup = row["epsg_java"] / row["epsg_python"] if row["epsg_python"] > 0 else 0
+            epsg_java = to_float(row["epsg_java"])
+            epsg_python = to_float(row["epsg_python"])
+            epsg_speedup = epsg_java / epsg_python if epsg_python > 0 else 0
             epsg_speedup_str = f"{epsg_speedup:.2f}x"
             
             # WKT2
-            wkt2_speedup = row["wkt2_java"] / row["wkt2_python"] if row["wkt2_python"] > 0 else 0
+            wkt2_java = to_float(row["wkt2_java"])
+            wkt2_python = to_float(row["wkt2_python"])
+            wkt2_speedup = wkt2_java / wkt2_python if wkt2_python > 0 else 0
             wkt2_speedup_str = f"{wkt2_speedup:.2f}x"
             
             # PROJJSON
-            projjson_speedup = row["projjson_java"] / row["projjson_python"] if row["projjson_python"] > 0 else 0
+            projjson_java = to_float(row["projjson_java"])
+            projjson_python = to_float(row["projjson_python"])
+            projjson_speedup = projjson_java / projjson_python if projjson_python > 0 else 0
             projjson_speedup_str = f"{projjson_speedup:.2f}x"
             
-            print(f"| {batch_size:>12,} | {row['epsg_java']:>15,.0f} | {row['epsg_python']:>15,.0f} | {epsg_speedup_str:>13} | "
-                  f"{row['wkt2_java']:>15,.0f} | {row['wkt2_python']:>15,.0f} | {wkt2_speedup_str:>13} | "
-                  f"{row['projjson_java']:>15,.0f} | {row['projjson_python']:>15,.0f} | {projjson_speedup_str:>16} |")
+            print(f"| {batch_size:>12,} | {epsg_java:>15,.0f} | {epsg_python:>15,.0f} | {epsg_speedup_str:>13} | "
+                  f"{wkt2_java:>15,.0f} | {wkt2_python:>15,.0f} | {wkt2_speedup_str:>13} | "
+                  f"{projjson_java:>15,.0f} | {projjson_python:>15,.0f} | {projjson_speedup_str:>16} |")
         
         print(f"{'='*180}")
         print("💡 Legend: Speedup > 1.0 = Java faster, Speedup < 1.0 = Python faster")
@@ -268,64 +262,3 @@ class TestPerformanceBenchmarks:
         
         print(f"{'='*140}")
 
-
-@pytest.mark.performance
-class TestBatchPerformanceBenchmarks:
-    """Batch transformation performance benchmark tests."""
-    
-    def test_batch_wgs84_to_webmercator(self, batch_java_runner, batch_python_runner, batch_test_scenarios, wkt2_definitions, projjson_definitions, benchmark_iterations):
-        """Test batch WGS84 to Web Mercator transformations."""
-        self._run_batch_test(batch_java_runner, batch_python_runner, batch_test_scenarios, wkt2_definitions, projjson_definitions, benchmark_iterations, 0, "Testing batch WGS84 to Web Mercator...", 100)
-    
-    def test_batch_datum_shift(self, batch_java_runner, batch_python_runner, batch_test_scenarios, wkt2_definitions, projjson_definitions, benchmark_iterations):
-        """Test batch datum shift transformations with CDN grid files."""
-        self._run_batch_test(batch_java_runner, batch_python_runner, batch_test_scenarios, wkt2_definitions, projjson_definitions, benchmark_iterations, 1, "Testing batch datum shift (NAD83 to WGS84)...", 50)
-    
-    def _run_batch_test(self, batch_java_runner, batch_python_runner, batch_test_scenarios, wkt2_definitions, projjson_definitions, benchmark_iterations, scenario_index, print_message, min_iterations):
-        """Common batch test logic."""
-        scenario = batch_test_scenarios[scenario_index]
-        
-        print(f"\n🚀 {print_message}")
-        
-        # Use helper methods from TestPerformanceBenchmarks
-        perf_benchmark = TestPerformanceBenchmarks()
-        
-        # Collect results for table
-        batch_results = []
-        
-        for batch_size in scenario['batch_sizes']:
-            results_row = {"batch_size": batch_size}
-            iterations = max(min_iterations, benchmark_iterations // batch_size)
-            
-            # Test EPSG
-            java_result = batch_java_runner.run_batch_benchmark(scenario, batch_size, iterations, "epsg")
-            python_result = batch_python_runner.run_batch_benchmark(scenario, batch_size, iterations, "epsg")
-            java_metrics = perf_benchmark._parse_benchmark_output(java_result["output"])
-            python_metrics = perf_benchmark._parse_benchmark_output(python_result["output"])
-            results_row["epsg_java"] = java_metrics.get("tps", 0)
-            results_row["epsg_python"] = python_metrics.get("tps", 0)
-            
-            # Test WKT2
-            wkt2_scenario = perf_benchmark._map_scenario_to_crs_format(scenario, "wkt2")
-            java_result = batch_java_runner.run_batch_benchmark(wkt2_scenario, batch_size, iterations, "wkt2", wkt2_definitions)
-            python_result = batch_python_runner.run_batch_benchmark(wkt2_scenario, batch_size, iterations, "wkt2", wkt2_definitions)
-            java_metrics = perf_benchmark._parse_benchmark_output(java_result["output"])
-            python_metrics = perf_benchmark._parse_benchmark_output(python_result["output"])
-            results_row["wkt2_java"] = java_metrics.get("tps", 0)
-            results_row["wkt2_python"] = python_metrics.get("tps", 0)
-            
-            # Test PROJJSON
-            projjson_scenario = perf_benchmark._map_scenario_to_crs_format(scenario, "projjson")
-            java_result = batch_java_runner.run_batch_benchmark(projjson_scenario, batch_size, iterations, "projjson", None, projjson_definitions)
-            python_result = batch_python_runner.run_batch_benchmark(projjson_scenario, batch_size, iterations, "projjson", None, projjson_definitions)
-            java_metrics = perf_benchmark._parse_benchmark_output(java_result["output"])
-            python_metrics = perf_benchmark._parse_benchmark_output(python_result["output"])
-            results_row["projjson_java"] = java_metrics.get("tps", 0)
-            results_row["projjson_python"] = python_metrics.get("tps", 0)
-            
-            batch_results.append(results_row)
-        
-        # Print summary table
-        perf_benchmark._print_batch_summary_table(scenario['name'], batch_results)
-    
-    

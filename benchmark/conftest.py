@@ -69,15 +69,15 @@ def test_scenarios():
             ]
         },
         {
-            "name": "WGS84 to Lambert Conformal Conic",
+            "name": "WGS84 to NAD83 Vermont (TM)",
             "epsg_from": "EPSG:4326",
             "epsg_to": "EPSG:32145",
             "cache_type": "local",
             "test_points": [
-                (-74.0, 40.7),   # New York, NY
-                (-73.9, 40.8),   # Brooklyn, NY
-                (-73.8, 40.7),   # Queens, NY
-                (-74.2, 40.6),   # Staten Island, NY
+                (-72.5, 44.0),   # Montpelier, VT (capital)
+                (-73.2, 44.5),   # Burlington area, VT
+                (-72.0, 43.5),   # Southern VT
+                (-72.8, 42.7),   # Bennington, VT
             ]
         },
         {
@@ -183,27 +183,25 @@ PROJCRS["WGS 84 / UTM zone 19N",
             LENGTHUNIT["metre",1]],
     ID["EPSG",32619]]
         """.strip(),
-        "Lambert_Conic": """
-PROJCRS["NAD83 / New York Long Island",
+        "NAD83_Vermont": """
+PROJCRS["NAD83 / Vermont",
     BASEGEOGCRS["NAD83",
         DATUM["North American Datum 1983",
             ELLIPSOID["GRS 1980",6378137,298.257222101,
                 LENGTHUNIT["metre",1]]],
         PRIMEM["Greenwich",0,
             ANGLEUNIT["degree",0.0174532925199433]]],
-    CONVERSION["SPCS83 New York Long Island zone (meters)",
-        METHOD["Lambert Conic Conformal (2SP)"],
-        PARAMETER["Latitude of false origin",40.1666666666667,
+    CONVERSION["SPCS83 Vermont zone (meter)",
+        METHOD["Transverse Mercator"],
+        PARAMETER["Latitude of natural origin",42.5,
             ANGLEUNIT["degree",0.0174532925199433]],
-        PARAMETER["Longitude of false origin",-74,
+        PARAMETER["Longitude of natural origin",-72.5,
             ANGLEUNIT["degree",0.0174532925199433]],
-        PARAMETER["Latitude of 1st standard parallel",40.6666666666667,
-            ANGLEUNIT["degree",0.0174532925199433]],
-        PARAMETER["Latitude of 2nd standard parallel",41.0333333333333,
-            ANGLEUNIT["degree",0.0174532925199433]],
-        PARAMETER["Easting at false origin",300000,
+        PARAMETER["Scale factor at natural origin",0.999964286,
+            SCALEUNIT["unity",1]],
+        PARAMETER["False easting",500000,
             LENGTHUNIT["metre",1]],
-        PARAMETER["Northing at false origin",0,
+        PARAMETER["False northing",0,
             LENGTHUNIT["metre",1]]],
     CS[Cartesian,2],
         AXIS["(E)",east,
@@ -245,7 +243,7 @@ def projjson_definitions():
         "WGS84": "EPSG:4326",
         "WebMercator": "EPSG:3857",
         "UTM_19N": "EPSG:32619",
-        "Lambert_Conic": "EPSG:32145",
+        "NAD83_Vermont": "EPSG:32145",
         "NAD83": "EPSG:4269"
     }
     
@@ -330,8 +328,9 @@ def _get_crs_strings(scenario, crs_format, wkt2_defs=None, projjson_defs=None):
         from_crs = scenario.get('epsg_from', scenario.get('from_crs', ''))
         to_crs = scenario.get('epsg_to', scenario.get('to_crs', ''))
     elif crs_format == "wkt2":
-        from_crs = wkt2_defs.get(scenario.get('wkt2_from', 'WGS84'), '')
-        to_crs = wkt2_defs.get(scenario.get('wkt2_to', 'WebMercator'), '')
+        # For file-based approach, return the key names instead of full WKT2 strings
+        from_crs = scenario.get('wkt2_from', 'WGS84')
+        to_crs = scenario.get('wkt2_to', 'WebMercator')
     elif crs_format == "projjson":
         from_crs = projjson_defs.get(scenario.get('projjson_from', 'WGS84'), {})
         to_crs = projjson_defs.get(scenario.get('projjson_to', 'WebMercator'), {})
@@ -341,9 +340,35 @@ def _get_crs_strings(scenario, crs_format, wkt2_defs=None, projjson_defs=None):
     return from_crs, to_crs
 
 
+def map_scenario_to_crs_format(scenario, crs_format):
+    """Map scenario EPSG codes to WKT2/PROJJSON format keys.
+    
+    Shared helper function used by both performance and accuracy tests.
+    """
+    mapped_scenario = scenario.copy()
+    
+    # Map EPSG codes to CRS format keys
+    epsg_mapping = {
+        "EPSG:4326": "WGS84",
+        "EPSG:3857": "WebMercator",
+        "EPSG:32619": "UTM_19N",
+        "EPSG:32145": "NAD83_Vermont",
+        "EPSG:4269": "NAD83"
+    }
+    
+    if crs_format == "wkt2":
+        mapped_scenario['wkt2_from'] = epsg_mapping.get(scenario['epsg_from'], 'WGS84')
+        mapped_scenario['wkt2_to'] = epsg_mapping.get(scenario['epsg_to'], 'WebMercator')
+    elif crs_format == "projjson":
+        mapped_scenario['projjson_from'] = epsg_mapping.get(scenario['epsg_from'], 'WGS84')
+        mapped_scenario['projjson_to'] = epsg_mapping.get(scenario['epsg_to'], 'WebMercator')
+    
+    return mapped_scenario
+
+
 @pytest.fixture
 def java_runner(proj4sedona_jar_path):
-    """Create a Java runner for Proj4Sedona benchmarks."""
+    """Create a unified Java runner for Proj4Sedona benchmarks."""
     
     class JavaRunner:
         def __init__(self, jar_paths):
@@ -356,16 +381,20 @@ def java_runner(proj4sedona_jar_path):
             # Get CRS strings based on format
             from_crs, to_crs = _get_crs_strings(scenario, crs_format, wkt2_defs, projjson_defs)
             
-            # Convert projjson dict to string for Java
+            # Convert projjson dict to JSON string for Java
             if crs_format == "projjson":
-                from_crs = str(from_crs)
-                to_crs = str(to_crs)
+                import json
+                from_crs = json.dumps(from_crs)
+                to_crs = json.dumps(to_crs)
             
             java_code = f'''
 import org.apache.sedona.proj.Proj4Sedona;
 import org.apache.sedona.proj.core.Point;
+import org.apache.sedona.proj.core.Projection;
+import org.apache.sedona.proj.projjson.ProjJsonDefinition;
 import java.util.List;
 import java.util.ArrayList;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class BenchmarkRunner {{
     public static void main(String[] args) {{
@@ -388,16 +417,52 @@ public class BenchmarkRunner {{
         
         System.out.println("=== Proj4Sedona Benchmark ===");
         System.out.println("Scenario: {scenario['name']}");
+        System.out.println("CRS Format: {crs_format}");
         System.out.println("From CRS: " + fromCrs);
         System.out.println("To CRS: " + toCrs);
         System.out.println("Test Points: " + testPoints.length);
         System.out.println("Iterations: " + iterations);
         
+        // Create projections based on CRS format
+        Projection fromProj = null;
+        Projection toProj = null;
+        
+        try {{
+            if ("{crs_format}" == "epsg") {{
+                fromProj = new Projection(fromCrs);
+                toProj = new Projection(toCrs);
+            }} else if ("{crs_format}" == "wkt2") {{
+                // Map WKT2 keys to filenames
+                java.util.Map<String, String> wkt2Files = new java.util.HashMap<>();
+                wkt2Files.put("WGS84", "data/wkt2/wgs84.wkt");
+                wkt2Files.put("WebMercator", "data/wkt2/webmercator.wkt");
+                wkt2Files.put("UTM_19N", "data/wkt2/utm_19n.wkt");
+                wkt2Files.put("NAD83_Vermont", "data/wkt2/nad83_vermont.wkt");
+                wkt2Files.put("NAD83", "data/wkt2/nad83.wkt");
+                
+                // Read WKT2 from files
+                String fromWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(wkt2Files.get(fromCrs))));
+                String toWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(wkt2Files.get(toCrs))));
+                fromProj = new Projection(fromWkt2);
+                toProj = new Projection(toWkt2);
+            }} else if ("{crs_format}" == "projjson") {{
+                // Use PROJJSON strings passed from Python
+                ObjectMapper mapper = new ObjectMapper();
+                ProjJsonDefinition fromDef = mapper.readValue(fromCrs, ProjJsonDefinition.class);
+                ProjJsonDefinition toDef = mapper.readValue(toCrs, ProjJsonDefinition.class);
+                fromProj = Proj4Sedona.fromProjJson(fromDef);
+                toProj = Proj4Sedona.fromProjJson(toDef);
+            }}
+        }} catch (Exception e) {{
+            System.err.println("Error creating projections: " + e.getMessage());
+            System.exit(1);
+        }}
+        
         // Accuracy test - single transformation
         System.out.println("\\nAccuracy Test Results:");
         for (int i = 0; i < testPoints.length; i++) {{
             try {{
-                Point result = Proj4Sedona.transform(fromCrs, toCrs, testPoints[i]);
+                Point result = Proj4Sedona.transform(fromProj, toProj, testPoints[i], false);
                 System.out.println(String.format("Point %d: (%.6f, %.6f) -> (%.6f, %.6f)", 
                     i+1, testPoints[i].x, testPoints[i].y, result.x, result.y));
             }} catch (Exception e) {{
@@ -413,7 +478,7 @@ public class BenchmarkRunner {{
         for (int i = 0; i < iterations; i++) {{
             for (Point point : testPoints) {{
                 try {{
-                    Proj4Sedona.transform(fromCrs, toCrs, point);
+                    Proj4Sedona.transform(fromProj, toProj, point, false);
                     successCount++;
                 }} catch (Exception e) {{
                     // Count failures
@@ -477,149 +542,6 @@ public class BenchmarkRunner {{
 
 
 @pytest.fixture
-def batch_java_runner(proj4sedona_jar_path):
-    """Create a Java runner for batch transformation benchmarks."""
-    
-    class BatchJavaRunner:
-        def __init__(self, jar_paths):
-            self.jar_paths = jar_paths
-            self.classpath = ":".join(jar_paths.values())
-        
-        def run_batch_benchmark(self, scenario, batch_size, iterations=1000, crs_format="epsg", wkt2_defs=None, projjson_defs=None):
-            """Run a Java batch transformation benchmark."""
-            
-            # Get CRS strings based on format
-            from_crs, to_crs = _get_crs_strings(scenario, crs_format, wkt2_defs, projjson_defs)
-            
-            # Convert projjson dict to string for Java
-            if crs_format == "projjson":
-                from_crs = str(from_crs)
-                to_crs = str(to_crs)
-            
-            # Use base test points and generate batch dynamically in Java
-            base_points = scenario['test_points']
-            
-            java_code = f'''
-import org.apache.sedona.proj.Proj4Sedona;
-import org.apache.sedona.proj.core.Point;
-import java.util.List;
-import java.util.ArrayList;
-
-public class BatchBenchmarkRunner {{
-    public static void main(String[] args) {{
-        String fromCrs = {_escape_java_string(from_crs)};
-        String toCrs = {_escape_java_string(to_crs)};
-        int batchSize = {batch_size};
-        int iterations = {iterations};
-        
-        // Base test points to cycle through
-        Point[] basePoints = {{
-'''
-            
-            # Add only base test points
-            for i, (x, y) in enumerate(base_points):
-                java_code += f'            new Point({x}, {y})'
-                if i < len(base_points) - 1:
-                    java_code += ','
-                java_code += '\n'
-            
-            java_code += f'''        }};
-        
-        // Generate full batch by cycling through base points
-        Point[] testPoints = new Point[batchSize];
-        for (int i = 0; i < batchSize; i++) {{
-            testPoints[i] = basePoints[i % basePoints.length];
-        }}
-        
-        System.out.println("=== Proj4Sedona Batch Benchmark ===");
-        System.out.println("Scenario: {scenario['name']}");
-        System.out.println("CRS Format: {crs_format}");
-        System.out.println("From CRS: " + fromCrs);
-        System.out.println("To CRS: " + toCrs);
-        System.out.println("Batch Size: " + batchSize);
-        System.out.println("Iterations: " + iterations);
-        
-        // Batch transformation test
-        System.out.println("\\nBatch Performance Test:");
-        long startTime = System.nanoTime();
-        int successCount = 0;
-        
-        for (int i = 0; i < iterations; i++) {{
-            try {{
-                // Create batch of points
-                List<Point> batch = new ArrayList<>();
-                for (Point point : testPoints) {{
-                    batch.add(point);
-                }}
-                
-                // Transform batch
-                List<Point> results = new ArrayList<>();
-                for (Point point : batch) {{
-                    Point result = Proj4Sedona.transform(fromCrs, toCrs, point);
-                    results.add(result);
-                    successCount++;
-                }}
-            }} catch (Exception e) {{
-                // Count failures
-            }}
-        }}
-        
-        long endTime = System.nanoTime();
-        double totalTimeMs = (endTime - startTime) / 1_000_000.0;
-        double avgTimeMs = totalTimeMs / (iterations * batchSize);
-        double tps = 1000.0 / avgTimeMs;
-        
-        System.out.println(String.format("Total time: %.2f ms", totalTimeMs));
-        System.out.println(String.format("Average per transformation: %.6f ms", avgTimeMs));
-        System.out.println(String.format("Transformations per second: %.0f", tps));
-        System.out.println(String.format("Success rate: %.2f%%", (double)successCount / (iterations * batchSize) * 100));
-        
-    }}
-}}
-'''
-            
-            # Write Java code to temporary file
-            import tempfile
-            import os
-            temp_dir = tempfile.mkdtemp()
-            java_file = os.path.join(temp_dir, 'BatchBenchmarkRunner.java')
-            with open(java_file, 'w') as f:
-                f.write(java_code)
-            
-            try:
-                # Compile
-                compile_cmd = ['javac', '-cp', self.classpath, java_file]
-                result = subprocess.run(compile_cmd, capture_output=True, text=True)
-                
-                if result.returncode != 0:
-                    raise RuntimeError(f"Java compilation failed: {result.stderr}")
-                
-                # Run
-                class_file = java_file.replace('.java', '.class')
-                run_cmd = ['java', '-cp', f'{self.classpath}:{os.path.dirname(class_file)}', 'BatchBenchmarkRunner']
-                
-                result = subprocess.run(run_cmd, capture_output=True, text=True)
-                
-                if result.returncode != 0:
-                    raise RuntimeError(f"Java execution failed: {result.stderr}")
-                
-                return {
-                    "output": result.stdout,
-                    "error": result.stderr,
-                    "returncode": result.returncode
-                }
-                
-            finally:
-                try:
-                    os.unlink(java_file)
-                    os.unlink(java_file.replace('.java', '.class'))
-                except OSError:
-                    pass
-    
-    return BatchJavaRunner(proj4sedona_jar_path)
-
-
-@pytest.fixture
 def python_runner():
     """Create a Python runner for pyproj benchmarks."""
     
@@ -669,8 +591,23 @@ def run_pyproj_benchmark():
         if "{crs_format}" == "epsg":
             transformer = pyproj.Transformer.from_crs(from_crs, to_crs, always_xy=True)
         elif "{crs_format}" == "wkt2":
-            from_crs_obj = pyproj.CRS.from_wkt(from_crs)
-            to_crs_obj = pyproj.CRS.from_wkt(to_crs)
+            # Map WKT2 keys to filenames
+            wkt2_files = {{
+                "WGS84": "data/wkt2/wgs84.wkt",
+                "WebMercator": "data/wkt2/webmercator.wkt",
+                "UTM_19N": "data/wkt2/utm_19n.wkt",
+                "NAD83_Vermont": "data/wkt2/nad83_vermont.wkt",
+                "NAD83": "data/wkt2/nad83.wkt"
+            }}
+            
+            # Read WKT2 from files
+            with open(wkt2_files.get(from_crs, "data/wkt2/wgs84.wkt"), 'r') as f:
+                from_wkt2 = f.read()
+            with open(wkt2_files.get(to_crs, "data/wkt2/webmercator.wkt"), 'r') as f:
+                to_wkt2 = f.read()
+            
+            from_crs_obj = pyproj.CRS.from_wkt(from_wkt2)
+            to_crs_obj = pyproj.CRS.from_wkt(to_wkt2)
             transformer = pyproj.Transformer.from_crs(from_crs_obj, to_crs_obj, always_xy=True)
         elif "{crs_format}" == "projjson":
             # Try to create CRS from PROJJSON dict
@@ -752,6 +689,204 @@ if __name__ == "__main__":
 
 
 @pytest.fixture
+def batch_java_runner(proj4sedona_jar_path):
+    """Create a Java runner for batch transformation benchmarks."""
+    
+    class BatchJavaRunner:
+        def __init__(self, jar_paths):
+            self.jar_paths = jar_paths
+            self.classpath = ":".join(jar_paths.values())
+        
+        def run_batch_benchmark(self, scenario, batch_size, iterations=1000, crs_format="epsg", wkt2_defs=None, projjson_defs=None):
+            """Run a Java batch transformation benchmark."""
+            
+            # Get CRS strings based on format
+            from_crs, to_crs = _get_crs_strings(scenario, crs_format, wkt2_defs, projjson_defs)
+            
+            # Convert projjson dict to JSON string for Java
+            if crs_format == "projjson":
+                import json
+                from_crs = json.dumps(from_crs)
+                to_crs = json.dumps(to_crs)
+            
+            # Generate test points for batch
+            test_points = scenario['test_points'] * (batch_size // len(scenario['test_points']) + 1)
+            test_points = test_points[:batch_size]
+            
+            # Prepare base points array for efficient initialization
+            base_points = scenario['test_points']
+            
+            java_code = f'''
+import org.apache.sedona.proj.Proj4Sedona;
+import org.apache.sedona.proj.core.Point;
+import org.apache.sedona.proj.core.Projection;
+import org.apache.sedona.proj.projjson.ProjJsonDefinition;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+class {{CLASS_NAME}} {{
+    
+    // Helper method to initialize test points
+    private static Point[] initializeTestPoints(int batchSize) {{
+        // Base test points
+        Point[] basePoints = {{
+'''
+            
+            # Add only the base test points (small array)
+            for i, (x, y) in enumerate(base_points):
+                java_code += f'            new Point({x}, {y})'
+                if i < len(base_points) - 1:
+                    java_code += ','
+                java_code += '\n'
+            
+            java_code += f'''        }};
+        
+        // Create batch by repeating base points
+        Point[] testPoints = new Point[batchSize];
+        for (int i = 0; i < batchSize; i++) {{
+            testPoints[i] = basePoints[i % basePoints.length];
+        }}
+        return testPoints;
+    }}
+    
+    public static void main(String[] args) {{
+        String fromCrs = {_escape_java_string(from_crs)};
+        String toCrs = {_escape_java_string(to_crs)};
+        int batchSize = {batch_size};
+        int iterations = {iterations};
+        
+        // Initialize test points using helper method
+        Point[] testPoints = initializeTestPoints(batchSize);
+        
+        System.out.println("=== Proj4Sedona Batch Benchmark ===");
+        System.out.println("Scenario: {scenario['name']}");
+        System.out.println("CRS Format: {crs_format}");
+        System.out.println("From CRS: " + fromCrs);
+        System.out.println("To CRS: " + toCrs);
+        System.out.println("Batch Size: " + batchSize);
+        System.out.println("Iterations: " + iterations);
+        
+        // Create projections based on CRS format
+        Projection fromProj = null;
+        Projection toProj = null;
+        
+        try {{
+            if ("{crs_format}" == "epsg") {{
+                fromProj = new Projection(fromCrs);
+                toProj = new Projection(toCrs);
+            }} else if ("{crs_format}" == "wkt2") {{
+                // Map WKT2 keys to filenames
+                java.util.Map<String, String> wkt2Files = new java.util.HashMap<>();
+                wkt2Files.put("WGS84", "data/wkt2/wgs84.wkt");
+                wkt2Files.put("WebMercator", "data/wkt2/webmercator.wkt");
+                wkt2Files.put("UTM_19N", "data/wkt2/utm_19n.wkt");
+                wkt2Files.put("NAD83_Vermont", "data/wkt2/nad83_vermont.wkt");
+                wkt2Files.put("NAD83", "data/wkt2/nad83.wkt");
+                
+                // Read WKT2 from files
+                String fromWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(wkt2Files.get(fromCrs))));
+                String toWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(wkt2Files.get(toCrs))));
+                fromProj = new Projection(fromWkt2);
+                toProj = new Projection(toWkt2);
+            }} else if ("{crs_format}" == "projjson") {{
+                // Use PROJJSON strings passed from Python
+                ObjectMapper mapper = new ObjectMapper();
+                ProjJsonDefinition fromDef = mapper.readValue(fromCrs, ProjJsonDefinition.class);
+                ProjJsonDefinition toDef = mapper.readValue(toCrs, ProjJsonDefinition.class);
+                fromProj = Proj4Sedona.fromProjJson(fromDef);
+                toProj = Proj4Sedona.fromProjJson(toDef);
+            }}
+        }} catch (Exception e) {{
+            System.err.println("Error creating projections: " + e.getMessage());
+            System.exit(1);
+        }}
+        
+        // Batch transformation test
+        System.out.println("\\nBatch Performance Test:");
+        long startTime = System.nanoTime();
+        int successCount = 0;
+        
+        try {{
+            for (int i = 0; i < iterations; i++) {{
+                for (Point point : testPoints) {{
+                    try {{
+                        Point result = Proj4Sedona.transform(fromProj, toProj, point, false);
+                        successCount++;
+                    }} catch (Exception e) {{
+                        // Count failed transformations
+                    }}
+                }}
+            }}
+        }} catch (Exception e) {{
+            System.err.println("Error during batch transformation: " + e.getMessage());
+        }}
+        
+        long endTime = System.nanoTime();
+        double totalTimeMs = (endTime - startTime) / 1_000_000.0;
+        double avgTimeMs = totalTimeMs / (iterations * batchSize);
+        double tps = 1000.0 / avgTimeMs;
+        double successRate = (successCount * 100.0) / (iterations * batchSize);
+        
+        System.out.println(String.format("Total time: %.2f ms", totalTimeMs));
+        System.out.println(String.format("Average per transformation: %.6f ms", avgTimeMs));
+        System.out.println(String.format("Transformations per second: %.0f", tps));
+        System.out.println(String.format("Success rate: %.2f%%", successRate));
+    }}
+}}
+'''
+            
+            # Write and compile Java code
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.java', delete=False, dir='.') as f:
+                java_file_path = f.name
+                java_file = os.path.basename(java_file_path)  # Get just the filename
+                class_name = java_file.replace('.java', '')
+                
+                # Substitute class name in the code
+                final_java_code = java_code.replace('{CLASS_NAME}', class_name)
+                f.write(final_java_code)
+            
+            try:
+                
+                # Compile
+                compile_result = subprocess.run(
+                    ['javac', '-cp', self.classpath, java_file],
+                    capture_output=True,
+                    text=True
+                )
+                
+                if compile_result.returncode != 0:
+                    return {
+                        "output": "",
+                        "error": f"Compilation failed: {compile_result.stderr}",
+                        "returncode": compile_result.returncode
+                    }
+                
+                # Run
+                run_result = subprocess.run(
+                    ['java', '-cp', f'{self.classpath}:.', class_name],
+                    capture_output=True,
+                    text=True
+                )
+                
+                return {
+                    "output": run_result.stdout,
+                    "error": run_result.stderr,
+                    "returncode": run_result.returncode
+                }
+                
+            finally:
+                # Clean up
+                try:
+                    os.unlink(java_file)
+                    class_file = java_file.replace('.java', '.class')
+                    if os.path.exists(class_file):
+                        os.unlink(class_file)
+                except OSError:
+                    pass
+    
+    return BatchJavaRunner(proj4sedona_jar_path)
+
+
+@pytest.fixture
 def batch_python_runner():
     """Create a Python runner for batch transformation benchmarks."""
     
@@ -797,8 +932,23 @@ def run_pyproj_batch_benchmark():
         if "{crs_format}" == "epsg":
             transformer = pyproj.Transformer.from_crs(from_crs, to_crs, always_xy=True)
         elif "{crs_format}" == "wkt2":
-            from_crs_obj = pyproj.CRS.from_wkt(from_crs)
-            to_crs_obj = pyproj.CRS.from_wkt(to_crs)
+            # Map WKT2 keys to filenames
+            wkt2_files = {{
+                "WGS84": "data/wkt2/wgs84.wkt",
+                "WebMercator": "data/wkt2/webmercator.wkt",
+                "UTM_19N": "data/wkt2/utm_19n.wkt",
+                "NAD83_Vermont": "data/wkt2/nad83_vermont.wkt",
+                "NAD83": "data/wkt2/nad83.wkt"
+            }}
+            
+            # Read WKT2 from files
+            with open(wkt2_files.get(from_crs, "data/wkt2/wgs84.wkt"), 'r') as f:
+                from_wkt2 = f.read()
+            with open(wkt2_files.get(to_crs, "data/wkt2/webmercator.wkt"), 'r') as f:
+                to_wkt2 = f.read()
+            
+            from_crs_obj = pyproj.CRS.from_wkt(from_wkt2)
+            to_crs_obj = pyproj.CRS.from_wkt(to_wkt2)
             transformer = pyproj.Transformer.from_crs(from_crs_obj, to_crs_obj, always_xy=True)
         elif "{crs_format}" == "projjson":
             # Try to create CRS from PROJJSON dict
@@ -871,15 +1021,6 @@ if __name__ == "__main__":
                     pass
     
     return BatchPythonRunner()
-
-
-@pytest.fixture
-def benchmark_results():
-    """Store benchmark results for comparison."""
-    return {
-        "java": {},
-        "python": {}
-    }
 
 
 def pytest_configure(config):

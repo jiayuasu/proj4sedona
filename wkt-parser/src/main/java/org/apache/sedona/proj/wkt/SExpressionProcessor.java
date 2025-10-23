@@ -89,32 +89,39 @@ public class SExpressionProcessor {
       return;
     }
 
-    if ("AUTHORITY".equals(key)) {
+    if ("AUTHORITY".equals(key) || "ID".equals(key)) {
       if (remaining.size() >= 2) {
         Map<String, Object> authority = new HashMap<>();
         authority.put(String.valueOf(remaining.get(0)), remaining.get(1));
-        obj.put(String.valueOf(key), authority);
+        // Store as AUTHORITY for WKT1 compatibility
+        obj.put("AUTHORITY", authority);
         return;
       }
     }
 
-    if ("UNIT".equals(key)) {
+    if ("UNIT".equals(key)
+        || "LENGTHUNIT".equals(key)
+        || "ANGLEUNIT".equals(key)
+        || "SCALEUNIT".equals(key)) {
       if (remaining.size() >= 2) {
         Map<String, Object> unit = new HashMap<>();
         unit.put("name", remaining.get(0));
         unit.put("convert", remaining.get(1));
-        obj.put(String.valueOf(key), unit);
+        // Store as UNIT for WKT1 compatibility
+        obj.put("UNIT", unit);
         return;
       }
     }
 
-    if ("SPHEROID".equals(key)) {
+    if ("SPHEROID".equals(key) || "ELLIPSOID".equals(key)) {
       if (remaining.size() >= 3) {
         Map<String, Object> spheroid = new HashMap<>();
         spheroid.put("name", remaining.get(0));
         spheroid.put("a", remaining.get(1));
         spheroid.put("rf", remaining.get(2));
-        obj.put(String.valueOf(key), spheroid);
+        // Store as both SPHEROID and ELLIPSOID for compatibility
+        obj.put("SPHEROID", spheroid);
+        obj.put("ELLIPSOID", spheroid);
         return;
       }
     }
