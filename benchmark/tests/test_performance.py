@@ -203,21 +203,34 @@ class TestPerformanceBenchmarks:
         for row in batch_results:
             batch_size = row["batch_size"]
             
+            # Helper to ensure numeric values
+            def to_float(val):
+                try:
+                    return float(val) if val else 0
+                except (TypeError, ValueError):
+                    return 0
+            
             # EPSG
-            epsg_speedup = row["epsg_java"] / row["epsg_python"] if row["epsg_python"] > 0 else 0
+            epsg_java = to_float(row["epsg_java"])
+            epsg_python = to_float(row["epsg_python"])
+            epsg_speedup = epsg_java / epsg_python if epsg_python > 0 else 0
             epsg_speedup_str = f"{epsg_speedup:.2f}x"
             
             # WKT2
-            wkt2_speedup = row["wkt2_java"] / row["wkt2_python"] if row["wkt2_python"] > 0 else 0
+            wkt2_java = to_float(row["wkt2_java"])
+            wkt2_python = to_float(row["wkt2_python"])
+            wkt2_speedup = wkt2_java / wkt2_python if wkt2_python > 0 else 0
             wkt2_speedup_str = f"{wkt2_speedup:.2f}x"
             
             # PROJJSON
-            projjson_speedup = row["projjson_java"] / row["projjson_python"] if row["projjson_python"] > 0 else 0
+            projjson_java = to_float(row["projjson_java"])
+            projjson_python = to_float(row["projjson_python"])
+            projjson_speedup = projjson_java / projjson_python if projjson_python > 0 else 0
             projjson_speedup_str = f"{projjson_speedup:.2f}x"
             
-            print(f"| {batch_size:>12,} | {row['epsg_java']:>15,.0f} | {row['epsg_python']:>15,.0f} | {epsg_speedup_str:>13} | "
-                  f"{row['wkt2_java']:>15,.0f} | {row['wkt2_python']:>15,.0f} | {wkt2_speedup_str:>13} | "
-                  f"{row['projjson_java']:>15,.0f} | {row['projjson_python']:>15,.0f} | {projjson_speedup_str:>16} |")
+            print(f"| {batch_size:>12,} | {epsg_java:>15,.0f} | {epsg_python:>15,.0f} | {epsg_speedup_str:>13} | "
+                  f"{wkt2_java:>15,.0f} | {wkt2_python:>15,.0f} | {wkt2_speedup_str:>13} | "
+                  f"{projjson_java:>15,.0f} | {projjson_python:>15,.0f} | {projjson_speedup_str:>16} |")
         
         print(f"{'='*180}")
         print("💡 Legend: Speedup > 1.0 = Java faster, Speedup < 1.0 = Python faster")
