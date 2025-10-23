@@ -11,6 +11,7 @@ import sys
 import psutil
 import math
 from typing import Dict, Any, List, Tuple
+from conftest import map_scenario_to_crs_format
 
 
 @pytest.mark.performance
@@ -53,7 +54,7 @@ class TestPerformanceBenchmarks:
             print(f"\n📊 Testing WKT2: {scenario['name']}")
             
             # Map scenario to WKT2 definitions
-            wkt2_scenario = self._map_scenario_to_crs_format(scenario, "wkt2")
+            wkt2_scenario = map_scenario_to_crs_format(scenario, "wkt2")
             
             # Run Java benchmark
             java_result = java_runner.run_benchmark(wkt2_scenario, benchmark_iterations, crs_format="wkt2", wkt2_defs=wkt2_definitions)
@@ -81,7 +82,7 @@ class TestPerformanceBenchmarks:
             print(f"\n📊 Testing PROJJSON: {scenario['name']}")
             
             # Map scenario to PROJJSON definitions
-            projjson_scenario = self._map_scenario_to_crs_format(scenario, "projjson")
+            projjson_scenario = map_scenario_to_crs_format(scenario, "projjson")
             
             # Run Java benchmark
             java_result = java_runner.run_benchmark(projjson_scenario, benchmark_iterations, crs_format="projjson", projjson_defs=projjson_definitions)
@@ -117,13 +118,13 @@ class TestPerformanceBenchmarks:
                 results_row["epsg_python"] = epsg_python_tps
                 
                 # Test WKT2
-                wkt2_scenario = self._map_scenario_to_crs_format(scenario, "wkt2")
+                wkt2_scenario = map_scenario_to_crs_format(scenario, "wkt2")
                 wkt2_java_tps, wkt2_python_tps = self._run_batch_format_test(batch_java_runner, batch_python_runner, wkt2_scenario, batch_size, "wkt2", wkt2_definitions, benchmark_iterations=benchmark_iterations)
                 results_row["wkt2_java"] = wkt2_java_tps
                 results_row["wkt2_python"] = wkt2_python_tps
                 
                 # Test PROJJSON
-                projjson_scenario = self._map_scenario_to_crs_format(scenario, "projjson")
+                projjson_scenario = map_scenario_to_crs_format(scenario, "projjson")
                 projjson_java_tps, projjson_python_tps = self._run_batch_format_test(batch_java_runner, batch_python_runner, projjson_scenario, batch_size, "projjson", None, projjson_definitions, benchmark_iterations=benchmark_iterations)
                 results_row["projjson_java"] = projjson_java_tps
                 results_row["projjson_python"] = projjson_python_tps
@@ -152,28 +153,6 @@ class TestPerformanceBenchmarks:
         python_tps = python_metrics.get("tps", 0)
         
         return java_tps, python_tps
-    
-    def _map_scenario_to_crs_format(self, scenario, crs_format):
-        """Map scenario to a specific CRS format (wkt2 or projjson)."""
-        mapped_scenario = scenario.copy()
-        
-        # Map EPSG codes to CRS format keys
-        epsg_mapping = {
-            "EPSG:4326": "WGS84",
-            "EPSG:3857": "WebMercator",
-            "EPSG:32619": "UTM_19N",
-            "EPSG:32145": "NAD83_Vermont",
-            "EPSG:4269": "NAD83"
-        }
-        
-        if crs_format == "wkt2":
-            mapped_scenario['wkt2_from'] = epsg_mapping.get(scenario['epsg_from'], 'WGS84')
-            mapped_scenario['wkt2_to'] = epsg_mapping.get(scenario['epsg_to'], 'WebMercator')
-        elif crs_format == "projjson":
-            mapped_scenario['projjson_from'] = epsg_mapping.get(scenario['epsg_from'], 'WGS84')
-            mapped_scenario['projjson_to'] = epsg_mapping.get(scenario['epsg_to'], 'WebMercator')
-        
-        return mapped_scenario
     
     def _parse_benchmark_output(self, output: str) -> Dict[str, Any]:
         """Parse benchmark output to extract metrics (works for Java, Python, and batch)."""

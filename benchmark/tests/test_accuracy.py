@@ -9,6 +9,7 @@ import os
 import sys
 import math
 from typing import Dict, Any, List, Tuple
+from conftest import map_scenario_to_crs_format
 
 
 @pytest.mark.accuracy
@@ -43,7 +44,7 @@ class TestAccuracyBenchmarks:
             print(f"\n📊 Testing WKT2 accuracy: {scenario['name']}")
             
             # Map scenario to WKT2 definitions
-            wkt2_scenario = self._map_scenario_to_crs_format(scenario, "wkt2")
+            wkt2_scenario = map_scenario_to_crs_format(scenario, "wkt2")
             
             # Run Java accuracy test
             java_result = java_runner.run_benchmark(wkt2_scenario, 1, crs_format="wkt2", wkt2_defs=wkt2_definitions)
@@ -66,7 +67,7 @@ class TestAccuracyBenchmarks:
             print(f"\n📊 Testing PROJJSON accuracy: {scenario['name']}")
             
             # Map scenario to PROJJSON definitions
-            projjson_scenario = self._map_scenario_to_crs_format(scenario, "projjson")
+            projjson_scenario = map_scenario_to_crs_format(scenario, "projjson")
             
             # Run Java accuracy test
             java_result = java_runner.run_benchmark(projjson_scenario, 1, crs_format="projjson", projjson_defs=projjson_definitions)
@@ -90,9 +91,9 @@ class TestAccuracyBenchmarks:
             
             # Get results for all CRS formats
             epsg_result = self._get_accuracy_result(java_runner, python_runner, scenario, "epsg")
-            wkt2_scenario = self._map_scenario_to_crs_format(scenario, "wkt2")
+            wkt2_scenario = map_scenario_to_crs_format(scenario, "wkt2")
             wkt2_result = self._get_accuracy_result(java_runner, python_runner, wkt2_scenario, "wkt2", wkt2_definitions)
-            projjson_scenario = self._map_scenario_to_crs_format(scenario, "projjson")
+            projjson_scenario = map_scenario_to_crs_format(scenario, "projjson")
             projjson_result = self._get_accuracy_result(java_runner, python_runner, projjson_scenario, "projjson", None, projjson_definitions)
             
             # Compare consistency between formats
@@ -116,11 +117,11 @@ class TestAccuracyBenchmarks:
                     wkt2_defs = None
                     projjson_defs = None
                 elif crs_format == "wkt2":
-                    test_scenario = self._map_scenario_to_crs_format(scenario, "wkt2")
+                    test_scenario = map_scenario_to_crs_format(scenario, "wkt2")
                     wkt2_defs = wkt2_definitions
                     projjson_defs = None
                 else:  # projjson
-                    test_scenario = self._map_scenario_to_crs_format(scenario, "projjson")
+                    test_scenario = map_scenario_to_crs_format(scenario, "projjson")
                     wkt2_defs = None
                     projjson_defs = projjson_definitions
                 
@@ -142,28 +143,6 @@ class TestAccuracyBenchmarks:
             "java": self._parse_accuracy_output(java_result["output"]),
             "python": self._parse_accuracy_output(python_result["output"])
         }
-    
-    def _map_scenario_to_crs_format(self, scenario, crs_format):
-        """Map scenario to a specific CRS format (wkt2 or projjson)."""
-        mapped_scenario = scenario.copy()
-        
-        # Map EPSG codes to CRS format keys
-        epsg_mapping = {
-            "EPSG:4326": "WGS84",
-            "EPSG:3857": "WebMercator",
-            "EPSG:32619": "UTM_19N",
-            "EPSG:32145": "NAD83_Vermont",
-            "EPSG:4269": "NAD83"
-        }
-        
-        if crs_format == "wkt2":
-            mapped_scenario['wkt2_from'] = epsg_mapping.get(scenario['epsg_from'], 'WGS84')
-            mapped_scenario['wkt2_to'] = epsg_mapping.get(scenario['epsg_to'], 'WebMercator')
-        elif crs_format == "projjson":
-            mapped_scenario['projjson_from'] = epsg_mapping.get(scenario['epsg_from'], 'WGS84')
-            mapped_scenario['projjson_to'] = epsg_mapping.get(scenario['epsg_to'], 'WebMercator')
-        
-        return mapped_scenario
     
     def _parse_accuracy_output(self, output: str) -> Dict[str, Any]:
         """Parse benchmark output to extract accuracy data."""
@@ -424,11 +403,11 @@ class TestEdgeCaseAccuracy:
                     wkt2_defs = None
                     projjson_defs = None
                 elif crs_format == "wkt2":
-                    test_scenario = accuracy_benchmark._map_scenario_to_crs_format(edge_case, "wkt2")
+                    test_scenario = map_scenario_to_crs_format(edge_case, "wkt2")
                     wkt2_defs = wkt2_definitions
                     projjson_defs = None
                 else:  # projjson
-                    test_scenario = accuracy_benchmark._map_scenario_to_crs_format(edge_case, "projjson")
+                    test_scenario = map_scenario_to_crs_format(edge_case, "projjson")
                     wkt2_defs = None
                     projjson_defs = projjson_definitions
                 
