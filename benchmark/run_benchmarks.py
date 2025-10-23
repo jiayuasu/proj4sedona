@@ -248,7 +248,7 @@ def main():
     
     # Run simple setup tests first
     print_section("Setup Verification", "🔧")
-    simple_result = run_benchmark_test("Setup Tests", "tests/test_simple.py", 1, 1)  # Run specific file, 1 iteration, no parallel
+    simple_result = run_benchmark_test("Setup Tests", "tests/test_simple.py", args.iterations, 1)  # Run specific file with user iterations, no parallel
     results.append(simple_result)
     
     # Check if setup tests passed

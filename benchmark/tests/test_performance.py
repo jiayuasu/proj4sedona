@@ -98,7 +98,7 @@ class TestPerformanceBenchmarks:
         # Print summary table
         self._print_summary_table(java_results, python_results, "PROJJSON")
     
-    def test_batch_performance_benchmark(self, batch_java_runner, batch_python_runner, batch_test_scenarios, wkt2_definitions, projjson_definitions):
+    def test_batch_performance_benchmark(self, batch_java_runner, batch_python_runner, batch_test_scenarios, wkt2_definitions, projjson_definitions, benchmark_iterations):
         """Batch transformation performance benchmark."""
         print("\n🚀 Running batch performance benchmark...")
         
@@ -112,19 +112,19 @@ class TestPerformanceBenchmarks:
                 results_row = {"batch_size": batch_size}
                 
                 # Test EPSG
-                epsg_java_tps, epsg_python_tps = self._run_batch_format_test(batch_java_runner, batch_python_runner, scenario, batch_size, "epsg")
+                epsg_java_tps, epsg_python_tps = self._run_batch_format_test(batch_java_runner, batch_python_runner, scenario, batch_size, "epsg", benchmark_iterations=benchmark_iterations)
                 results_row["epsg_java"] = epsg_java_tps
                 results_row["epsg_python"] = epsg_python_tps
                 
                 # Test WKT2
                 wkt2_scenario = self._map_scenario_to_wkt2(scenario, wkt2_definitions)
-                wkt2_java_tps, wkt2_python_tps = self._run_batch_format_test(batch_java_runner, batch_python_runner, wkt2_scenario, batch_size, "wkt2", wkt2_definitions)
+                wkt2_java_tps, wkt2_python_tps = self._run_batch_format_test(batch_java_runner, batch_python_runner, wkt2_scenario, batch_size, "wkt2", wkt2_definitions, benchmark_iterations=benchmark_iterations)
                 results_row["wkt2_java"] = wkt2_java_tps
                 results_row["wkt2_python"] = wkt2_python_tps
                 
                 # Test PROJJSON
                 projjson_scenario = self._map_scenario_to_projjson(scenario, projjson_definitions)
-                projjson_java_tps, projjson_python_tps = self._run_batch_format_test(batch_java_runner, batch_python_runner, projjson_scenario, batch_size, "projjson", None, projjson_definitions)
+                projjson_java_tps, projjson_python_tps = self._run_batch_format_test(batch_java_runner, batch_python_runner, projjson_scenario, batch_size, "projjson", None, projjson_definitions, benchmark_iterations=benchmark_iterations)
                 results_row["projjson_java"] = projjson_java_tps
                 results_row["projjson_python"] = projjson_python_tps
                 
@@ -133,9 +133,9 @@ class TestPerformanceBenchmarks:
             # Print summary table for this scenario
             self._print_batch_summary_table(scenario['name'], batch_results)
     
-    def _run_batch_format_test(self, java_runner, python_runner, scenario, batch_size, crs_format, wkt2_defs=None, projjson_defs=None):
+    def _run_batch_format_test(self, java_runner, python_runner, scenario, batch_size, crs_format, wkt2_defs=None, projjson_defs=None, benchmark_iterations=10000):
         """Run batch test for a specific CRS format."""
-        iterations = max(100, 10000 // batch_size)  # Adjust iterations based on batch size
+        iterations = max(100, benchmark_iterations // batch_size)  # Adjust iterations based on batch size
         
         # Run Java batch benchmark
         java_result = java_runner.run_batch_benchmark(scenario, batch_size, iterations, crs_format, wkt2_defs, projjson_defs)
@@ -304,7 +304,7 @@ class TestPerformanceBenchmarks:
 class TestBatchPerformanceBenchmarks:
     """Batch transformation performance benchmark tests."""
     
-    def test_batch_wgs84_to_webmercator(self, batch_java_runner, batch_python_runner, batch_test_scenarios, wkt2_definitions, projjson_definitions):
+    def test_batch_wgs84_to_webmercator(self, batch_java_runner, batch_python_runner, batch_test_scenarios, wkt2_definitions, projjson_definitions, benchmark_iterations):
         """Test batch WGS84 to Web Mercator transformations."""
         scenario = batch_test_scenarios[0]  # WGS84 to Web Mercator
         
@@ -320,7 +320,7 @@ class TestBatchPerformanceBenchmarks:
             results_row = {"batch_size": batch_size}
             
             # Test EPSG
-            iterations = max(100, 10000 // batch_size)
+            iterations = max(100, benchmark_iterations // batch_size)
             java_result = batch_java_runner.run_batch_benchmark(scenario, batch_size, iterations, "epsg")
             python_result = batch_python_runner.run_batch_benchmark(scenario, batch_size, iterations, "epsg")
             java_metrics = self._parse_batch_output(java_result["output"])
@@ -351,7 +351,7 @@ class TestBatchPerformanceBenchmarks:
         # Print summary table
         perf_benchmark._print_batch_summary_table(scenario['name'], batch_results)
     
-    def test_batch_datum_shift(self, batch_java_runner, batch_python_runner, batch_test_scenarios, wkt2_definitions, projjson_definitions):
+    def test_batch_datum_shift(self, batch_java_runner, batch_python_runner, batch_test_scenarios, wkt2_definitions, projjson_definitions, benchmark_iterations):
         """Test batch datum shift transformations with CDN grid files."""
         scenario = batch_test_scenarios[1]  # NAD83 to WGS84
         
@@ -365,7 +365,7 @@ class TestBatchPerformanceBenchmarks:
         
         for batch_size in scenario['batch_sizes']:
             results_row = {"batch_size": batch_size}
-            iterations = max(50, 5000 // batch_size)  # Fewer iterations for datum shift
+            iterations = max(50, benchmark_iterations // batch_size)  # Fewer iterations for datum shift
             
             # Test EPSG
             java_result = batch_java_runner.run_batch_benchmark(scenario, batch_size, iterations, "epsg")

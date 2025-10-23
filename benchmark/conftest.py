@@ -543,15 +543,28 @@ _OLD_projjson_definitions_UNUSED = {
 
 
 @pytest.fixture(scope="session")
-def batch_test_scenarios():
+def batch_test_scenarios(benchmark_iterations):
     """Batch transformation test scenarios with caching and datum shift."""
+    # Calculate batch sizes based on iterations to ensure largest batch doesn't exceed iterations
+    max_batch_size = min(100000, benchmark_iterations)
+    batch_sizes = []
+    
+    # Generate batch sizes that don't exceed iterations
+    for size in [100, 1000, 10000, 100000]:
+        if size <= max_batch_size:
+            batch_sizes.append(size)
+    
+    # If no standard sizes fit, use a smaller size
+    if not batch_sizes:
+        batch_sizes = [min(100, benchmark_iterations)]
+    
     return [
         {
             "name": "Batch WGS84 to Web Mercator (Local Cache)",
             "epsg_from": "EPSG:4326",
             "epsg_to": "EPSG:3857",
             "cache_type": "local",
-            "batch_sizes": [100, 1000, 10000, 100000],
+            "batch_sizes": batch_sizes,
             "test_points": [
                 (-71.0, 41.0), (-74.0, 40.7), (-87.6, 41.9), (-122.4, 37.8),
                 (0.0, 0.0), (2.3, 48.9), (139.7, 35.7), (-80.0, 25.0),
@@ -563,7 +576,7 @@ def batch_test_scenarios():
             "epsg_from": "EPSG:4269", 
             "epsg_to": "EPSG:4326",
             "cache_type": "cdn_grid",
-            "batch_sizes": [100, 1000, 10000],
+            "batch_sizes": [size for size in batch_sizes if size <= 10000],  # Limit datum shift to smaller batches
             "test_points": [
                 (-71.0, 41.0), (-74.0, 40.7), (-87.6, 41.9), (-122.4, 37.8),
                 (-80.0, 25.0), (-100.0, 50.0), (-120.0, 45.0), (-95.0, 30.0)
@@ -575,13 +588,19 @@ def batch_test_scenarios():
 @pytest.fixture(scope="session")
 def benchmark_iterations():
     """Number of iterations for performance benchmarks."""
-    return 10000
+    import os
+    return int(os.environ.get("BENCHMARK_ITERATIONS", 10000))
 
 
 @pytest.fixture(scope="session")
-def warmup_iterations():
+def warmup_iterations(benchmark_iterations):
     """Number of warmup iterations."""
-    return 100
+    # Set warmup to be 10% of benchmark iterations, but at least 1 and at most 100
+    # Ensure warmup is always less than benchmark_iterations
+    warmup = max(1, min(100, benchmark_iterations // 10))
+    if warmup >= benchmark_iterations:
+        warmup = max(1, benchmark_iterations - 1)
+    return warmup
 
 
 def _escape_java_string(s):
