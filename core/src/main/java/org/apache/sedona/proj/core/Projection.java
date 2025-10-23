@@ -282,7 +282,9 @@ public class Projection {
     this.datumCode = "WGS84";
     this.units = "m";
 
-    // Initialize ellipsoid parameters to NaN so they can be properly calculated later
+    // Initialize ellipsoid parameters to NaN to distinguish between unset and explicitly set to 0
+    // NaN allows us to detect missing values and fall back to ellipsoid definitions
+    // Validation in calculateDerivedParameters() ensures these are properly set before use
     this.a = Double.NaN;
     this.b = Double.NaN;
     this.rf = Double.NaN;
@@ -760,6 +762,14 @@ public class Projection {
 
   /** Calculates derived ellipsoid parameters. */
   private void calculateDerivedParameters() {
+    // Validate that the semi-major axis has been properly initialized
+    // This parameter is critical for all projection calculations
+    if (Double.isNaN(this.a)) {
+      throw new IllegalStateException(
+          "Ellipsoid semi-major axis (a) must be defined. "
+              + "Ensure a valid ellipsoid is specified or provide explicit ellipsoid parameters.");
+    }
+
     if (Double.isNaN(this.b) && !Double.isNaN(this.rf)) {
       // Calculate b from a and rf
       this.b = this.a * (1.0 - 1.0 / this.rf);

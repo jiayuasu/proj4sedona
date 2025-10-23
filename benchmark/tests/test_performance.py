@@ -183,6 +183,8 @@ class TestPerformanceBenchmarks:
             batch_size = row["batch_size"]
             
             # Helper to ensure numeric values
+            # Returns 0 for conversion failures, which is acceptable for missing/invalid 
+            # throughput values as they indicate no performance data was collected
             def to_float(val):
                 try:
                     return float(val) if val else 0
