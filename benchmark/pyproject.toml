@@ -1,0 +1,120 @@
+[project]
+name = "proj4sedona-benchmark"
+version = "1.0.0"
+description = "Comprehensive benchmark suite to compare Proj4Sedona (Java) with pyproj (Python) for coordinate system transformations"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    {name = "Proj4Sedona Team", email = "team@proj4sedona.org"}
+]
+license = {text = "Apache-2.0"}
+keywords = ["coordinate", "transformation", "benchmark", "proj4", "pyproj", "geospatial"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Software Development :: Testing",
+]
+
+dependencies = [
+    "numpy>=2.3.4",
+    "pyproj>=3.7.2",
+    "pytest>=8.4.2",
+    "pytest-cov>=7.0.0",
+    "pytest-html>=4.1.1",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
+    "requests>=2.32.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest-benchmark>=4.0.0",
+    "pytest-mock>=3.10.0",
+]
+analysis = [
+    "pandas>=1.5.0",
+    "numpy>=1.24.0",
+    "matplotlib>=3.6.0",
+    "seaborn>=0.12.0",
+]
+reporting = [
+    "jsonschema>=4.17.0",
+    "jinja2>=3.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/proj4js/proj4sedona"
+Repository = "https://github.com/proj4js/proj4sedona"
+Documentation = "https://github.com/proj4js/proj4sedona/blob/main/benchmark/README.md"
+Issues = "https://github.com/proj4js/proj4sedona/issues"
+
+[tool.pytest.ini_options]
+# Test discovery
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Markers
+markers = [
+    "performance: Performance benchmark tests",
+    "accuracy: Accuracy benchmark tests",
+    "comprehensive: Comprehensive accuracy tests",
+    "slow: Slow running tests",
+    "concurrent: Concurrent execution tests",
+    "local_cache: Tests using local cache (no external downloads)",
+    "cdn_grid: Tests using PROJ CDN grid files (datum shift transformations)"
+]
+
+# Output options
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "--disable-warnings",
+    "--color=yes",
+    "--durations=10",
+    "-W ignore::pytest.PytestUnknownMarkWarning"
+]
+
+# Test execution
+minversion = "6.0"
+timeout = 300
+
+# Logging
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(name)s: %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+# Coverage (if pytest-cov is installed)
+# addopts = ["--cov=benchmark", "--cov-report=html", "--cov-report=term-missing"]
+
+[tool.coverage.run]
+source = ["benchmark"]
+omit = [
+    "tests/*",
+    "venv/*",
+    ".venv/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest-benchmark>=4.0.0",
+    "pytest-mock>=3.10.0",
+]
