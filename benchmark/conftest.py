@@ -330,8 +330,9 @@ def _get_crs_strings(scenario, crs_format, wkt2_defs=None, projjson_defs=None):
         from_crs = scenario.get('epsg_from', scenario.get('from_crs', ''))
         to_crs = scenario.get('epsg_to', scenario.get('to_crs', ''))
     elif crs_format == "wkt2":
-        from_crs = wkt2_defs.get(scenario.get('wkt2_from', 'WGS84'), '')
-        to_crs = wkt2_defs.get(scenario.get('wkt2_to', 'WebMercator'), '')
+        # For file-based approach, return the key names instead of full WKT2 strings
+        from_crs = scenario.get('wkt2_from', 'WGS84')
+        to_crs = scenario.get('wkt2_to', 'WebMercator')
     elif crs_format == "projjson":
         from_crs = projjson_defs.get(scenario.get('projjson_from', 'WGS84'), {})
         to_crs = projjson_defs.get(scenario.get('projjson_to', 'WebMercator'), {})
@@ -407,9 +408,17 @@ public class BenchmarkRunner {{
                 fromProj = new Projection(fromCrs);
                 toProj = new Projection(toCrs);
             }} else if ("{crs_format}" == "wkt2") {{
+                // Map WKT2 keys to filenames
+                java.util.Map<String, String> wkt2Files = new java.util.HashMap<>();
+                wkt2Files.put("WGS84", "data/wkt2/wgs84.wkt");
+                wkt2Files.put("WebMercator", "data/wkt2/webmercator.wkt");
+                wkt2Files.put("UTM_19N", "data/wkt2/utm_19n.wkt");
+                wkt2Files.put("Lambert_Conic", "data/wkt2/lambert_conic.wkt");
+                wkt2Files.put("NAD83", "data/wkt2/nad83.wkt");
+                
                 // Read WKT2 from files
-                String fromWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("data/wkt2_wgs84.txt")));
-                String toWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("data/wkt2_webmercator.txt")));
+                String fromWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(wkt2Files.get(fromCrs))));
+                String toWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(wkt2Files.get(toCrs))));
                 fromProj = new Projection(fromWkt2);
                 toProj = new Projection(toWkt2);
             }} else if ("{crs_format}" == "projjson") {{
@@ -568,9 +577,17 @@ public class BatchBenchmarkRunner {{
                 fromProj = new Projection(fromCrs);
                 toProj = new Projection(toCrs);
             }} else if ("{crs_format}" == "wkt2") {{
+                // Map WKT2 keys to filenames
+                java.util.Map<String, String> wkt2Files = new java.util.HashMap<>();
+                wkt2Files.put("WGS84", "data/wkt2/wgs84.wkt");
+                wkt2Files.put("WebMercator", "data/wkt2/webmercator.wkt");
+                wkt2Files.put("UTM_19N", "data/wkt2/utm_19n.wkt");
+                wkt2Files.put("Lambert_Conic", "data/wkt2/lambert_conic.wkt");
+                wkt2Files.put("NAD83", "data/wkt2/nad83.wkt");
+                
                 // Read WKT2 from files
-                String fromWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("data/wkt2_wgs84.txt")));
-                String toWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("data/wkt2_webmercator.txt")));
+                String fromWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(wkt2Files.get(fromCrs))));
+                String toWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(wkt2Files.get(toCrs))));
                 fromProj = new Projection(fromWkt2);
                 toProj = new Projection(toWkt2);
             }} else if ("{crs_format}" == "projjson") {{
@@ -720,8 +737,23 @@ def run_pyproj_benchmark():
         if "{crs_format}" == "epsg":
             transformer = pyproj.Transformer.from_crs(from_crs, to_crs, always_xy=True)
         elif "{crs_format}" == "wkt2":
-            from_crs_obj = pyproj.CRS.from_wkt(from_crs)
-            to_crs_obj = pyproj.CRS.from_wkt(to_crs)
+            # Map WKT2 keys to filenames
+            wkt2_files = {{
+                "WGS84": "data/wkt2/wgs84.wkt",
+                "WebMercator": "data/wkt2/webmercator.wkt",
+                "UTM_19N": "data/wkt2/utm_19n.wkt",
+                "Lambert_Conic": "data/wkt2/lambert_conic.wkt",
+                "NAD83": "data/wkt2/nad83.wkt"
+            }}
+            
+            # Read WKT2 from files
+            with open(wkt2_files.get(from_crs, "data/wkt2/wgs84.wkt"), 'r') as f:
+                from_wkt2 = f.read()
+            with open(wkt2_files.get(to_crs, "data/wkt2/webmercator.wkt"), 'r') as f:
+                to_wkt2 = f.read()
+            
+            from_crs_obj = pyproj.CRS.from_wkt(from_wkt2)
+            to_crs_obj = pyproj.CRS.from_wkt(to_wkt2)
             transformer = pyproj.Transformer.from_crs(from_crs_obj, to_crs_obj, always_xy=True)
         elif "{crs_format}" == "projjson":
             # Try to create CRS from PROJJSON dict
@@ -848,8 +880,23 @@ def run_pyproj_batch_benchmark():
         if "{crs_format}" == "epsg":
             transformer = pyproj.Transformer.from_crs(from_crs, to_crs, always_xy=True)
         elif "{crs_format}" == "wkt2":
-            from_crs_obj = pyproj.CRS.from_wkt(from_crs)
-            to_crs_obj = pyproj.CRS.from_wkt(to_crs)
+            # Map WKT2 keys to filenames
+            wkt2_files = {{
+                "WGS84": "data/wkt2/wgs84.wkt",
+                "WebMercator": "data/wkt2/webmercator.wkt",
+                "UTM_19N": "data/wkt2/utm_19n.wkt",
+                "Lambert_Conic": "data/wkt2/lambert_conic.wkt",
+                "NAD83": "data/wkt2/nad83.wkt"
+            }}
+            
+            # Read WKT2 from files
+            with open(wkt2_files.get(from_crs, "data/wkt2/wgs84.wkt"), 'r') as f:
+                from_wkt2 = f.read()
+            with open(wkt2_files.get(to_crs, "data/wkt2/webmercator.wkt"), 'r') as f:
+                to_wkt2 = f.read()
+            
+            from_crs_obj = pyproj.CRS.from_wkt(from_wkt2)
+            to_crs_obj = pyproj.CRS.from_wkt(to_wkt2)
             transformer = pyproj.Transformer.from_crs(from_crs_obj, to_crs_obj, always_xy=True)
         elif "{crs_format}" == "projjson":
             # Try to create CRS from PROJJSON dict

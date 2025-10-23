@@ -281,6 +281,11 @@ public class Projection {
     this.ellps = "wgs84";
     this.datumCode = "WGS84";
     this.units = "m";
+
+    // Initialize ellipsoid parameters to NaN so they can be properly calculated later
+    this.a = Double.NaN;
+    this.b = Double.NaN;
+    this.rf = Double.NaN;
   }
 
   /**
@@ -527,6 +532,12 @@ public class Projection {
 
       // Set transformation methods based on projection type
       initializeProjectionMethods();
+
+      // For Web Mercator (EPSG:3857), force spherical approximation
+      if ("merc".equals(this.projName)
+          && (wktDef.get("title") != null && wktDef.get("title").toString().contains("3857"))) {
+        this.sphere = true;
+      }
 
       // Initialize projection-specific parameters
       if (this.init != null) {
