@@ -300,6 +300,7 @@ public class Projection {
     // Handle WKT strings (start with GEOGCS, PROJCS, etc.)
     else if (srsCode.startsWith("GEOGCS")
         || srsCode.startsWith("PROJCS")
+        || srsCode.startsWith("GEOGCRS")
         || srsCode.startsWith("GEODCRS")
         || srsCode.startsWith("PROJCRS")) {
       initializeFromWKT(srsCode);
@@ -656,6 +657,10 @@ public class Projection {
 
     // Calculate derived parameters
     calculateDerivedParameters();
+
+    // For EPSG:3857 (Web Mercator), force spherical approximation
+    // This is the standard for Web Mercator as defined by EPSG
+    this.sphere = true;
 
     // Set datum
     this.datum = Datum.getWGS84();
