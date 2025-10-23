@@ -470,7 +470,7 @@ public class BenchmarkRunner {{
                 try:
                     os.unlink(java_file)
                     os.unlink(java_file.replace('.java', '.class'))
-                except:
+                except OSError:
                     pass
     
     return JavaRunner(proj4sedona_jar_path)
@@ -613,7 +613,7 @@ public class BatchBenchmarkRunner {{
                 try:
                     os.unlink(java_file)
                     os.unlink(java_file.replace('.java', '.class'))
-                except:
+                except OSError:
                     pass
     
     return BatchJavaRunner(proj4sedona_jar_path)
@@ -745,7 +745,7 @@ if __name__ == "__main__":
             finally:
                 try:
                     os.unlink(python_file)
-                except:
+                except OSError:
                     pass
     
     return PythonRunner()
@@ -867,7 +867,7 @@ if __name__ == "__main__":
             finally:
                 try:
                     os.unlink(python_file)
-                except:
+                except OSError:
                     pass
     
     return BatchPythonRunner()

@@ -70,7 +70,7 @@ class SimpleTest {
         try:
             os.unlink(java_file)
             os.unlink(java_file.replace('.java', '.class'))
-        except:
+        except OSError:
             pass
 
 
