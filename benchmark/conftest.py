@@ -69,15 +69,15 @@ def test_scenarios():
             ]
         },
         {
-            "name": "WGS84 to Lambert Conformal Conic",
+            "name": "WGS84 to NAD83 Vermont (TM)",
             "epsg_from": "EPSG:4326",
             "epsg_to": "EPSG:32145",
             "cache_type": "local",
             "test_points": [
-                (-74.0, 40.7),   # New York, NY
-                (-73.9, 40.8),   # Brooklyn, NY
-                (-73.8, 40.7),   # Queens, NY
-                (-74.2, 40.6),   # Staten Island, NY
+                (-72.5, 44.0),   # Montpelier, VT (capital)
+                (-73.2, 44.5),   # Burlington area, VT
+                (-72.0, 43.5),   # Southern VT
+                (-72.8, 42.7),   # Bennington, VT
             ]
         },
         {
@@ -183,27 +183,25 @@ PROJCRS["WGS 84 / UTM zone 19N",
             LENGTHUNIT["metre",1]],
     ID["EPSG",32619]]
         """.strip(),
-        "Lambert_Conic": """
-PROJCRS["NAD83 / New York Long Island",
+        "NAD83_Vermont": """
+PROJCRS["NAD83 / Vermont",
     BASEGEOGCRS["NAD83",
         DATUM["North American Datum 1983",
             ELLIPSOID["GRS 1980",6378137,298.257222101,
                 LENGTHUNIT["metre",1]]],
         PRIMEM["Greenwich",0,
             ANGLEUNIT["degree",0.0174532925199433]]],
-    CONVERSION["SPCS83 New York Long Island zone (meters)",
-        METHOD["Lambert Conic Conformal (2SP)"],
-        PARAMETER["Latitude of false origin",40.1666666666667,
+    CONVERSION["SPCS83 Vermont zone (meter)",
+        METHOD["Transverse Mercator"],
+        PARAMETER["Latitude of natural origin",42.5,
             ANGLEUNIT["degree",0.0174532925199433]],
-        PARAMETER["Longitude of false origin",-74,
+        PARAMETER["Longitude of natural origin",-72.5,
             ANGLEUNIT["degree",0.0174532925199433]],
-        PARAMETER["Latitude of 1st standard parallel",40.6666666666667,
-            ANGLEUNIT["degree",0.0174532925199433]],
-        PARAMETER["Latitude of 2nd standard parallel",41.0333333333333,
-            ANGLEUNIT["degree",0.0174532925199433]],
-        PARAMETER["Easting at false origin",300000,
+        PARAMETER["Scale factor at natural origin",0.999964286,
+            SCALEUNIT["unity",1]],
+        PARAMETER["False easting",500000,
             LENGTHUNIT["metre",1]],
-        PARAMETER["Northing at false origin",0,
+        PARAMETER["False northing",0,
             LENGTHUNIT["metre",1]]],
     CS[Cartesian,2],
         AXIS["(E)",east,
@@ -245,7 +243,7 @@ def projjson_definitions():
         "WGS84": "EPSG:4326",
         "WebMercator": "EPSG:3857",
         "UTM_19N": "EPSG:32619",
-        "Lambert_Conic": "EPSG:32145",
+        "NAD83_Vermont": "EPSG:32145",
         "NAD83": "EPSG:4269"
     }
     
@@ -413,7 +411,7 @@ public class BenchmarkRunner {{
                 wkt2Files.put("WGS84", "data/wkt2/wgs84.wkt");
                 wkt2Files.put("WebMercator", "data/wkt2/webmercator.wkt");
                 wkt2Files.put("UTM_19N", "data/wkt2/utm_19n.wkt");
-                wkt2Files.put("Lambert_Conic", "data/wkt2/lambert_conic.wkt");
+                wkt2Files.put("NAD83_Vermont", "data/wkt2/nad83_vermont.wkt");
                 wkt2Files.put("NAD83", "data/wkt2/nad83.wkt");
                 
                 // Read WKT2 from files
@@ -580,7 +578,7 @@ public class BatchBenchmarkRunner {{
                 wkt2Files.put("WGS84", "data/wkt2/wgs84.wkt");
                 wkt2Files.put("WebMercator", "data/wkt2/webmercator.wkt");
                 wkt2Files.put("UTM_19N", "data/wkt2/utm_19n.wkt");
-                wkt2Files.put("Lambert_Conic", "data/wkt2/lambert_conic.wkt");
+                wkt2Files.put("NAD83_Vermont", "data/wkt2/nad83_vermont.wkt");
                 wkt2Files.put("NAD83", "data/wkt2/nad83.wkt");
                 
                 // Read WKT2 from files
@@ -738,7 +736,7 @@ def run_pyproj_benchmark():
                 "WGS84": "data/wkt2/wgs84.wkt",
                 "WebMercator": "data/wkt2/webmercator.wkt",
                 "UTM_19N": "data/wkt2/utm_19n.wkt",
-                "Lambert_Conic": "data/wkt2/lambert_conic.wkt",
+                "NAD83_Vermont": "data/wkt2/nad83_vermont.wkt",
                 "NAD83": "data/wkt2/nad83.wkt"
             }}
             
@@ -921,7 +919,7 @@ class {{CLASS_NAME}} {{
                 wkt2Files.put("WGS84", "data/wkt2/wgs84.wkt");
                 wkt2Files.put("WebMercator", "data/wkt2/webmercator.wkt");
                 wkt2Files.put("UTM_19N", "data/wkt2/utm_19n.wkt");
-                wkt2Files.put("Lambert_Conic", "data/wkt2/lambert_conic.wkt");
+                wkt2Files.put("NAD83_Vermont", "data/wkt2/nad83_vermont.wkt");
                 wkt2Files.put("NAD83", "data/wkt2/nad83.wkt");
                 
                 // Read WKT2 from files
@@ -1079,7 +1077,7 @@ def run_pyproj_batch_benchmark():
                 "WGS84": "data/wkt2/wgs84.wkt",
                 "WebMercator": "data/wkt2/webmercator.wkt",
                 "UTM_19N": "data/wkt2/utm_19n.wkt",
-                "Lambert_Conic": "data/wkt2/lambert_conic.wkt",
+                "NAD83_Vermont": "data/wkt2/nad83_vermont.wkt",
                 "NAD83": "data/wkt2/nad83.wkt"
             }}
             

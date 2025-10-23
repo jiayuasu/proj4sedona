@@ -2,6 +2,6 @@
 WGS84=wgs84.wkt
 WebMercator=webmercator.wkt
 UTM_19N=utm_19n.wkt
-Lambert_Conic=lambert_conic.wkt
+NAD83_Vermont=nad83_vermont.wkt
 NAD83=nad83.wkt
 

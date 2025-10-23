@@ -152,7 +152,7 @@ class TestAccuracyBenchmarks:
             "EPSG:4326": "WGS84",
             "EPSG:3857": "WebMercator",
             "EPSG:32619": "UTM_19N",
-            "EPSG:32145": "Lambert_Conic",
+            "EPSG:32145": "NAD83_Vermont",
             "EPSG:4269": "NAD83"
         }
         
@@ -381,10 +381,9 @@ class TestEdgeCaseAccuracy:
                 "epsg_to": "EPSG:3857",
                 "test_points": [
                     (0.0, 0.0),      # Equator/Prime Meridian
-                    (180.0, 0.0),    # International Date Line
-                    (-180.0, 0.0),   # International Date Line (negative)
-                    (0.0, 90.0),     # North Pole
-                    (0.0, -90.0),    # South Pole
+                    (180.0, 0.0),    # International Date Line at equator
+                    (-180.0, 0.0),   # International Date Line (negative) at equator
+                    # Note: Poles (±90°) excluded - Web Mercator only supports ~±85.05° latitude
                 ]
             },
             {
@@ -396,6 +395,17 @@ class TestEdgeCaseAccuracy:
                     (-179.0, 0.0),   # Near International Date Line (negative)
                     (1.0, 0.0),      # Just east of Prime Meridian
                     (-1.0, 0.0),     # Just west of Prime Meridian
+                ]
+            },
+            {
+                "name": "High Latitudes (Near Poles)",
+                "epsg_from": "EPSG:4326",
+                "epsg_to": "EPSG:3857",
+                "test_points": [
+                    (0.0, 85.0),     # Near North Pole (within Web Mercator limits)
+                    (0.0, -85.0),    # Near South Pole (within Web Mercator limits)
+                    (45.0, 80.0),    # High northern latitude
+                    (-120.0, -80.0), # High southern latitude
                 ]
             }
         ]
@@ -435,7 +445,10 @@ class TestEdgeCaseAccuracy:
                 java_accuracy = accuracy_benchmark._parse_accuracy_output(java_result["output"])
                 python_accuracy = accuracy_benchmark._parse_accuracy_output(python_result["output"])
                 
-                # Compare with special edge case tolerance
+                # Print detailed comparison table similar to other accuracy tests
+                print(f"  Java points: {len(java_accuracy['points'])}")
+                print(f"  Python points: {len(python_accuracy['points'])}")
+                
                 # Handle cases where Java and Python produce different numbers of points
                 # (e.g., poles in Mercator projection)
                 if len(java_accuracy['points']) != len(python_accuracy['points']):
@@ -449,15 +462,58 @@ class TestEdgeCaseAccuracy:
                     java_points = java_accuracy['points']
                     python_points = python_accuracy['points']
                 
+                # Build comparison results
                 max_diff = 0.0
-                for java_point, python_point in zip(java_points, python_points):
+                total_diff = 0.0
+                point_results = []
+                
+                for i, (java_point, python_point) in enumerate(zip(java_points, python_points)):
                     java_x, java_y = java_point['output']
                     python_x, python_y = python_point['output']
                     x_diff = abs(java_x - python_x)
                     y_diff = abs(java_y - python_y)
                     point_diff = max(x_diff, y_diff)
                     max_diff = max(max_diff, point_diff)
+                    total_diff += point_diff
+                    
+                    point_results.append({
+                        'point': i + 1,
+                        'java_x': java_x,
+                        'java_y': java_y,
+                        'python_x': python_x,
+                        'python_y': python_y,
+                        'x_diff': x_diff,
+                        'y_diff': y_diff,
+                        'max_diff': point_diff
+                    })
+                
+                avg_diff = total_diff / len(point_results) if point_results else 0
+                
+                # Print detailed accuracy comparison table
+                print(f"\n{'='*160}")
+                print(f"📊 EDGE CASE ACCURACY - {edge_case['name']} ({crs_format.upper()})")
+                print(f"{'='*160}")
+                print(f"| {'Point':^7} | {'Java X':>18} | {'Java Y':>18} | {'Python X':>18} | {'Python Y':>18} | {'X Diff':>12} | {'Y Diff':>12} | {'Max Diff':>12} | {'Status':^10} |")
+                print(f"|{'-'*9}|{'-'*20}|{'-'*20}|{'-'*20}|{'-'*20}|{'-'*14}|{'-'*14}|{'-'*14}|{'-'*12}|")
                 
                 tolerance = 1e-5  # 10 micrometers for edge cases
+                test_passed = True
+                
+                for result in point_results:
+                    status = "✅ PASS" if result['max_diff'] < tolerance else "❌ FAIL"
+                    if result['max_diff'] >= tolerance:
+                        test_passed = False
+                    
+                    print(f"| {result['point']:^7} | {result['java_x']:>18.6f} | {result['java_y']:>18.6f} | {result['python_x']:>18.6f} | {result['python_y']:>18.6f} | "
+                          f"{result['x_diff']:>12.2e} | {result['y_diff']:>12.2e} | {result['max_diff']:>12.2e} | {status:^10} |")
+                
+                print(f"|{'-'*9}|{'-'*20}|{'-'*20}|{'-'*20}|{'-'*20}|{'-'*14}|{'-'*14}|{'-'*14}|{'-'*12}|")
+                overall_status = '❌ FAIL' if not test_passed else '✅ PASS'
+                print(f"| {'SUMMARY':^7} | {'Max Diff:':>18} | {max_diff:>18.2e} | {'Avg Diff:':>18} | {avg_diff:>18.2e} | {'Tolerance:':>12} | {tolerance:>12.2e} | {'OVERALL:':>12} | {overall_status:^10} |")
+                print(f"{'='*160}")
+                
+                # Assert that differences are within acceptable tolerance
                 assert max_diff < tolerance, f"Maximum difference too large for edge case {crs_format}: {max_diff:.10f} > {tolerance}"
-                print(f"    ✅ Edge case {crs_format} accuracy test passed (max diff: {max_diff:.10f})")
+                
+                if test_passed:
+                    print(f"  ✅ Edge case {crs_format.upper()} accuracy test passed")
