@@ -127,7 +127,6 @@ def test_scenario_structure(test_scenarios):
 def test_benchmark_iterations(benchmark_iterations):
     """Test that benchmark iterations are reasonable."""
     assert benchmark_iterations > 0, f"Benchmark iterations should be positive: {benchmark_iterations}"
-    assert benchmark_iterations >= 1, f"Benchmark iterations should be at least 1: {benchmark_iterations}"
     assert benchmark_iterations <= 1000000, f"Benchmark iterations should be at most 1,000,000: {benchmark_iterations}"
 
 
