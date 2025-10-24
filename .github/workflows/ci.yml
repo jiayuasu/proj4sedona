@@ -121,8 +121,8 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build Java modules
-      run: mvn clean package -DskipTests -B
+    - name: Build Java modules with shaded JAR
+      run: mvn clean package -Pshaded -DskipTests -B
 
     - name: Set up Python
       uses: actions/setup-python@v5

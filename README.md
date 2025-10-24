@@ -107,23 +107,23 @@ Add this to your `pom.xml` for the core functionality:
 
 ```xml
 <dependency>
-    <groupId>org.apache.sedona.proj</groupId>
-    <artifactId>proj4sedona-core</artifactId>
+    <groupId>org.datasyslab</groupId>
+    <artifactId>proj4sedona</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
 
-For MGRS support, also add:
+For MGRS support as a separate module:
 
 ```xml
 <dependency>
-    <groupId>org.apache.sedona.proj</groupId>
+    <groupId>org.datasyslab</groupId>
     <artifactId>proj4sedona-mgrs</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
 
-**Note:** The core module includes WKT parser and MGRS support as transitive dependencies, so in most cases you only need the core dependency.
+**Note:** The core module (`proj4sedona`) includes WKT parser and MGRS support as transitive dependencies, so in most cases you only need the core dependency.
 
 ### Basic Usage
 
@@ -758,6 +758,9 @@ mvn clean package -DskipTests
 # Install to local Maven repository
 mvn clean install
 
+# Build shaded JAR with all dependencies (for benchmarks or standalone use)
+mvn clean package -Pshaded -DskipTests
+
 # Generate Javadoc
 mvn javadoc:javadoc
 
@@ -772,23 +775,34 @@ mvn spotless:apply
 
 After building, you'll find the following JAR files:
 
+**Default build (`mvn clean package`):**
 ```
 core/target/
-├── proj4sedona-core-1.0.0-SNAPSHOT.jar           # Core library (shaded, includes all dependencies)
-├── original-proj4sedona-core-1.0.0-SNAPSHOT.jar  # Core library (without shading)
-├── proj4sedona-core-1.0.0-SNAPSHOT-sources.jar   # Source code
-└── proj4sedona-core-1.0.0-SNAPSHOT-javadoc.jar   # API documentation
+├── proj4sedona-1.0.0-SNAPSHOT.jar           # Core library (standard JAR)
+├── proj4sedona-1.0.0-SNAPSHOT-sources.jar   # Source code
+└── proj4sedona-1.0.0-SNAPSHOT-javadoc.jar   # API documentation
 
 wkt-parser/target/
-├── wkt-parser-1.0.0-SNAPSHOT.jar                 # WKT parser library
-├── wkt-parser-1.0.0-SNAPSHOT-sources.jar         # Source code
-└── wkt-parser-1.0.0-SNAPSHOT-javadoc.jar         # API documentation
+├── wkt-parser-1.0.0-SNAPSHOT.jar            # WKT parser library
+├── wkt-parser-1.0.0-SNAPSHOT-sources.jar    # Source code
+└── wkt-parser-1.0.0-SNAPSHOT-javadoc.jar    # API documentation
 
 mgrs/target/
-├── proj4sedona-mgrs-1.0.0-SNAPSHOT.jar           # MGRS library
-├── proj4sedona-mgrs-1.0.0-SNAPSHOT-sources.jar   # Source code
-└── proj4sedona-mgrs-1.0.0-SNAPSHOT-javadoc.jar   # API documentation
+├── proj4sedona-mgrs-1.0.0-SNAPSHOT.jar      # MGRS library
+├── proj4sedona-mgrs-1.0.0-SNAPSHOT-sources.jar
+└── proj4sedona-mgrs-1.0.0-SNAPSHOT-javadoc.jar
 ```
+
+**Shaded build (`mvn clean package -Pshaded`):**
+```
+core/target/
+├── proj4sedona-1.0.0-SNAPSHOT.jar           # Shaded JAR (includes all dependencies)
+├── original-proj4sedona-1.0.0-SNAPSHOT.jar  # Original JAR (before shading)
+├── proj4sedona-1.0.0-SNAPSHOT-sources.jar
+└── proj4sedona-1.0.0-SNAPSHOT-javadoc.jar
+```
+
+**Note**: Use the shaded JAR for benchmarks or standalone applications. For regular Maven dependencies, use the standard build.
 
 ### Dependencies
 
