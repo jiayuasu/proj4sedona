@@ -134,6 +134,8 @@ public class ProjJsonParser {
     methodMap.put("Popular Visualisation Pseudo Mercator", "merc");
     methodMap.put("Popular Visualisation Pseudo-Mercator", "merc");
     methodMap.put("Albers Equal Area", "aea");
+    methodMap.put("Lambert Cylindrical Equal Area", "cea");
+    methodMap.put("Lambert Cylindrical Equal Area (Spherical)", "cea");
     methodMap.put("Miller Cylindrical", "mill");
     methodMap.put("Stereographic", "stere");
     methodMap.put("Stereographic North Pole", "stere");
@@ -261,9 +263,14 @@ public class ProjJsonParser {
       case "latitude of origin":
         return "lat_0";
       case "standard parallel 1":
-      case "latitude of 1st standard parallel":
         return "lat_1";
       case "standard parallel 2":
+        return "lat_2";
+      case "latitude of 1st standard parallel":
+        // For CEA, this maps to lat_ts (true scale latitude)
+        // For other projections like LCC, it maps to lat_1
+        // We'll use lat_ts for now as it's more specific to CEA
+        return "lat_ts";
       case "latitude of 2nd standard parallel":
         return "lat_2";
       case "false easting":

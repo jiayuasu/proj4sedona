@@ -315,24 +315,40 @@ public final class MathUtils {
   }
 
   /**
-   * Calculates the inverse q function.
+   * Calculates the inverse q function. Returns the latitude for a given q value. Ported from
+   * iqsfnz.js
    *
    * @param e eccentricity
    * @param q q value
-   * @return sine of latitude
+   * @return latitude in radians
    */
   public static double iqsfnz(double e, double q) {
-    double con = 1 - e * e;
-    double phi = Math.asin(0.5 * q / con);
-    for (int i = 0; i < 15; i++) {
-      double sinphi = Math.sin(phi);
-      double dphi = (q - qsfnz(e, sinphi)) / (con * Math.cos(phi) / (1 - e * e * sinphi * sinphi));
-      phi += dphi;
-      if (Math.abs(dphi) <= 1e-10) {
-        break;
+    double temp = 1 - (1 - e * e) / (2 * e) * Math.log((1 - e) / (1 + e));
+    if (Math.abs(Math.abs(q) - temp) < 1.0E-6) {
+      if (q < 0) {
+        return -Values.HALF_PI;
+      } else {
+        return Values.HALF_PI;
       }
     }
-    return Math.sin(phi);
+
+    double phi = Math.asin(0.5 * q);
+    for (int i = 0; i < 30; i++) {
+      double sinphi = Math.sin(phi);
+      double cosphi = Math.cos(phi);
+      double con = e * sinphi;
+      double dphi =
+          Math.pow(1 - con * con, 2)
+              / (2 * cosphi)
+              * (q / (1 - e * e)
+                  - sinphi / (1 - con * con)
+                  + 0.5 / e * Math.log((1 - con) / (1 + con)));
+      phi += dphi;
+      if (Math.abs(dphi) <= 1e-10) {
+        return phi;
+      }
+    }
+    return Double.NaN; // Failed to converge
   }
 
   /**
