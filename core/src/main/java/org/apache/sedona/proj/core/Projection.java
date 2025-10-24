@@ -222,6 +222,9 @@ public class Projection {
   /** Sinusoidal instance */
   public Object sinu;
 
+  /** Cylindrical Equal Area instance */
+  public Object cea;
+
   // Registry of available projections
   private static final Map<String, ProjectionFactory> PROJECTIONS = new ConcurrentHashMap<>();
 
@@ -672,6 +675,14 @@ public class Projection {
         this.forward = p -> org.apache.sedona.proj.projections.Sinusoidal.forward(this, p);
         this.inverse = p -> org.apache.sedona.proj.projections.Sinusoidal.inverse(this, p);
         this.init = proj -> org.apache.sedona.proj.projections.Sinusoidal.init(proj);
+        break;
+      case "cea":
+      case "Cylindrical_Equal_Area":
+        this.forward =
+            p -> org.apache.sedona.proj.projections.CylindricalEqualArea.forward(this, p);
+        this.inverse =
+            p -> org.apache.sedona.proj.projections.CylindricalEqualArea.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.CylindricalEqualArea.init(proj);
         break;
       default:
         // For unsupported projections, use identity transformation
