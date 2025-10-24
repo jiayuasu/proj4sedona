@@ -5,6 +5,11 @@ on:
     branches: [ main ]
     types: [opened, synchronize, reopened, ready_for_review]
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   validate:
     name: Validate PR
@@ -34,11 +39,8 @@ jobs:
           exit 1
         fi
 
-    - name: Build all modules
-      run: mvn clean compile -B
-
-    - name: Run all tests
-      run: mvn test -B
+    - name: Build and test all modules
+      run: mvn clean install -B
 
     - name: Check code formatting
       run: mvn spotless:check -B
