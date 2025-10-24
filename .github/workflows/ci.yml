@@ -96,6 +96,9 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
+    - name: Install dependencies
+      run: mvn clean install -DskipTests -B
+
     - name: Check code formatting (Spotless)
       run: mvn spotless:check -B
 

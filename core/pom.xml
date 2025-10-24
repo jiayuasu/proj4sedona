@@ -6,12 +6,12 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>org.apache.sedona.proj</groupId>
-        <artifactId>proj4sedona</artifactId>
+        <groupId>org.datasyslab</groupId>
+        <artifactId>proj4sedona-parent</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>proj4sedona-core</artifactId>
+    <artifactId>proj4sedona</artifactId>
     <packaging>jar</packaging>
     <name>Proj4Sedona Core</name>
     <description>Core functionality for coordinate system transformations</description>
@@ -25,14 +25,14 @@
     <dependencies>
         <!-- WKT parser dependency -->
         <dependency>
-            <groupId>org.apache.sedona.proj</groupId>
+            <groupId>org.datasyslab</groupId>
             <artifactId>wkt-parser</artifactId>
             <version>${project.version}</version>
         </dependency>
-        
+
         <!-- MGRS dependency -->
         <dependency>
-            <groupId>org.apache.sedona.proj</groupId>
+            <groupId>org.datasyslab</groupId>
             <artifactId>proj4sedona-mgrs</artifactId>
             <version>${project.version}</version>
         </dependency>
