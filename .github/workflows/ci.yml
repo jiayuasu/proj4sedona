@@ -106,7 +106,7 @@ jobs:
       run: mvn javadoc:javadoc -B
 
   benchmark:
-    name: Performance Benchmarks
+    name: Performance & Accuracy Benchmarks
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.draft == false
 
@@ -137,7 +137,7 @@ jobs:
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
         uv sync
-        uv run python run_benchmarks.py --iterations 1000 --markers performance
+        uv run python run_benchmarks.py --iterations 1000 --markers performance accuracy --html-report
 
     - name: Upload benchmark results
       if: always()
@@ -146,6 +146,7 @@ jobs:
         name: benchmark-results
         path: benchmark/reports/
         retention-days: 30
+        if-no-files-found: warn
 
   multi-os:
     name: Test on ${{ matrix.os }}

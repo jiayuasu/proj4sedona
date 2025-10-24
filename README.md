@@ -3,7 +3,6 @@
 A high-performance Java library for coordinate system transformations, ported from Proj4js.
 
 [![CI](https://github.com/jiayuasu/proj4sedona/workflows/CI/badge.svg)](https://github.com/jiayuasu/proj4sedona/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/jiayuasu/proj4sedona/workflows/CodeQL%20Analysis/badge.svg)](https://github.com/jiayuasu/proj4sedona/actions/workflows/codeql.yml)
 [![Java Version](https://img.shields.io/badge/Java-11%2B-blue.svg)](https://www.oracle.com/java/technologies/javase/jdk11-archive-downloads.html)
 [![Maven](https://img.shields.io/badge/Maven-3.6%2B-red.svg)](https://maven.apache.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://www.apache.org/licenses/LICENSE-2.0)
