@@ -72,26 +72,6 @@ This directory contains automated workflows for CI/CD, testing, and quality assu
 
 ---
 
-### 🔒 [CodeQL Analysis](codeql.yml)
-
-**Triggers:**
-- Push to main branches
-- Pull Requests
-- Weekly schedule (Monday 00:00 UTC)
-
-**Jobs:**
-- **Analyze**: Security and quality analysis
-  - Scans for security vulnerabilities
-  - Identifies code quality issues
-  - Reports to GitHub Security tab
-
-**Features:**
-- Automated security scanning
-- Continuous monitoring
-- Integration with GitHub Advanced Security
-
----
-
 ### 📦 [Dependency Updates](dependency-update.yml)
 
 **Triggers:**
@@ -127,7 +107,8 @@ Most workflows use default `GITHUB_TOKEN` permissions. For advanced features:
 Workflows use minimal required permissions:
 
 - `contents: read` - Read repository content
-- `security-events: write` - Write security alerts (codeql.yml)
+- `issues: write` - Create and comment on issues (pr-checks.yml, dependency-update.yml)
+- `pull-requests: write` - Comment on pull requests (pr-checks.yml)
 
 ### Caching
 
@@ -141,7 +122,6 @@ Add these badges to your README:
 
 ```markdown
 [![CI](https://github.com/YOUR_ORG/proj4sedona/workflows/CI/badge.svg)](https://github.com/YOUR_ORG/proj4sedona/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/YOUR_ORG/proj4sedona/workflows/CodeQL%20Analysis/badge.svg)](https://github.com/YOUR_ORG/proj4sedona/actions/workflows/codeql.yml)
 [![codecov](https://codecov.io/gh/YOUR_ORG/proj4sedona/branch/main/graph/badge.svg)](https://codecov.io/gh/YOUR_ORG/proj4sedona)
 ```
 
@@ -193,12 +173,6 @@ Edit `ci.yml` benchmark job:
 1. Check Java version compatibility
 2. Clear Maven cache: Delete `.m2/repository`
 3. Run locally: `mvn clean test -B`
-
-### CodeQL Errors
-
-- Ensure code compiles successfully
-- Check for Java syntax errors
-- Review CodeQL query packs
 
 ### Benchmark Failures
 

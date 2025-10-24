@@ -23,6 +23,7 @@ classifiers = [
 
 dependencies = [
     "numpy>=2.3.4",
+    "psutil>=6.1.0",
     "pyproj>=3.7.2",
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
