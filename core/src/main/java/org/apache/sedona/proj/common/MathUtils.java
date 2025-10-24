@@ -754,4 +754,91 @@ public final class MathUtils {
   public static double adjustLat(double x) {
     return (Math.abs(x) <= Values.HALF_PI) ? x : (x - (sign(x) * Values.PI));
   }
+
+  /**
+   * Calculates the inverse meridian length (imlfn). Ported from imlfn.js
+   *
+   * @param ml meridian length
+   * @param e0 first coefficient
+   * @param e1 second coefficient
+   * @param e2 third coefficient
+   * @param e3 fourth coefficient
+   * @return latitude in radians
+   */
+  public static double imlfn(double ml, double e0, double e1, double e2, double e3) {
+    double phi = ml / e0;
+    for (int i = 0; i < 15; i++) {
+      double dphi =
+          (ml
+                  - (e0 * phi
+                      - e1 * Math.sin(2 * phi)
+                      + e2 * Math.sin(4 * phi)
+                      - e3 * Math.sin(6 * phi)))
+              / (e0
+                  - 2 * e1 * Math.cos(2 * phi)
+                  + 4 * e2 * Math.cos(4 * phi)
+                  - 6 * e3 * Math.cos(6 * phi));
+      phi += dphi;
+      if (Math.abs(dphi) <= 0.0000000001) {
+        return phi;
+      }
+    }
+    return Double.NaN;
+  }
+
+  /**
+   * Calculates pj_enfn coefficients. Ported from pj_enfn.js
+   *
+   * @param es squared eccentricity
+   * @return coefficients array
+   */
+  public static double[] pjEnfn(double es) {
+    double[] en = new double[5];
+    en[0] = 1 - es * (0.25 + es * (0.046875 + es * (0.01953125 + es * 0.01068115234375)));
+    en[1] = es * (0.75 - es * (0.046875 + es * (0.01953125 + es * 0.01068115234375)));
+    double t = es * es;
+    en[2] = t * (0.46875 - es * (0.01302083333333333333 + es * 0.00712076822916666666));
+    t *= es;
+    en[3] = t * (0.36458333333333333333 - es * 0.00569661458333333333);
+    en[4] = t * es * 0.3076171875;
+    return en;
+  }
+
+  /**
+   * Calculates pj_mlfn. Ported from pj_mlfn.js
+   *
+   * @param phi latitude
+   * @param sphi sine of latitude
+   * @param cphi cosine of latitude
+   * @param en coefficients array
+   * @return meridian length
+   */
+  public static double pjMlfn(double phi, double sphi, double cphi, double[] en) {
+    cphi *= sphi;
+    sphi *= sphi;
+    return (en[0] * phi - cphi * (en[1] + sphi * (en[2] + sphi * (en[3] + sphi * en[4]))));
+  }
+
+  /**
+   * Calculates pj_inv_mlfn (inverse meridian length). Ported from pj_inv_mlfn.js
+   *
+   * @param arg meridian length
+   * @param es squared eccentricity
+   * @param en coefficients array
+   * @return latitude
+   */
+  public static double pjInvMlfn(double arg, double es, double[] en) {
+    double k = 1 / (1 - es);
+    double phi = arg;
+    for (int i = 20; i > 0; i--) {
+      double s = Math.sin(phi);
+      double t = 1 - es * s * s;
+      t = (pjMlfn(phi, s, Math.cos(phi), en) - arg) * (t * Math.sqrt(t)) * k;
+      phi -= t;
+      if (Math.abs(t) < Values.EPSLN) {
+        return phi;
+      }
+    }
+    return phi;
+  }
 }

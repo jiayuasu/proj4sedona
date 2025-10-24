@@ -225,6 +225,98 @@ public class Projection {
   /** Cylindrical Equal Area instance */
   public Object cea;
 
+  // Additional projection-specific parameters
+  /** Sine of projection latitude (for azimuthal projections) */
+  public double sinP14;
+
+  /** Cosine of projection latitude (for azimuthal projections) */
+  public double cosP14;
+
+  /** Infinity distance (for gnomonic projection) */
+  public double infinityDist;
+
+  /** RC parameter (for gnomonic projection) */
+  public double rc;
+
+  /** K parameter (general scale factor) */
+  public double k;
+
+  /** Latitude 1 (for Bonne, etc.) */
+  public double phi1;
+
+  /** Cosine of phi1 */
+  public double cphi1;
+
+  /** M1 parameter */
+  public double m1;
+
+  /** AM1 parameter */
+  public double am1;
+
+  /** R parameter (radius) */
+  public double R;
+
+  /** Sine of latitude 0 (for some projections) */
+  public double sinph0;
+
+  /** Cosine of latitude 0 (for some projections) */
+  public double cosph0;
+
+  /** Sine of X0 (for stereographic) */
+  public double sinX0;
+
+  /** Cosine of X0 (for stereographic) */
+  public double cosX0;
+
+  /** X0 parameter (for stereographic) */
+  public double X0;
+
+  /** MS1 parameter (for stereographic) */
+  public double ms1;
+
+  /** CON parameter (for stereographic) */
+  public double con;
+
+  /** CONS parameter (for stereographic) */
+  public double cons;
+
+  /** Sine of lat0 */
+  public double sinlat0;
+
+  /** Cosine of lat0 */
+  public double coslat0;
+
+  // LAEA-specific parameters
+  /** Mode for Lambert Azimuthal Equal Area */
+  public int mode;
+
+  /** QP parameter for LAEA */
+  public double qp;
+
+  /** MMF parameter for LAEA */
+  public double mmf;
+
+  /** APA array for LAEA */
+  public double[] apa;
+
+  /** RQ parameter for LAEA */
+  public double rq;
+
+  /** DD parameter for LAEA */
+  public double dd;
+
+  /** XMF parameter for LAEA */
+  public double xmf;
+
+  /** YMF parameter for LAEA */
+  public double ymf;
+
+  /** SINB1 parameter for LAEA */
+  public double sinb1;
+
+  /** COSB1 parameter for LAEA */
+  public double cosb1;
+
   // Registry of available projections
   private static final Map<String, ProjectionFactory> PROJECTIONS = new ConcurrentHashMap<>();
 
@@ -624,14 +716,20 @@ public class Projection {
   private void initializeProjectionMethods() {
     switch (this.projName) {
       case "longlat":
-        this.forward = p -> new Point(p.x, p.y, p.z, p.m);
-        this.inverse = p -> new Point(p.x, p.y, p.z, p.m);
-        this.init = null;
+      case "identity":
+        this.forward = p -> org.apache.sedona.proj.projections.LongLat.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.LongLat.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.LongLat.init(proj);
         break;
       case "merc":
-        this.forward = this::mercatorForward;
-        this.inverse = this::mercatorInverse;
-        this.init = this::mercatorInit;
+      case "Mercator":
+      case "Popular Visualisation Pseudo Mercator":
+      case "Mercator_1SP":
+      case "Mercator_Auxiliary_Sphere":
+      case "Mercator_Variant_A":
+        this.forward = p -> org.apache.sedona.proj.projections.Mercator.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.Mercator.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.Mercator.init(proj);
         break;
       case "lcc":
         this.forward =
@@ -683,6 +781,86 @@ public class Projection {
         this.inverse =
             p -> org.apache.sedona.proj.projections.CylindricalEqualArea.inverse(this, p);
         this.init = proj -> org.apache.sedona.proj.projections.CylindricalEqualArea.init(proj);
+        break;
+      case "aeqd":
+      case "Azimuthal_Equidistant":
+        this.forward =
+            p -> org.apache.sedona.proj.projections.AzimuthalEquidistant.forward(this, p);
+        this.inverse =
+            p -> org.apache.sedona.proj.projections.AzimuthalEquidistant.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.AzimuthalEquidistant.init(proj);
+        break;
+      case "eqearth":
+      case "Equal_Earth":
+      case "Equal Earth":
+        this.forward = p -> org.apache.sedona.proj.projections.EqualEarth.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.EqualEarth.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.EqualEarth.init(proj);
+        break;
+      case "equi":
+      case "eqc":
+      case "Equirectangular":
+      case "Plate_Carree":
+        this.forward = p -> org.apache.sedona.proj.projections.Equirectangular.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.Equirectangular.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.Equirectangular.init(proj);
+        break;
+      case "gnom":
+      case "Gnomonic":
+        this.forward = p -> org.apache.sedona.proj.projections.Gnomonic.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.Gnomonic.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.Gnomonic.init(proj);
+        break;
+      case "laea":
+      case "Lambert_Azimuthal_Equal_Area":
+      case "Lambert Azimuthal Equal Area":
+        this.forward =
+            p -> org.apache.sedona.proj.projections.LambertAzimuthalEqualArea.forward(this, p);
+        this.inverse =
+            p -> org.apache.sedona.proj.projections.LambertAzimuthalEqualArea.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.LambertAzimuthalEqualArea.init(proj);
+        break;
+      case "mill":
+      case "Miller_Cylindrical":
+        this.forward = p -> org.apache.sedona.proj.projections.MillerCylindrical.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.MillerCylindrical.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.MillerCylindrical.init(proj);
+        break;
+      case "moll":
+      case "Mollweide":
+        this.forward = p -> org.apache.sedona.proj.projections.Mollweide.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.Mollweide.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.Mollweide.init(proj);
+        break;
+      case "ortho":
+      case "Orthographic":
+        this.forward = p -> org.apache.sedona.proj.projections.Orthographic.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.Orthographic.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.Orthographic.init(proj);
+        break;
+      case "robin":
+      case "Robinson":
+        this.forward = p -> org.apache.sedona.proj.projections.Robinson.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.Robinson.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.Robinson.init(proj);
+        break;
+      case "stere":
+      case "Stereographic":
+      case "Stereographic_South_Pole":
+      case "Polar_Stereographic":
+      case "Polar_Stereographic_variant_A":
+      case "Polar_Stereographic_variant_B":
+        this.forward = p -> org.apache.sedona.proj.projections.Stereographic.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.Stereographic.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.Stereographic.init(proj);
+        break;
+      case "vandg":
+      case "VanDerGrinten":
+      case "Van_der_Grinten":
+      case "Van_der_Grinten_I":
+        this.forward = p -> org.apache.sedona.proj.projections.VanDerGrinten.forward(this, p);
+        this.inverse = p -> org.apache.sedona.proj.projections.VanDerGrinten.inverse(this, p);
+        this.init = proj -> org.apache.sedona.proj.projections.VanDerGrinten.init(proj);
         break;
       default:
         // For unsupported projections, use identity transformation
