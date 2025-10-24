@@ -2,13 +2,11 @@
 
 A high-performance Java library for coordinate system transformations, ported from Proj4js.
 
-[![CI](https://github.com/YOUR_ORG/proj4sedona/workflows/CI/badge.svg)](https://github.com/YOUR_ORG/proj4sedona/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/YOUR_ORG/proj4sedona/workflows/CodeQL%20Analysis/badge.svg)](https://github.com/YOUR_ORG/proj4sedona/actions/workflows/codeql.yml)
+[![CI](https://github.com/jiayuasu/proj4sedona/workflows/CI/badge.svg)](https://github.com/jiayuasu/proj4sedona/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/jiayuasu/proj4sedona/workflows/CodeQL%20Analysis/badge.svg)](https://github.com/jiayuasu/proj4sedona/actions/workflows/codeql.yml)
 [![Java Version](https://img.shields.io/badge/Java-11%2B-blue.svg)](https://www.oracle.com/java/technologies/javase/jdk11-archive-downloads.html)
 [![Maven](https://img.shields.io/badge/Maven-3.6%2B-red.svg)](https://maven.apache.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-
-> **Note:** Replace `YOUR_ORG` in the badges above with your GitHub organization/username once the repository is on GitHub.
 
 ## Table of Contents
 
@@ -32,7 +30,6 @@ A high-performance Java library for coordinate system transformations, ported fr
 - [Testing](#testing)
 - [Performance Benchmarks](#performance-benchmarks)
 - [Use Cases](#use-cases)
-- [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [Frequently Asked Questions (FAQ)](#frequently-asked-questions-faq)
 - [License](#license)
@@ -546,7 +543,6 @@ Proj4Sedona is organized as a multi-module Maven project with clear separation o
 proj4sedona/
 ├── pom.xml                 # Parent POM
 ├── README.md              # This file
-├── PERFORMANCE.md         # Performance optimization guide
 │
 ├── core/                  # Core transformation functionality
 │   ├── pom.xml
@@ -943,8 +939,6 @@ uv run python run_benchmarks.py --html-report
 - **Memory Efficiency**: Reduced object allocation in hot paths
 - **Thread Safety**: Concurrent projection usage without locks
 
-See [PERFORMANCE.md](PERFORMANCE.md) for detailed performance optimization documentation.
-
 ## Use Cases
 
 Proj4Sedona is suitable for a wide range of geospatial applications:
@@ -1004,60 +998,6 @@ Point projected = Proj4Sedona.transform(
     geographic
 );
 ```
-
-## Roadmap
-
-### ✅ Phase 1 (Completed)
-- ✅ Basic project structure and build system
-- ✅ Core Point and Projection classes
-- ✅ WGS84 and Mercator projections
-- ✅ Unit testing framework
-- ✅ Maven multi-module architecture
-
-### ✅ Phase 2 (Completed)
-- ✅ Additional projection implementations (Lambert, UTM, Albers, etc.)
-- ✅ PROJ string parsing and processing
-- ✅ WKT1 support (Well-Known Text)
-- ✅ 3-parameter and 7-parameter Helmert transformations
-- ✅ Grid-based datum adjustments (NTv2, GeoTIFF)
-- ✅ PROJ CDN integration for datum grids
-
-### ✅ Phase 3 (Completed)
-- ✅ PROJJSON support (modern JSON-based format)
-- ✅ WKT2-2015 and WKT2-2019 support with auto-detection
-- ✅ MGRS coordinate conversion (bidirectional)
-- ✅ Performance optimizations (caching, batch processing, fast math)
-- ✅ EPSG code support with automatic fetching
-- ✅ Comprehensive benchmark suite (vs pyproj)
-
-### 🚧 Phase 4 (In Progress)
-- ⏳ Additional projection types
-  - Stereographic projection
-  - Gnomonic projection
-  - Orthographic projection
-  - Mollweide projection
-- ⏳ Enhanced grid support
-  - NADCON5 grids
-  - HARN grids
-  - Additional international grids
-- ⏳ Vertical datum transformations
-- ⏳ 3D transformations (height conversions)
-
-### 📋 Future Plans
-- 🔮 Performance enhancements
-  - SIMD vectorization for batch operations
-  - Native compilation with GraalVM
-  - GPU acceleration for massive datasets
-- 🔮 Additional features
-  - CRS database integration
-  - Automatic CRS detection
-  - Transformation quality metrics
-  - Web service API (REST)
-- 🔮 Ecosystem integration
-  - GeoTools compatibility layer
-  - Apache Sedona integration
-  - Spring Boot starter
-  - Command-line tool
 
 ## Contributing
 
