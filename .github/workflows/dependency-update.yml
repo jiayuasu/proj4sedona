@@ -56,7 +56,7 @@ jobs:
               title: '📦 Dependency Updates Available',
               labels: ['dependencies', 'automated'],
               body: `## Dependency Update Report
-              
+
 Weekly automated check found available dependency updates.
 
 \`\`\`
