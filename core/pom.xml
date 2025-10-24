@@ -6,12 +6,12 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>org.apache.sedona.proj</groupId>
-        <artifactId>proj4sedona</artifactId>
+        <groupId>org.datasyslab</groupId>
+        <artifactId>proj4sedona-parent</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>proj4sedona-core</artifactId>
+    <artifactId>proj4sedona</artifactId>
     <packaging>jar</packaging>
     <name>Proj4Sedona Core</name>
     <description>Core functionality for coordinate system transformations</description>
@@ -25,14 +25,14 @@
     <dependencies>
         <!-- WKT parser dependency -->
         <dependency>
-            <groupId>org.apache.sedona.proj</groupId>
+            <groupId>org.datasyslab</groupId>
             <artifactId>wkt-parser</artifactId>
             <version>${project.version}</version>
         </dependency>
-        
+
         <!-- MGRS dependency -->
         <dependency>
-            <groupId>org.apache.sedona.proj</groupId>
+            <groupId>org.datasyslab</groupId>
             <artifactId>proj4sedona-mgrs</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -111,27 +111,38 @@
                     </execution>
                 </executions>
             </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.4.1</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                        <configuration>
-                            <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>org.apache.sedona.proj.Proj4Sedona</mainClass>
-                                </transformer>
-                            </transformers>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Profile for creating shaded JAR with all dependencies (for benchmarks) -->
+        <profile>
+            <id>shaded</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-shade-plugin</artifactId>
+                        <version>3.4.1</version>
+                        <executions>
+                            <execution>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>shade</goal>
+                                </goals>
+                                <configuration>
+                                    <createDependencyReducedPom>false</createDependencyReducedPom>
+                                    <transformers>
+                                        <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                            <mainClass>org.apache.sedona.proj.Proj4Sedona</mainClass>
+                                        </transformer>
+                                    </transformers>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

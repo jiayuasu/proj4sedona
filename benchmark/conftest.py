@@ -15,7 +15,7 @@ import pyproj
 @pytest.fixture(scope="session")
 def proj4sedona_jar_path():
     """Get the path to the compiled Proj4Sedona JAR files."""
-    core_jar = "../core/target/proj4sedona-core-1.0.0-SNAPSHOT.jar"
+    core_jar = "../core/target/proj4sedona-1.0.0-SNAPSHOT.jar"
     mgrs_jar = "../mgrs/target/proj4sedona-mgrs-1.0.0-SNAPSHOT.jar"
     wkt_jar = "../wkt-parser/target/wkt-parser-1.0.0-SNAPSHOT.jar"
     

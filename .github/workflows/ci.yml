@@ -96,6 +96,9 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
+    - name: Install dependencies
+      run: mvn clean install -DskipTests -B
+
     - name: Check code formatting (Spotless)
       run: mvn spotless:check -B
 
@@ -118,8 +121,8 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build Java modules
-      run: mvn clean package -DskipTests -B
+    - name: Build Java modules with shaded JAR
+      run: mvn clean package -Pshaded -DskipTests -B
 
     - name: Set up Python
       uses: actions/setup-python@v5

@@ -40,11 +40,13 @@ benchmark/
 
 ### Setup
 
-1. **Build Proj4Sedona JARs**:
+1. **Build Proj4Sedona JARs with shaded profile**:
    ```bash
    cd /path/to/proj4sedona
-   mvn clean package -DskipTests
+   mvn clean package -Pshaded -DskipTests
    ```
+   
+   **Note**: The `-Pshaded` profile creates a shaded JAR that includes all dependencies, which is required for the benchmarks to work properly.
 
 2. **Install Python dependencies with uv**:
    ```bash
