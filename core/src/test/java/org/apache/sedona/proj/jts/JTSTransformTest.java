@@ -18,8 +18,7 @@
  */
 package org.apache.sedona.proj.jts;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.apache.sedona.proj.Proj4Sedona;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +27,10 @@ import org.locationtech.jts.geom.*;
 
 /** Test suite for JTSTransform class. */
 class JTSTransformTest {
+
+  private static final double EPSILON = 0.1; // Default tolerance
+  private static final double HIGH_PRECISION = 1e-6; // High precision tolerance
+  private static final double UTM_TOLERANCE = 200.0; // UTM tolerance
 
   private GeometryFactory gf;
 
@@ -38,95 +41,73 @@ class JTSTransformTest {
 
   @Test
   void testTransformPoint() {
-    // Create a point in WGS84 (Boston)
     org.locationtech.jts.geom.Point point = gf.createPoint(new Coordinate(-71.0, 41.0));
-
-    // Transform to Web Mercator
     org.locationtech.jts.geom.Point transformed =
         (org.locationtech.jts.geom.Point)
             JTSTransform.transform(point, "EPSG:4326", "EPSG:3857", gf);
 
-    // Verify transformation
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getX()).isCloseTo(-7903683.846322424, offset(0.1));
-    assertThat(transformed.getY()).isCloseTo(5012341.663847514, offset(0.1));
+    assertNotNull(transformed);
+    assertEquals(-7903683.846322424, transformed.getX(), EPSILON);
+    assertEquals(5012341.663847514, transformed.getY(), EPSILON);
   }
 
   @Test
   void testTransformPointWithZ() {
-    // Create a point with Z coordinate
     org.locationtech.jts.geom.Point point = gf.createPoint(new Coordinate(-71.0, 41.0, 100.0));
-
-    // Transform to Web Mercator
     org.locationtech.jts.geom.Point transformed =
         (org.locationtech.jts.geom.Point)
             JTSTransform.transform(point, "EPSG:4326", "EPSG:3857", gf);
 
-    // Verify transformation (Z should be preserved)
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getX()).isCloseTo(-7903683.846322424, offset(0.1));
-    assertThat(transformed.getY()).isCloseTo(5012341.663847514, offset(0.1));
-    assertThat(transformed.getCoordinate().getZ()).isCloseTo(100.0, offset(0.1));
+    assertNotNull(transformed);
+    assertEquals(-7903683.846322424, transformed.getX(), EPSILON);
+    assertEquals(5012341.663847514, transformed.getY(), EPSILON);
+    assertEquals(100.0, transformed.getCoordinate().getZ(), EPSILON);
   }
 
   @Test
   void testTransformLineString() {
-    // Create a linestring in WGS84
     Coordinate[] coords =
         new Coordinate[] {
           new Coordinate(-71.0, 41.0), new Coordinate(-70.0, 42.0), new Coordinate(-69.0, 43.0)
         };
     LineString lineString = gf.createLineString(coords);
 
-    // Transform to Web Mercator
     LineString transformed =
         (LineString) JTSTransform.transform(lineString, "EPSG:4326", "EPSG:3857", gf);
 
-    // Verify transformation
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getNumPoints()).isEqualTo(3);
-
-    // Check first point
-    assertThat(transformed.getCoordinateN(0).x).isCloseTo(-7903683.846322424, offset(0.1));
-    assertThat(transformed.getCoordinateN(0).y).isCloseTo(5012341.663847514, offset(0.1));
-
-    // Check last point
-    assertThat(transformed.getCoordinateN(2).x).isCloseTo(-7681044.864735875, offset(1.0));
-    assertThat(transformed.getCoordinateN(2).y).isCloseTo(5311971.846945471, offset(1.0));
+    assertNotNull(transformed);
+    assertEquals(3, transformed.getNumPoints());
+    assertEquals(-7903683.846322424, transformed.getCoordinateN(0).x, EPSILON);
+    assertEquals(5012341.663847514, transformed.getCoordinateN(0).y, EPSILON);
+    assertEquals(-7681044.864735875, transformed.getCoordinateN(2).x, 1.0);
+    assertEquals(5311971.846945471, transformed.getCoordinateN(2).y, 1.0);
   }
 
   @Test
   void testTransformPolygon() {
-    // Create a polygon in WGS84 (Boston area)
     Coordinate[] coords =
         new Coordinate[] {
           new Coordinate(-71.0, 41.0),
           new Coordinate(-71.0, 42.0),
           new Coordinate(-70.0, 42.0),
           new Coordinate(-70.0, 41.0),
-          new Coordinate(-71.0, 41.0) // Close the ring
+          new Coordinate(-71.0, 41.0)
         };
     Polygon polygon = gf.createPolygon(coords);
 
-    // Transform to Web Mercator
     Polygon transformed = (Polygon) JTSTransform.transform(polygon, "EPSG:4326", "EPSG:3857", gf);
 
-    // Verify transformation
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getNumPoints()).isEqualTo(5);
+    assertNotNull(transformed);
+    assertEquals(5, transformed.getNumPoints());
+    assertTrue(transformed.getArea() > polygon.getArea());
 
-    // Verify area is larger in Web Mercator (due to distortion)
-    assertThat(transformed.getArea()).isGreaterThan(polygon.getArea());
-
-    // Check a corner point
     Coordinate firstCoord = transformed.getExteriorRing().getCoordinateN(0);
-    assertThat(firstCoord.x).isCloseTo(-7903683.846322424, offset(0.1));
-    assertThat(firstCoord.y).isCloseTo(5012341.663847514, offset(0.1));
+    assertEquals(-7903683.846322424, firstCoord.x, EPSILON);
+    assertEquals(5012341.663847514, firstCoord.y, EPSILON);
   }
 
   @Test
   void testTransformPolygonWithHole() {
-    // Create polygon with a hole
     Coordinate[] shell =
         new Coordinate[] {
           new Coordinate(-72.0, 41.0),
@@ -148,21 +129,17 @@ class JTSTransformTest {
     Polygon polygon =
         gf.createPolygon(gf.createLinearRing(shell), new LinearRing[] {gf.createLinearRing(hole)});
 
-    // Transform to Web Mercator
     Polygon transformed = (Polygon) JTSTransform.transform(polygon, "EPSG:4326", "EPSG:3857", gf);
 
-    // Verify transformation
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getNumInteriorRing()).isEqualTo(1);
+    assertNotNull(transformed);
+    assertEquals(1, transformed.getNumInteriorRing());
 
-    // Verify hole is preserved
     LinearRing transformedHole = (LinearRing) transformed.getInteriorRingN(0);
-    assertThat(transformedHole.getNumPoints()).isEqualTo(5);
+    assertEquals(5, transformedHole.getNumPoints());
   }
 
   @Test
   void testTransformMultiPoint() {
-    // Create multipoint
     org.locationtech.jts.geom.Point[] points =
         new org.locationtech.jts.geom.Point[] {
           gf.createPoint(new Coordinate(-71.0, 41.0)),
@@ -171,24 +148,20 @@ class JTSTransformTest {
         };
     MultiPoint multiPoint = gf.createMultiPoint(points);
 
-    // Transform to Web Mercator
     MultiPoint transformed =
         (MultiPoint) JTSTransform.transform(multiPoint, "EPSG:4326", "EPSG:3857", gf);
 
-    // Verify transformation
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getNumGeometries()).isEqualTo(3);
+    assertNotNull(transformed);
+    assertEquals(3, transformed.getNumGeometries());
 
-    // Check first point
     org.locationtech.jts.geom.Point firstPoint =
         (org.locationtech.jts.geom.Point) transformed.getGeometryN(0);
-    assertThat(firstPoint.getX()).isCloseTo(-7903683.846322424, offset(0.1));
-    assertThat(firstPoint.getY()).isCloseTo(5012341.663847514, offset(0.1));
+    assertEquals(-7903683.846322424, firstPoint.getX(), EPSILON);
+    assertEquals(5012341.663847514, firstPoint.getY(), EPSILON);
   }
 
   @Test
   void testTransformMultiLineString() {
-    // Create multilinestring
     LineString[] lineStrings =
         new LineString[] {
           gf.createLineString(
@@ -198,18 +171,15 @@ class JTSTransformTest {
         };
     MultiLineString multiLineString = gf.createMultiLineString(lineStrings);
 
-    // Transform to Web Mercator
     MultiLineString transformed =
         (MultiLineString) JTSTransform.transform(multiLineString, "EPSG:4326", "EPSG:3857", gf);
 
-    // Verify transformation
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getNumGeometries()).isEqualTo(2);
+    assertNotNull(transformed);
+    assertEquals(2, transformed.getNumGeometries());
   }
 
   @Test
   void testTransformMultiPolygon() {
-    // Create multipolygon
     Polygon poly1 =
         gf.createPolygon(
             new Coordinate[] {
@@ -232,18 +202,15 @@ class JTSTransformTest {
 
     MultiPolygon multiPolygon = gf.createMultiPolygon(new Polygon[] {poly1, poly2});
 
-    // Transform to Web Mercator
     MultiPolygon transformed =
         (MultiPolygon) JTSTransform.transform(multiPolygon, "EPSG:4326", "EPSG:3857", gf);
 
-    // Verify transformation
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getNumGeometries()).isEqualTo(2);
+    assertNotNull(transformed);
+    assertEquals(2, transformed.getNumGeometries());
   }
 
   @Test
   void testTransformGeometryCollection() {
-    // Create geometry collection with mixed types
     Geometry[] geometries =
         new Geometry[] {
           gf.createPoint(new Coordinate(-71.0, 41.0)),
@@ -260,40 +227,32 @@ class JTSTransformTest {
         };
     GeometryCollection collection = gf.createGeometryCollection(geometries);
 
-    // Transform to Web Mercator
     GeometryCollection transformed =
         (GeometryCollection) JTSTransform.transform(collection, "EPSG:4326", "EPSG:3857", gf);
 
-    // Verify transformation
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getNumGeometries()).isEqualTo(3);
-    assertThat(transformed.getGeometryN(0)).isInstanceOf(org.locationtech.jts.geom.Point.class);
-    assertThat(transformed.getGeometryN(1)).isInstanceOf(LineString.class);
-    assertThat(transformed.getGeometryN(2)).isInstanceOf(Polygon.class);
+    assertNotNull(transformed);
+    assertEquals(3, transformed.getNumGeometries());
+    assertTrue(transformed.getGeometryN(0) instanceof org.locationtech.jts.geom.Point);
+    assertTrue(transformed.getGeometryN(1) instanceof LineString);
+    assertTrue(transformed.getGeometryN(2) instanceof Polygon);
   }
 
   @Test
   void testTransformUTM() {
-    // Create a point in WGS84
     org.locationtech.jts.geom.Point point = gf.createPoint(new Coordinate(-71.0, 41.0));
-
-    // Transform to UTM Zone 19N
     org.locationtech.jts.geom.Point transformed =
         (org.locationtech.jts.geom.Point)
             JTSTransform.transform(point, "EPSG:4326", "EPSG:32619", gf);
 
-    // Verify transformation (approximate UTM coordinates for Boston)
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getX()).isCloseTo(331792.1148057905, offset(10.0));
-    assertThat(transformed.getY()).isCloseTo(4540683.529276983, offset(200.0));
+    assertNotNull(transformed);
+    assertEquals(331792.1148057905, transformed.getX(), 10.0);
+    assertEquals(4540683.529276983, transformed.getY(), UTM_TOLERANCE);
   }
 
   @Test
   void testTransformWithConverter() {
-    // Create a converter for multiple transformations
     Proj4Sedona.Converter converter = Proj4Sedona.converter("EPSG:4326", "EPSG:3857");
 
-    // Transform multiple geometries using the same converter
     org.locationtech.jts.geom.Point point1 = gf.createPoint(new Coordinate(-71.0, 41.0));
     org.locationtech.jts.geom.Point point2 = gf.createPoint(new Coordinate(-70.0, 42.0));
 
@@ -302,48 +261,46 @@ class JTSTransformTest {
     org.locationtech.jts.geom.Point transformed2 =
         (org.locationtech.jts.geom.Point) JTSTransform.transform(point2, converter, gf);
 
-    // Verify both transformations
-    assertThat(transformed1).isNotNull();
-    assertThat(transformed2).isNotNull();
-    assertThat(transformed1.getX()).isCloseTo(-7903683.846322424, offset(0.1));
-    assertThat(transformed2.getX()).isCloseTo(-7792364.365146369, offset(0.1));
+    assertNotNull(transformed1);
+    assertNotNull(transformed2);
+    assertEquals(-7903683.846322424, transformed1.getX(), EPSILON);
+    assertEquals(-7792364.365146369, transformed2.getX(), EPSILON);
   }
 
   @Test
   void testTransformEmptyGeometry() {
-    // Create empty polygon
     Polygon emptyPolygon = gf.createPolygon((Coordinate[]) null);
-
-    // Transform empty geometry
     Polygon transformed =
         (Polygon) JTSTransform.transform(emptyPolygon, "EPSG:4326", "EPSG:3857", gf);
 
-    // Verify it returns the same empty geometry
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.isEmpty()).isTrue();
+    assertNotNull(transformed);
+    assertTrue(transformed.isEmpty());
   }
 
   @Test
   void testTransformNullGeometry() {
-    // Test null geometry
-    assertThatThrownBy(() -> JTSTransform.transform(null, "EPSG:4326", "EPSG:3857", gf))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Geometry cannot be null");
+    IllegalArgumentException exception =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> JTSTransform.transform(null, "EPSG:4326", "EPSG:3857", gf));
+
+    assertTrue(exception.getMessage().contains("Geometry cannot be null"));
   }
 
   @Test
   void testTransformNullConverter() {
-    // Test null converter
     org.locationtech.jts.geom.Point point = gf.createPoint(new Coordinate(-71.0, 41.0));
 
-    assertThatThrownBy(() -> JTSTransform.transform(point, (Proj4Sedona.Converter) null, gf))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Converter cannot be null");
+    IllegalArgumentException exception =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> JTSTransform.transform(point, (Proj4Sedona.Converter) null, gf));
+
+    assertTrue(exception.getMessage().contains("Converter cannot be null"));
   }
 
   @Test
   void testRoundTripTransformation() {
-    // Create a polygon
     Coordinate[] coords =
         new Coordinate[] {
           new Coordinate(-71.0, 41.0),
@@ -354,90 +311,71 @@ class JTSTransformTest {
         };
     Polygon original = gf.createPolygon(coords);
 
-    // Transform to Web Mercator and back
     Polygon toWebMercator =
         (Polygon) JTSTransform.transform(original, "EPSG:4326", "EPSG:3857", gf);
     Polygon backToWGS84 =
         (Polygon) JTSTransform.transform(toWebMercator, "EPSG:3857", "EPSG:4326", gf);
 
-    // Verify round-trip accuracy (should be very close to original)
     for (int i = 0; i < original.getNumPoints(); i++) {
       Coordinate origCoord = original.getExteriorRing().getCoordinateN(i);
       Coordinate roundTripCoord = backToWGS84.getExteriorRing().getCoordinateN(i);
 
-      assertThat(roundTripCoord.x).isCloseTo(origCoord.x, offset(1e-6));
-      assertThat(roundTripCoord.y).isCloseTo(origCoord.y, offset(1e-6));
+      assertEquals(origCoord.x, roundTripCoord.x, HIGH_PRECISION);
+      assertEquals(origCoord.y, roundTripCoord.y, HIGH_PRECISION);
     }
   }
 
   @Test
   void testTransformWithPROJString() {
-    // Create a point
     org.locationtech.jts.geom.Point point = gf.createPoint(new Coordinate(-71.0, 41.0));
-
-    // Transform using PROJ strings instead of EPSG codes
     org.locationtech.jts.geom.Point transformed =
         (org.locationtech.jts.geom.Point)
             JTSTransform.transform(
                 point, "+proj=longlat +datum=WGS84", "+proj=utm +zone=19 +datum=WGS84", gf);
 
-    // Verify transformation
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getX()).isCloseTo(331792.1148057905, offset(10.0));
-    assertThat(transformed.getY()).isCloseTo(4540683.529276983, offset(200.0));
+    assertNotNull(transformed);
+    assertEquals(331792.1148057905, transformed.getX(), 10.0);
+    assertEquals(4540683.529276983, transformed.getY(), UTM_TOLERANCE);
   }
 
   @Test
   void testTransformWithIntEPSG() {
-    // Create a point in WGS84
     org.locationtech.jts.geom.Point point = gf.createPoint(new Coordinate(-71.0, 41.0));
-
-    // Transform using integer EPSG codes
     org.locationtech.jts.geom.Point transformed =
         (org.locationtech.jts.geom.Point) JTSTransform.transform(point, 4326, 3857, gf);
 
-    // Verify transformation
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getX()).isCloseTo(-7903683.846322424, offset(0.1));
-    assertThat(transformed.getY()).isCloseTo(5012341.663847514, offset(0.1));
+    assertNotNull(transformed);
+    assertEquals(-7903683.846322424, transformed.getX(), EPSILON);
+    assertEquals(5012341.663847514, transformed.getY(), EPSILON);
   }
 
   @Test
   void testTransformStringToInt() {
-    // Create a point
     org.locationtech.jts.geom.Point point = gf.createPoint(new Coordinate(-71.0, 41.0));
-
-    // Transform from PROJ string to EPSG code (int)
     org.locationtech.jts.geom.Point transformed =
         (org.locationtech.jts.geom.Point)
             JTSTransform.transform(point, "+proj=longlat +datum=WGS84", 3857, gf);
 
-    // Verify transformation
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getX()).isCloseTo(-7903683.846322424, offset(0.1));
-    assertThat(transformed.getY()).isCloseTo(5012341.663847514, offset(0.1));
+    assertNotNull(transformed);
+    assertEquals(-7903683.846322424, transformed.getX(), EPSILON);
+    assertEquals(5012341.663847514, transformed.getY(), EPSILON);
   }
 
   @Test
   void testTransformIntToString() {
-    // Create a point in Web Mercator
     org.locationtech.jts.geom.Point point =
         gf.createPoint(new Coordinate(-7903683.846322424, 5012341.663847514));
-
-    // Transform from EPSG code (int) to PROJ string
     org.locationtech.jts.geom.Point transformed =
         (org.locationtech.jts.geom.Point)
             JTSTransform.transform(point, 3857, "+proj=longlat +datum=WGS84", gf);
 
-    // Verify transformation (should get back to original WGS84)
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getX()).isCloseTo(-71.0, offset(1e-6));
-    assertThat(transformed.getY()).isCloseTo(41.0, offset(1e-6));
+    assertNotNull(transformed);
+    assertEquals(-71.0, transformed.getX(), HIGH_PRECISION);
+    assertEquals(41.0, transformed.getY(), HIGH_PRECISION);
   }
 
   @Test
   void testTransformPolygonWithIntEPSG() {
-    // Create a polygon in WGS84
     Coordinate[] coords =
         new Coordinate[] {
           new Coordinate(-71.0, 41.0),
@@ -448,26 +386,13 @@ class JTSTransformTest {
         };
     Polygon polygon = gf.createPolygon(coords);
 
-    // Transform using integer EPSG codes - cleaner API!
     Polygon transformed = (Polygon) JTSTransform.transform(polygon, 4326, 3857, gf);
 
-    // Verify transformation
-    assertThat(transformed).isNotNull();
-    assertThat(transformed.getNumPoints()).isEqualTo(5);
+    assertNotNull(transformed);
+    assertEquals(5, transformed.getNumPoints());
 
-    // Check corner point
     Coordinate firstCoord = transformed.getExteriorRing().getCoordinateN(0);
-    assertThat(firstCoord.x).isCloseTo(-7903683.846322424, offset(0.1));
-    assertThat(firstCoord.y).isCloseTo(5012341.663847514, offset(0.1));
-  }
-
-  /**
-   * Helper method to create offset for double comparisons.
-   *
-   * @param offset the offset value
-   * @return offset for assertions
-   */
-  private static org.assertj.core.data.Offset<Double> offset(double offset) {
-    return org.assertj.core.data.Offset.offset(offset);
+    assertEquals(-7903683.846322424, firstCoord.x, EPSILON);
+    assertEquals(5012341.663847514, firstCoord.y, EPSILON);
   }
 }
