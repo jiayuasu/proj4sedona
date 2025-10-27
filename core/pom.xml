@@ -54,6 +54,13 @@
             <version>${jackson.version}</version>
         </dependency>
 
+        <!-- JTS Topology Suite for geometry support -->
+        <dependency>
+            <groupId>org.locationtech.jts</groupId>
+            <artifactId>jts-core</artifactId>
+            <version>1.20.0</version>
+        </dependency>
+
         <!-- Testing dependencies -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
