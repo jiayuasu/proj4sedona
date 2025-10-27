@@ -14,15 +14,30 @@ import pyproj
 
 @pytest.fixture(scope="session")
 def proj4sedona_jar_path():
-    """Get the path to the compiled Proj4Sedona JAR files."""
-    core_jar = "../core/target/proj4sedona-1.0.0-SNAPSHOT.jar"
+    """Get the path to the compiled Proj4Sedona JAR files.
+    
+    Note: For geometry tests (JTS), you need to build with shaded profile:
+        mvn clean package -Pshaded -DskipTests
+    This creates an uber JAR with all dependencies (JTS, Jackson) included.
+    """
+    # Check for shaded JAR first (includes all dependencies)
+    shaded_core_jar = "../core/target/proj4sedona-1.0.0-SNAPSHOT.jar"
+    original_core_jar = "../core/target/original-proj4sedona-1.0.0-SNAPSHOT.jar"
     mgrs_jar = "../mgrs/target/proj4sedona-mgrs-1.0.0-SNAPSHOT.jar"
     wkt_jar = "../wkt-parser/target/wkt-parser-1.0.0-SNAPSHOT.jar"
+    
+    # Use shaded JAR if available (has original- prefix when shaded)
+    if os.path.exists(original_core_jar):
+        # Shaded build - use the shaded JAR (includes all dependencies)
+        core_jar = shaded_core_jar
+    else:
+        # Regular build - use standard JAR
+        core_jar = shaded_core_jar
     
     # Check if JARs exist
     for jar in [core_jar, mgrs_jar, wkt_jar]:
         if not os.path.exists(jar):
-            pytest.skip(f"Required JAR file not found: {jar}")
+            pytest.skip(f"Required JAR file not found: {jar}. Run 'mvn clean package -Pshaded -DskipTests'")
     
     return {
         "core": core_jar,

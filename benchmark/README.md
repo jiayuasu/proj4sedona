@@ -73,6 +73,12 @@ benchmark/
 - **Accuracy Comparison**: Direct coordinate comparison
 - **Edge Case Testing**: Boundary condition testing
 
+### Geometry Accuracy Tests (`test_geometry_accuracy.py`)
+- **Polygon Transformation**: Compare shapely+pyproj vs JTS+Proj4Sedona for polygons
+- **LineString Transformation**: Accuracy comparison for line geometries
+- **MultiPolygon Transformation**: Complex multi-geometry accuracy validation
+- **Polygon with Holes**: Tests hole preservation and transformation accuracy
+
 
 ## 🎛️ Running Benchmarks
 

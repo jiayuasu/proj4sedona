@@ -59,7 +59,6 @@
             <groupId>org.locationtech.jts</groupId>
             <artifactId>jts-core</artifactId>
             <version>1.20.0</version>
-            <optional>true</optional>
         </dependency>
 
         <!-- Testing dependencies -->
