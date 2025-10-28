@@ -10,6 +10,7 @@ import tempfile
 import time
 from typing import List, Dict, Tuple, Any
 import pyproj
+from benchmark_config import PROJECT_VERSION
 
 
 @pytest.fixture(scope="session")
@@ -21,10 +22,10 @@ def proj4sedona_jar_path():
     This creates an uber JAR with all dependencies (JTS, Jackson) included.
     """
     # Check for shaded JAR first (includes all dependencies)
-    shaded_core_jar = "../core/target/proj4sedona-1.0.0-SNAPSHOT.jar"
-    original_core_jar = "../core/target/original-proj4sedona-1.0.0-SNAPSHOT.jar"
-    mgrs_jar = "../mgrs/target/proj4sedona-mgrs-1.0.0-SNAPSHOT.jar"
-    wkt_jar = "../wkt-parser/target/wkt-parser-1.0.0-SNAPSHOT.jar"
+    shaded_core_jar = f"../core/target/proj4sedona-{PROJECT_VERSION}.jar"
+    original_core_jar = f"../core/target/original-proj4sedona-{PROJECT_VERSION}.jar"
+    mgrs_jar = f"../mgrs/target/proj4sedona-mgrs-{PROJECT_VERSION}.jar"
+    wkt_jar = f"../wkt-parser/target/wkt-parser-{PROJECT_VERSION}.jar"
     
     # Use shaded JAR if available (has original- prefix when shaded)
     if os.path.exists(original_core_jar):
