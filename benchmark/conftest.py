@@ -11,6 +11,7 @@ import time
 from typing import List, Dict, Tuple, Any
 import pyproj
 from benchmark_config import PROJECT_VERSION
+from template_loader import TemplateLoader
 
 
 @pytest.fixture(scope="session")
@@ -390,6 +391,7 @@ def java_runner(proj4sedona_jar_path):
         def __init__(self, jar_paths):
             self.jar_paths = jar_paths
             self.classpath = ":".join(jar_paths.values())
+            self.template_loader = TemplateLoader()
         
         def run_benchmark(self, scenario, iterations=10000, crs_format="epsg", wkt2_defs=None, projjson_defs=None):
             """Run a Java benchmark for a given scenario."""
@@ -403,118 +405,25 @@ def java_runner(proj4sedona_jar_path):
                 from_crs = json.dumps(from_crs)
                 to_crs = json.dumps(to_crs)
             
-            java_code = f'''
-import org.apache.sedona.proj.Proj4Sedona;
-import org.apache.sedona.proj.core.Point;
-import org.apache.sedona.proj.core.Projection;
-import org.apache.sedona.proj.projjson.ProjJsonDefinition;
-import java.util.List;
-import java.util.ArrayList;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-public class BenchmarkRunner {{
-    public static void main(String[] args) {{
-        String fromCrs = {_escape_java_string(from_crs)};
-        String toCrs = {_escape_java_string(to_crs)};
-        int iterations = {iterations};
-        
-        // Test points
-        Point[] testPoints = {{
-'''
-            
-            # Add test points
+            # Build test points string
+            test_points_str = ""
             for i, (x, y) in enumerate(scenario['test_points']):
-                java_code += f'            new Point({x}, {y})'
+                test_points_str += f'            new Point({x}, {y})'
                 if i < len(scenario['test_points']) - 1:
-                    java_code += ','
-                java_code += '\n'
+                    test_points_str += ','
+                test_points_str += '\n'
             
-            java_code += f'''        }};
-        
-        System.out.println("=== Proj4Sedona Benchmark ===");
-        System.out.println("Scenario: {scenario['name']}");
-        System.out.println("CRS Format: {crs_format}");
-        System.out.println("From CRS: " + fromCrs);
-        System.out.println("To CRS: " + toCrs);
-        System.out.println("Test Points: " + testPoints.length);
-        System.out.println("Iterations: " + iterations);
-        
-        // Create projections based on CRS format
-        Projection fromProj = null;
-        Projection toProj = null;
-        
-        try {{
-            if ("{crs_format}" == "epsg") {{
-                fromProj = new Projection(fromCrs);
-                toProj = new Projection(toCrs);
-            }} else if ("{crs_format}" == "wkt2") {{
-                // Map WKT2 keys to filenames
-                java.util.Map<String, String> wkt2Files = new java.util.HashMap<>();
-                wkt2Files.put("WGS84", "data/wkt2/wgs84.wkt");
-                wkt2Files.put("WebMercator", "data/wkt2/webmercator.wkt");
-                wkt2Files.put("UTM_19N", "data/wkt2/utm_19n.wkt");
-                wkt2Files.put("NAD83_Vermont", "data/wkt2/nad83_vermont.wkt");
-                wkt2Files.put("NAD83", "data/wkt2/nad83.wkt");
-                
-                // Read WKT2 from files
-                String fromWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(wkt2Files.get(fromCrs))));
-                String toWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(wkt2Files.get(toCrs))));
-                fromProj = new Projection(fromWkt2);
-                toProj = new Projection(toWkt2);
-            }} else if ("{crs_format}" == "projjson") {{
-                // Use PROJJSON strings passed from Python
-                ObjectMapper mapper = new ObjectMapper();
-                ProjJsonDefinition fromDef = mapper.readValue(fromCrs, ProjJsonDefinition.class);
-                ProjJsonDefinition toDef = mapper.readValue(toCrs, ProjJsonDefinition.class);
-                fromProj = Proj4Sedona.fromProjJson(fromDef);
-                toProj = Proj4Sedona.fromProjJson(toDef);
-            }}
-        }} catch (Exception e) {{
-            System.err.println("Error creating projections: " + e.getMessage());
-            System.exit(1);
-        }}
-        
-        // Accuracy test - single transformation
-        System.out.println("\\nAccuracy Test Results:");
-        for (int i = 0; i < testPoints.length; i++) {{
-            try {{
-                Point result = Proj4Sedona.transform(fromProj, toProj, testPoints[i], false);
-                System.out.println(String.format("Point %d: (%.6f, %.6f) -> (%.6f, %.6f)", 
-                    i+1, testPoints[i].x, testPoints[i].y, result.x, result.y));
-            }} catch (Exception e) {{
-                System.err.println("Error transforming point " + testPoints[i] + ": " + e.getMessage());
-            }}
-        }}
-        
-        // Performance test
-        System.out.println("\\nPerformance Test:");
-        long startTime = System.nanoTime();
-        int successCount = 0;
-        
-        for (int i = 0; i < iterations; i++) {{
-            for (Point point : testPoints) {{
-                try {{
-                    Proj4Sedona.transform(fromProj, toProj, point, false);
-                    successCount++;
-                }} catch (Exception e) {{
-                    // Count failures
-                }}
-            }}
-        }}
-        
-        long endTime = System.nanoTime();
-        double totalTimeMs = (endTime - startTime) / 1_000_000.0;
-        double avgTimeMs = totalTimeMs / (iterations * testPoints.length);
-        double tps = 1000.0 / avgTimeMs;
-        
-        System.out.println(String.format("Total time: %.2f ms", totalTimeMs));
-        System.out.println(String.format("Average per transformation: %.6f ms", avgTimeMs));
-        System.out.println(String.format("Transformations per second: %.0f", tps));
-        System.out.println(String.format("Success rate: %.2f%%", (double)successCount / (iterations * testPoints.length) * 100));
-        
-    }}
-}}
-'''
+            # Load and fill template
+            template = self.template_loader.load_java_benchmark_template()
+            java_code = self.template_loader.fill_template(
+                template,
+                FROM_CRS=_escape_java_string(from_crs),
+                TO_CRS=_escape_java_string(to_crs),
+                ITERATIONS=iterations,
+                TEST_POINTS=test_points_str,
+                SCENARIO_NAME=scenario['name'],
+                CRS_FORMAT=crs_format
+            )
             
             # Write Java code to temporary file with proper class name
             import tempfile
@@ -563,7 +472,7 @@ def python_runner():
     
     class PythonRunner:
         def __init__(self):
-            pass
+            self.template_loader = TemplateLoader()
         
         def run_benchmark(self, scenario, iterations=10000, crs_format="epsg", wkt2_defs=None, projjson_defs=None):
             """Run a Python benchmark for a given scenario."""
@@ -571,115 +480,17 @@ def python_runner():
             # Get CRS strings based on format
             from_crs, to_crs = _get_crs_strings(scenario, crs_format, wkt2_defs, projjson_defs)
             
-            # For PROJJSON, we need to pass the dict as JSON string
-            if crs_format == "projjson":
-                import json
-                from_crs_json = json.dumps(from_crs)
-                to_crs_json = json.dumps(to_crs)
-            else:
-                from_crs_json = None
-                to_crs_json = None
-            
-            python_code = f'''
-import pyproj
-import time
-import sys
-import json
-
-def run_pyproj_benchmark():
-    from_crs = {repr(from_crs)}
-    to_crs = {repr(to_crs)}
-    iterations = {iterations}
-    
-    # Test points
-    test_points = {scenario['test_points']}
-    
-    print("=== pyproj Benchmark ===")
-    print(f"Scenario: {scenario['name']}")
-    print(f"CRS Format: {crs_format}")
-    print(f"From CRS: {{str(from_crs)[:100]}}...")  # Truncate for display
-    print(f"To CRS: {{str(to_crs)[:100]}}...")
-    print(f"Test Points: {{len(test_points)}}")
-    print(f"Iterations: {{iterations}}")
-    
-    try:
-        # Create transformer based on CRS format
-        if "{crs_format}" == "epsg":
-            transformer = pyproj.Transformer.from_crs(from_crs, to_crs, always_xy=True)
-        elif "{crs_format}" == "wkt2":
-            # Map WKT2 keys to filenames
-            wkt2_files = {{
-                "WGS84": "data/wkt2/wgs84.wkt",
-                "WebMercator": "data/wkt2/webmercator.wkt",
-                "UTM_19N": "data/wkt2/utm_19n.wkt",
-                "NAD83_Vermont": "data/wkt2/nad83_vermont.wkt",
-                "NAD83": "data/wkt2/nad83.wkt"
-            }}
-            
-            # Read WKT2 from files
-            with open(wkt2_files.get(from_crs, "data/wkt2/wgs84.wkt"), 'r') as f:
-                from_wkt2 = f.read()
-            with open(wkt2_files.get(to_crs, "data/wkt2/webmercator.wkt"), 'r') as f:
-                to_wkt2 = f.read()
-            
-            from_crs_obj = pyproj.CRS.from_wkt(from_wkt2)
-            to_crs_obj = pyproj.CRS.from_wkt(to_wkt2)
-            transformer = pyproj.Transformer.from_crs(from_crs_obj, to_crs_obj, always_xy=True)
-        elif "{crs_format}" == "projjson":
-            # Try to create CRS from PROJJSON dict
-            try:
-                from_crs_obj = pyproj.CRS.from_json_dict(from_crs)
-                to_crs_obj = pyproj.CRS.from_json_dict(to_crs)
-                transformer = pyproj.Transformer.from_crs(from_crs_obj, to_crs_obj, always_xy=True)
-            except Exception as e:
-                print(f"\\nError creating CRS from PROJJSON: {{e}}")
-                print("PROJJSON format may be incomplete or not fully supported by pyproj")
-                print("\\nPerformance Test:")
-                print("Total time: 0.00 ms")
-                print("Average per transformation: 0.000000 ms")
-                print("Transformations per second: 0")
-                print("Success rate: 0.00%")
-                sys.exit(0)
-        
-        # Accuracy test - single transformation
-        print("\\nAccuracy Test Results:")
-        for i, (x, y) in enumerate(test_points):
-            try:
-                x_out, y_out = transformer.transform(x, y)
-                print(f"Point {{i+1}}: ({{x:.6f}}, {{y:.6f}}) -> ({{x_out:.6f}}, {{y_out:.6f}})")
-            except Exception as e:
-                print(f"Error transforming point ({{x}}, {{y}}): {{e}}")
-        
-        # Performance test
-        print("\\nPerformance Test:")
-        start_time = time.time()
-        success_count = 0
-        
-        for _ in range(iterations):
-            for x, y in test_points:
-                try:
-                    transformer.transform(x, y)
-                    success_count += 1
-                except Exception:
-                    pass
-        
-        end_time = time.time()
-        total_time_ms = (end_time - start_time) * 1000
-        avg_time_ms = total_time_ms / (iterations * len(test_points))
-        tps = 1000.0 / avg_time_ms
-        
-        print(f"Total time: {{total_time_ms:.2f}} ms")
-        print(f"Average per transformation: {{avg_time_ms:.6f}} ms")
-        print(f"Transformations per second: {{tps:.0f}}")
-        print(f"Success rate: {{success_count / (iterations * len(test_points)) * 100:.2f}}%")
-        
-        
-    except Exception as e:
-        print(f"Error in benchmark: {{e}}")
-
-if __name__ == "__main__":
-    run_pyproj_benchmark()
-'''
+            # Load and fill template
+            template = self.template_loader.load_python_benchmark_template()
+            python_code = self.template_loader.fill_template(
+                template,
+                FROM_CRS=repr(from_crs),
+                TO_CRS=repr(to_crs),
+                ITERATIONS=iterations,
+                TEST_POINTS=scenario['test_points'],
+                SCENARIO_NAME=scenario['name'],
+                CRS_FORMAT=crs_format
+            )
             
             # Write and run Python code
             with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
@@ -712,6 +523,7 @@ def batch_java_runner(proj4sedona_jar_path):
         def __init__(self, jar_paths):
             self.jar_paths = jar_paths
             self.classpath = ":".join(jar_paths.values())
+            self.template_loader = TemplateLoader()
         
         def run_batch_benchmark(self, scenario, batch_size, iterations=1000, crs_format="epsg", wkt2_defs=None, projjson_defs=None):
             """Run a Java batch transformation benchmark."""
@@ -725,130 +537,30 @@ def batch_java_runner(proj4sedona_jar_path):
                 from_crs = json.dumps(from_crs)
                 to_crs = json.dumps(to_crs)
             
-            # Generate test points for batch
-            test_points = scenario['test_points'] * (batch_size // len(scenario['test_points']) + 1)
-            test_points = test_points[:batch_size]
-            
             # Prepare base points array for efficient initialization
             base_points = scenario['test_points']
             
-            java_code = f'''
-import org.apache.sedona.proj.Proj4Sedona;
-import org.apache.sedona.proj.core.Point;
-import org.apache.sedona.proj.core.Projection;
-import org.apache.sedona.proj.projjson.ProjJsonDefinition;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-class {{CLASS_NAME}} {{
-    
-    // Helper method to initialize test points
-    private static Point[] initializeTestPoints(int batchSize) {{
-        // Base test points
-        Point[] basePoints = {{
-'''
-            
-            # Add only the base test points (small array)
+            # Build base points string
+            base_points_str = ""
             for i, (x, y) in enumerate(base_points):
-                java_code += f'            new Point({x}, {y})'
+                base_points_str += f'            new Point({x}, {y})'
                 if i < len(base_points) - 1:
-                    java_code += ','
-                java_code += '\n'
+                    base_points_str += ','
+                base_points_str += '\n'
             
-            java_code += f'''        }};
-        
-        // Create batch by repeating base points
-        Point[] testPoints = new Point[batchSize];
-        for (int i = 0; i < batchSize; i++) {{
-            testPoints[i] = basePoints[i % basePoints.length];
-        }}
-        return testPoints;
-    }}
-    
-    public static void main(String[] args) {{
-        String fromCrs = {_escape_java_string(from_crs)};
-        String toCrs = {_escape_java_string(to_crs)};
-        int batchSize = {batch_size};
-        int iterations = {iterations};
-        
-        // Initialize test points using helper method
-        Point[] testPoints = initializeTestPoints(batchSize);
-        
-        System.out.println("=== Proj4Sedona Batch Benchmark ===");
-        System.out.println("Scenario: {scenario['name']}");
-        System.out.println("CRS Format: {crs_format}");
-        System.out.println("From CRS: " + fromCrs);
-        System.out.println("To CRS: " + toCrs);
-        System.out.println("Batch Size: " + batchSize);
-        System.out.println("Iterations: " + iterations);
-        
-        // Create projections based on CRS format
-        Projection fromProj = null;
-        Projection toProj = null;
-        
-        try {{
-            if ("{crs_format}" == "epsg") {{
-                fromProj = new Projection(fromCrs);
-                toProj = new Projection(toCrs);
-            }} else if ("{crs_format}" == "wkt2") {{
-                // Map WKT2 keys to filenames
-                java.util.Map<String, String> wkt2Files = new java.util.HashMap<>();
-                wkt2Files.put("WGS84", "data/wkt2/wgs84.wkt");
-                wkt2Files.put("WebMercator", "data/wkt2/webmercator.wkt");
-                wkt2Files.put("UTM_19N", "data/wkt2/utm_19n.wkt");
-                wkt2Files.put("NAD83_Vermont", "data/wkt2/nad83_vermont.wkt");
-                wkt2Files.put("NAD83", "data/wkt2/nad83.wkt");
-                
-                // Read WKT2 from files
-                String fromWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(wkt2Files.get(fromCrs))));
-                String toWkt2 = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(wkt2Files.get(toCrs))));
-                fromProj = new Projection(fromWkt2);
-                toProj = new Projection(toWkt2);
-            }} else if ("{crs_format}" == "projjson") {{
-                // Use PROJJSON strings passed from Python
-                ObjectMapper mapper = new ObjectMapper();
-                ProjJsonDefinition fromDef = mapper.readValue(fromCrs, ProjJsonDefinition.class);
-                ProjJsonDefinition toDef = mapper.readValue(toCrs, ProjJsonDefinition.class);
-                fromProj = Proj4Sedona.fromProjJson(fromDef);
-                toProj = Proj4Sedona.fromProjJson(toDef);
-            }}
-        }} catch (Exception e) {{
-            System.err.println("Error creating projections: " + e.getMessage());
-            System.exit(1);
-        }}
-        
-        // Batch transformation test
-        System.out.println("\\nBatch Performance Test:");
-        long startTime = System.nanoTime();
-        int successCount = 0;
-        
-        try {{
-            for (int i = 0; i < iterations; i++) {{
-                for (Point point : testPoints) {{
-                    try {{
-                        Point result = Proj4Sedona.transform(fromProj, toProj, point, false);
-                        successCount++;
-                    }} catch (Exception e) {{
-                        // Count failed transformations
-                    }}
-                }}
-            }}
-        }} catch (Exception e) {{
-            System.err.println("Error during batch transformation: " + e.getMessage());
-        }}
-        
-        long endTime = System.nanoTime();
-        double totalTimeMs = (endTime - startTime) / 1_000_000.0;
-        double avgTimeMs = totalTimeMs / (iterations * batchSize);
-        double tps = 1000.0 / avgTimeMs;
-        double successRate = (successCount * 100.0) / (iterations * batchSize);
-        
-        System.out.println(String.format("Total time: %.2f ms", totalTimeMs));
-        System.out.println(String.format("Average per transformation: %.6f ms", avgTimeMs));
-        System.out.println(String.format("Transformations per second: %.0f", tps));
-        System.out.println(String.format("Success rate: %.2f%%", successRate));
-    }}
-}}
-'''
+            # Load and fill template
+            template = self.template_loader.load_java_batch_benchmark_template()
+            java_code = self.template_loader.fill_template(
+                template,
+                CLASS_NAME="{CLASS_NAME}",  # Will be replaced later with actual class name
+                FROM_CRS=_escape_java_string(from_crs),
+                TO_CRS=_escape_java_string(to_crs),
+                BATCH_SIZE=batch_size,
+                ITERATIONS=iterations,
+                BASE_POINTS=base_points_str,
+                SCENARIO_NAME=scenario['name'],
+                CRS_FORMAT=crs_format
+            )
             
             # Write and compile Java code
             with tempfile.NamedTemporaryFile(mode='w', suffix='.java', delete=False, dir='.') as f:
@@ -908,7 +620,7 @@ def batch_python_runner():
     
     class BatchPythonRunner:
         def __init__(self):
-            pass
+            self.template_loader = TemplateLoader()
         
         def run_batch_benchmark(self, scenario, batch_size, iterations=1000, crs_format="epsg", wkt2_defs=None, projjson_defs=None):
             """Run a Python batch transformation benchmark."""
@@ -920,101 +632,18 @@ def batch_python_runner():
             test_points = scenario['test_points'] * (batch_size // len(scenario['test_points']) + 1)
             test_points = test_points[:batch_size]
             
-            python_code = f'''
-import pyproj
-import time
-import sys
-import json
-
-def run_pyproj_batch_benchmark():
-    from_crs = {repr(from_crs)}
-    to_crs = {repr(to_crs)}
-    batch_size = {batch_size}
-    iterations = {iterations}
-    
-    # Test points
-    test_points = {test_points}
-    
-    print("=== pyproj Batch Benchmark ===")
-    print(f"Scenario: {scenario['name']}")
-    print(f"CRS Format: {crs_format}")
-    print(f"From CRS: {{from_crs}}")
-    print(f"To CRS: {{to_crs}}")
-    print(f"Batch Size: {{batch_size}}")
-    print(f"Iterations: {{iterations}}")
-    
-    try:
-        # Create transformer based on CRS format
-        if "{crs_format}" == "epsg":
-            transformer = pyproj.Transformer.from_crs(from_crs, to_crs, always_xy=True)
-        elif "{crs_format}" == "wkt2":
-            # Map WKT2 keys to filenames
-            wkt2_files = {{
-                "WGS84": "data/wkt2/wgs84.wkt",
-                "WebMercator": "data/wkt2/webmercator.wkt",
-                "UTM_19N": "data/wkt2/utm_19n.wkt",
-                "NAD83_Vermont": "data/wkt2/nad83_vermont.wkt",
-                "NAD83": "data/wkt2/nad83.wkt"
-            }}
-            
-            # Read WKT2 from files
-            with open(wkt2_files.get(from_crs, "data/wkt2/wgs84.wkt"), 'r') as f:
-                from_wkt2 = f.read()
-            with open(wkt2_files.get(to_crs, "data/wkt2/webmercator.wkt"), 'r') as f:
-                to_wkt2 = f.read()
-            
-            from_crs_obj = pyproj.CRS.from_wkt(from_wkt2)
-            to_crs_obj = pyproj.CRS.from_wkt(to_wkt2)
-            transformer = pyproj.Transformer.from_crs(from_crs_obj, to_crs_obj, always_xy=True)
-        elif "{crs_format}" == "projjson":
-            # Try to create CRS from PROJJSON dict
-            try:
-                from_crs_obj = pyproj.CRS.from_json_dict(from_crs)
-                to_crs_obj = pyproj.CRS.from_json_dict(to_crs)
-                transformer = pyproj.Transformer.from_crs(from_crs_obj, to_crs_obj, always_xy=True)
-            except Exception as e:
-                print(f"\\nError creating CRS from PROJJSON: {{e}}")
-                print("PROJJSON format may be incomplete or not fully supported by pyproj")
-                print("\\nPerformance Test:")
-                print("Total time: 0.00 ms")
-                print("Average per transformation: 0.000000 ms")
-                print("Transformations per second: 0")
-                print("Success rate: 0.00%")
-                sys.exit(0)
-        
-        # Batch transformation test
-        print("\\nBatch Performance Test:")
-        start_time = time.time()
-        success_count = 0
-        
-        for _ in range(iterations):
-            try:
-                # Prepare batch coordinates
-                x_coords = [point[0] for point in test_points]
-                y_coords = [point[1] for point in test_points]
-                
-                # Transform batch
-                transformed_x, transformed_y = transformer.transform(x_coords, y_coords)
-                success_count += len(transformed_x)
-            except Exception:
-                pass
-        
-        end_time = time.time()
-        total_time_ms = (end_time - start_time) * 1000
-        avg_time_ms = total_time_ms / (iterations * batch_size)
-        tps = 1000.0 / avg_time_ms
-        
-        print(f"Total time: {{total_time_ms:.2f}} ms")
-        print(f"Average per transformation: {{avg_time_ms:.6f}} ms")
-        print(f"Transformations per second: {{tps:.0f}}")
-        print(f"Success rate: {{success_count / (iterations * batch_size) * 100:.2f}}%")
-        
-    except Exception as e:
-        print(f"Error in batch benchmark: {{e}}")
-
-if __name__ == "__main__":
-    run_pyproj_batch_benchmark()
-'''
+            # Load and fill template
+            template = self.template_loader.load_python_batch_benchmark_template()
+            python_code = self.template_loader.fill_template(
+                template,
+                FROM_CRS=repr(from_crs),
+                TO_CRS=repr(to_crs),
+                BATCH_SIZE=batch_size,
+                ITERATIONS=iterations,
+                TEST_POINTS=test_points,
+                SCENARIO_NAME=scenario['name'],
+                CRS_FORMAT=crs_format
+            )
             
             # Write and run Python code
             with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
