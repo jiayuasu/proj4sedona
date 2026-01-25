@@ -3,6 +3,7 @@ package org.proj4sedona.core;
 import org.proj4sedona.constants.Datum;
 import org.proj4sedona.constants.Values;
 import org.proj4sedona.parser.ProjString;
+import org.proj4sedona.defs.Defs;
 import org.proj4sedona.projection.Projection;
 import org.proj4sedona.projection.ProjectionParams;
 import org.proj4sedona.projection.ProjectionRegistry;
@@ -11,11 +12,21 @@ import org.proj4sedona.projection.ProjectionRegistry;
  * Main projection class that initializes and manages coordinate system transformations.
  * Mirrors: lib/Proj.js
  * 
- * This class:
- * 1. Parses the SRS code (PROJ string, etc.)
- * 2. Looks up datum definitions
- * 3. Derives ellipsoid and eccentricity constants
- * 4. Initializes the projection implementation
+ * <p>This class:</p>
+ * <ol>
+ *   <li>Parses the SRS code (PROJ string, EPSG code, etc.)</li>
+ *   <li>Looks up from the definition registry if applicable</li>
+ *   <li>Looks up datum definitions</li>
+ *   <li>Derives ellipsoid and eccentricity constants</li>
+ *   <li>Initializes the projection implementation</li>
+ * </ol>
+ * 
+ * <p>Supported input formats:</p>
+ * <ul>
+ *   <li>PROJ strings: "+proj=longlat +datum=WGS84"</li>
+ *   <li>EPSG codes: "EPSG:4326", "EPSG:3857"</li>
+ *   <li>Aliases: "WGS84", "GOOGLE"</li>
+ * </ul>
  */
 public class Proj {
 
@@ -23,14 +34,17 @@ public class Proj {
     private final Projection projection;
 
     /**
-     * Create a projection from an SRS code (PROJ string).
+     * Create a projection from an SRS code.
      * 
-     * @param srsCode The SRS code (e.g., "+proj=longlat +datum=WGS84")
+     * @param srsCode The SRS code (PROJ string, EPSG code, or alias)
      * @throws IllegalArgumentException if the projection cannot be parsed or is not supported
      */
     public Proj(String srsCode) {
-        // Ensure registry is initialized
+        // Ensure registries are initialized
         ProjectionRegistry.start();
+        if (!Defs.isGlobalsInitialized()) {
+            Defs.globals();
+        }
 
         // Parse the SRS code
         ProjectionDef def = parseCode(srsCode);
@@ -77,7 +91,17 @@ public class Proj {
 
     /**
      * Parse the SRS code into a ProjectionDef.
-     * Currently only supports PROJ strings; WKT will be added in Phase 13.
+     * Mirrors: lib/parseCode.js
+     * 
+     * <p>Resolution order:</p>
+     * <ol>
+     *   <li>PROJ string (starts with "+")</li>
+     *   <li>Definition registry lookup (EPSG codes, aliases)</li>
+     *   <li>WKT parsing (Phase 13 - TODO)</li>
+     * </ol>
+     * 
+     * @param srsCode The input SRS code
+     * @return The parsed ProjectionDef, or null if parsing fails
      */
     private ProjectionDef parseCode(String srsCode) {
         if (srsCode == null || srsCode.isEmpty()) {
@@ -86,15 +110,33 @@ public class Proj {
 
         // Check if it's a PROJ string (starts with +)
         if (srsCode.charAt(0) == '+') {
-            return ProjString.parse(srsCode);
+            ProjectionDef def = ProjString.parse(srsCode);
+            if (def.getSrsCode() == null) {
+                def.setSrsCode(srsCode);
+            }
+            return def;
+        }
+
+        // Check the definition registry (EPSG codes, aliases like WGS84, GOOGLE)
+        ProjectionDef def = Defs.get(srsCode);
+        if (def != null) {
+            // Return the cached definition - it's already parsed
+            return def;
         }
 
         // TODO: Add WKT parsing in Phase 13
-        // TODO: Add definition lookup in Phase 12
+        // Check for WKT format: contains '[' and doesn't start with '+'
+        // if (srsCode.indexOf('[') != -1) {
+        //     return WktParser.parse(srsCode);
+        // }
 
-        // For now, try parsing as PROJ string anyway
+        // Last resort: try parsing as PROJ string anyway
         try {
-            return ProjString.parse(srsCode);
+            ProjectionDef parsed = ProjString.parse(srsCode);
+            if (parsed.getSrsCode() == null) {
+                parsed.setSrsCode(srsCode);
+            }
+            return parsed;
         } catch (Exception e) {
             return null;
         }
