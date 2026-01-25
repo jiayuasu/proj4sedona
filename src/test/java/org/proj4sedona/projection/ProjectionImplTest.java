@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class ProjectionImplTest {
 
     private static final double DELTA = 1e-6;
+    private static final double DELTA_METERS = 0.01; // 1cm accuracy for meters
 
     @BeforeEach
     void setUp() {
@@ -75,6 +76,36 @@ class ProjectionImplTest {
         double phi = ProjMath.phi2z(e, ts);
         assertNotEquals(-9999, phi);
         assertTrue(Math.abs(phi) < Values.HALF_PI);
+    }
+
+    @Test
+    void testPhi2zNoConvergence() {
+        // Test with extreme values that should cause no convergence
+        // Very large eccentricity and ts that would cause iteration to fail
+        double result = ProjMath.phi2z(0.99, 1e100);
+        // Should either converge or return -9999
+        assertTrue(result == -9999 || Math.abs(result) <= Values.HALF_PI);
+    }
+
+    @Test
+    void testHyperbolicFunctions() {
+        // Test that our functions match Java's native implementations
+        double x = 1.5;
+        assertEquals(Math.sinh(x), ProjMath.sinh(x), DELTA);
+        assertEquals(Math.cosh(x), ProjMath.cosh(x), DELTA);
+        assertEquals(Math.tanh(x), ProjMath.tanh(x), DELTA);
+    }
+
+    @Test
+    void testAsinz() {
+        // Normal case
+        assertEquals(Math.asin(0.5), ProjMath.asinz(0.5), DELTA);
+        
+        // Edge case: value slightly > 1 should be clamped
+        assertEquals(Math.PI / 2, ProjMath.asinz(1.0001), DELTA);
+        
+        // Edge case: value slightly < -1 should be clamped
+        assertEquals(-Math.PI / 2, ProjMath.asinz(-1.0001), DELTA);
     }
 
     // ========== LongLat Projection Tests ==========
@@ -158,6 +189,25 @@ class ProjectionImplTest {
     }
 
     @Test
+    void testMercatorNearPole() {
+        Mercator proj = new Mercator();
+        ProjectionParams params = createWgs84Params();
+        proj.init(params);
+
+        // Near the pole (89.9 degrees) - should work
+        double lat = 89.9 * Values.D2R;
+        Point p = new Point(0, lat);
+        Point forward = proj.forward(p.copy());
+        assertNotNull(forward);
+        assertTrue(forward.y > 0);
+
+        Point inverse = proj.inverse(forward.copy());
+        assertNotNull(inverse);
+        assertEquals(0, inverse.x, DELTA);
+        assertEquals(lat, inverse.y, DELTA);
+    }
+
+    @Test
     void testMercatorWithFalseEasting() {
         Mercator proj = new Mercator();
         ProjectionParams params = createWgs84Params();
@@ -192,6 +242,170 @@ class ProjectionImplTest {
         assertNotNull(ProjectionRegistry.get("merc"));
         assertNotNull(ProjectionRegistry.get("Mercator"));
         assertNotNull(ProjectionRegistry.get("mercator_1sp"));
+    }
+
+    // ========== Negative Coordinates Tests (Southern/Western Hemispheres) ==========
+
+    @Test
+    void testMercatorSouthernHemisphere() {
+        Mercator proj = new Mercator();
+        ProjectionParams params = createWgs84Params();
+        proj.init(params);
+
+        // Sydney, Australia (approx 151E, 34S)
+        double lon = 151 * Values.D2R;
+        double lat = -34 * Values.D2R;
+        Point p = new Point(lon, lat);
+
+        Point forward = proj.forward(p.copy());
+        assertNotNull(forward);
+        assertTrue(forward.x > 0);  // Eastern hemisphere
+        assertTrue(forward.y < 0);  // Southern hemisphere
+
+        Point inverse = proj.inverse(forward.copy());
+        assertNotNull(inverse);
+        assertEquals(lon, inverse.x, DELTA);
+        assertEquals(lat, inverse.y, DELTA);
+    }
+
+    @Test
+    void testMercatorWesternHemisphere() {
+        Mercator proj = new Mercator();
+        ProjectionParams params = createWgs84Params();
+        proj.init(params);
+
+        // New York (approx 74W, 41N)
+        double lon = -74 * Values.D2R;
+        double lat = 41 * Values.D2R;
+        Point p = new Point(lon, lat);
+
+        Point forward = proj.forward(p.copy());
+        assertNotNull(forward);
+        assertTrue(forward.x < 0);  // Western hemisphere
+        assertTrue(forward.y > 0);  // Northern hemisphere
+
+        Point inverse = proj.inverse(forward.copy());
+        assertNotNull(inverse);
+        assertEquals(lon, inverse.x, DELTA);
+        assertEquals(lat, inverse.y, DELTA);
+    }
+
+    @Test
+    void testMercatorSouthWestQuadrant() {
+        Mercator proj = new Mercator();
+        ProjectionParams params = createWgs84Params();
+        proj.init(params);
+
+        // Buenos Aires, Argentina (approx 58W, 34S)
+        double lon = -58 * Values.D2R;
+        double lat = -34 * Values.D2R;
+        Point p = new Point(lon, lat);
+
+        Point forward = proj.forward(p.copy());
+        assertNotNull(forward);
+        assertTrue(forward.x < 0);  // Western
+        assertTrue(forward.y < 0);  // Southern
+
+        Point inverse = proj.inverse(forward.copy());
+        assertNotNull(inverse);
+        assertEquals(lon, inverse.x, DELTA);
+        assertEquals(lat, inverse.y, DELTA);
+    }
+
+    // ========== Large Coordinate Stress Tests ==========
+
+    @Test
+    void testMercatorLargeCoordinates() {
+        Mercator proj = new Mercator();
+        ProjectionParams params = createWgs84Params();
+        proj.init(params);
+
+        // Test at extreme but valid latitude (85 degrees - typical Web Mercator limit)
+        double lat = 85 * Values.D2R;
+        Point p = new Point(0, lat);
+
+        Point forward = proj.forward(p.copy());
+        assertNotNull(forward);
+        assertTrue(Double.isFinite(forward.y));
+
+        Point inverse = proj.inverse(forward.copy());
+        assertNotNull(inverse);
+        assertEquals(lat, inverse.y, DELTA);
+    }
+
+    @Test
+    void testMercatorDatelineCrossing() {
+        Mercator proj = new Mercator();
+        ProjectionParams params = createWgs84Params();
+        proj.init(params);
+
+        // Test at 180 degrees longitude
+        double lon = Math.PI;  // 180 degrees
+        double lat = 45 * Values.D2R;
+        Point p = new Point(lon, lat);
+
+        Point forward = proj.forward(p.copy());
+        assertNotNull(forward);
+
+        Point inverse = proj.inverse(forward.copy());
+        assertNotNull(inverse);
+        // Longitude might wrap, so check absolute difference
+        double lonDiff = Math.abs(lon - inverse.x);
+        assertTrue(lonDiff < DELTA || Math.abs(lonDiff - 2 * Math.PI) < DELTA);
+        assertEquals(lat, inverse.y, DELTA);
+    }
+
+    // ========== Web Mercator / EPSG:3857 Accuracy Tests ==========
+
+    @Test
+    void testWebMercatorKnownValues() {
+        // Web Mercator (EPSG:3857) uses a sphere with a = 6378137
+        String projStr = "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m";
+        Proj proj = new Proj(projStr);
+
+        // Test with known EPSG:3857 values
+        // (0, 0) -> (0, 0)
+        Point p1 = proj.forward(new Point(0, 0));
+        assertEquals(0, p1.x, DELTA_METERS);
+        assertEquals(0, p1.y, DELTA_METERS);
+
+        // (10, 0) degrees -> (1113194.9, 0) approximately
+        Point p2 = proj.forward(new Point(10 * Values.D2R, 0));
+        assertEquals(1113194.9, p2.x, 1.0); // 1 meter tolerance
+
+        // (0, 45) degrees -> (0, 5621521.5) approximately
+        Point p3 = proj.forward(new Point(0, 45 * Values.D2R));
+        assertEquals(0, p3.x, DELTA_METERS);
+        assertEquals(5621521.5, p3.y, 100.0); // 100 meter tolerance for this approximation
+    }
+
+    @Test
+    void testWebMercatorRoundTrip() {
+        String projStr = "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m";
+        Proj proj = new Proj(projStr);
+
+        // Test multiple points across the globe
+        double[][] testCoords = {
+            {0, 0},           // Null Island
+            {-122.4, 37.8},   // San Francisco
+            {139.7, 35.7},    // Tokyo
+            {-43.2, -22.9},   // Rio de Janeiro
+            {18.4, -33.9},    // Cape Town
+        };
+
+        for (double[] coord : testCoords) {
+            double lon = coord[0] * Values.D2R;
+            double lat = coord[1] * Values.D2R;
+
+            Point forward = proj.forward(new Point(lon, lat));
+            assertNotNull(forward, "Forward failed for " + coord[0] + ", " + coord[1]);
+
+            Point inverse = proj.inverse(forward.copy());
+            assertNotNull(inverse, "Inverse failed for " + coord[0] + ", " + coord[1]);
+
+            assertEquals(lon, inverse.x, DELTA, "Lon mismatch for " + coord[0]);
+            assertEquals(lat, inverse.y, DELTA, "Lat mismatch for " + coord[1]);
+        }
     }
 
     // ========== Integration Tests with Proj ==========

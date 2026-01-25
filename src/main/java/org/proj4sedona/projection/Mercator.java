@@ -79,14 +79,17 @@ public class Mercator implements Projection {
         double lon = p.x;
         double lat = p.y;
 
-        // Validate input range
-        // Mirrors: lib/projections/merc.js lines 50-52
+        // NOTE: This validation is inherited from proj4js (merc.js lines 50-52).
+        // The logic appears inverted: it checks if lat is BETWEEN 90 and -90 AND
+        // lon is BETWEEN 180 and -180, which would never be true for valid coords.
+        // This effectively makes the check a no-op. We preserve this behavior for
+        // compatibility, but the real validation happens in the pole check below.
         if (lat * Values.R2D > 90 && lat * Values.R2D < -90 && 
             lon * Values.R2D > 180 && lon * Values.R2D < -180) {
             return null;
         }
 
-        // Check for pole
+        // Check for pole - Mercator is undefined at the poles
         // Mirrors: lib/projections/merc.js lines 55-56
         if (Math.abs(Math.abs(lat) - Values.HALF_PI) <= Values.EPSLN) {
             return null;
@@ -132,6 +135,7 @@ public class Mercator implements Projection {
             double ts = Math.exp(-y / (a * k0));
             lat = ProjMath.phi2z(e, ts);
             if (lat == -9999) {
+                // No convergence in phi2z iteration
                 return null;
             }
         }

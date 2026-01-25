@@ -79,7 +79,7 @@ public final class ProjMath {
      *
      * @param eccent Eccentricity
      * @param ts t value from inverse
-     * @return Latitude in radians, or -9999 if no convergence
+     * @return Latitude in radians, or -9999 if no convergence after 15 iterations
      */
     public static double phi2z(double eccent, double ts) {
         double eccnth = 0.5 * eccent;
@@ -94,7 +94,7 @@ public final class ProjMath {
                 return phi;
             }
         }
-        // No convergence
+        // No convergence - return sentinel value
         return -9999;
     }
 
@@ -170,31 +170,29 @@ public final class ProjMath {
     }
 
     /**
-     * Hyperbolic sine.
+     * Hyperbolic sine - delegates to Java's native implementation for JIT optimization.
      */
     public static double sinh(double x) {
-        double r = Math.exp(x);
-        return (r - 1 / r) / 2;
+        return Math.sinh(x);
     }
 
     /**
-     * Hyperbolic cosine.
+     * Hyperbolic cosine - delegates to Java's native implementation for JIT optimization.
      */
     public static double cosh(double x) {
-        double r = Math.exp(x);
-        return (r + 1 / r) / 2;
+        return Math.cosh(x);
     }
 
     /**
-     * Hyperbolic tangent.
+     * Hyperbolic tangent - delegates to Java's native implementation for JIT optimization.
      */
     public static double tanh(double x) {
-        double r = Math.exp(x);
-        return (r - 1 / r) / (r + 1 / r);
+        return Math.tanh(x);
     }
 
     /**
      * Inverse hyperbolic sine.
+     * Note: Java 1.8+ has Math.asinh but we support Java 11 minimum anyway.
      */
     public static double asinh(double x) {
         double s = (x >= 0 ? 1 : -1);
@@ -209,7 +207,7 @@ public final class ProjMath {
     }
 
     /**
-     * Arc sine with clamping.
+     * Arc sine with clamping to avoid NaN for values slightly outside [-1, 1].
      */
     public static double asinz(double x) {
         if (Math.abs(x) > 1) {
