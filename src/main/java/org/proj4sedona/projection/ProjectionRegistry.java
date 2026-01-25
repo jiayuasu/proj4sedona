@@ -89,8 +89,10 @@ public final class ProjectionRegistry {
         }
         started = true;
         
-        // Built-in projections will be registered here in later phases
-        // For now, we just mark as started
+        // Register built-in projections
+        // Mirrors: lib/projections.js projs array
+        add(LongLat::new);
+        add(Mercator::new);
     }
 
     /**
