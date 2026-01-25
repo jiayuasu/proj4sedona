@@ -4,32 +4,19 @@ import org.proj4sedona.constants.Values;
 import org.proj4sedona.core.DatumParams;
 import org.proj4sedona.core.Point;
 import org.proj4sedona.core.Proj;
+import org.proj4sedona.datum.DatumTransform;
 import org.proj4sedona.projection.ProjectionParams;
 
 /**
  * Core transformation pipeline between two projections.
  * Mirrors: lib/transform.js
- * 
- * The transformation follows these steps:
- * 1. Validate input coordinates
- * 2. Handle axis order if non-standard
- * 3. Convert to geodetic (lon/lat in radians)
- * 4. Apply datum transformation if needed
- * 5. Convert to target projection
- * 6. Handle axis order for target if non-standard
  */
 public final class Transform {
 
-    // WGS84 projection for datum shift intermediary
     private static volatile Proj wgs84;
 
-    private Transform() {
-        // Utility class
-    }
+    private Transform() {}
 
-    /**
-     * Get or create the WGS84 projection.
-     */
     private static Proj getWgs84() {
         if (wgs84 == null) {
             synchronized (Transform.class) {
@@ -59,34 +46,31 @@ public final class Transform {
              destDatum.getDatumType() == Values.PJD_7PARAM || 
              destDatum.getDatumType() == Values.PJD_GRIDSHIFT);
 
+        // Check if destination is WGS84-equivalent
+        boolean destIsWGS84 = "WGS84".equalsIgnoreCase(dest.datumCode) || 
+                              (destDatum != null && destDatum.isWgs84());
+
+        // Check if source is WGS84-equivalent
+        boolean sourceIsWGS84 = "WGS84".equalsIgnoreCase(source.datumCode) ||
+                                (srcDatum != null && srcDatum.isWgs84());
+
         // If source needs shift and dest is not WGS84
-        if (sourceNeedsShift && !"WGS84".equalsIgnoreCase(dest.srsCode)) {
+        if (sourceNeedsShift && !destIsWGS84) {
             return true;
         }
 
         // If dest needs shift and source is not WGS84
-        if (destNeedsShift && !"WGS84".equalsIgnoreCase(source.srsCode)) {
+        if (destNeedsShift && !sourceIsWGS84) {
             return true;
         }
 
         return false;
     }
 
-    /**
-     * Transform a point from source to destination projection.
-     * 
-     * @param source Source projection
-     * @param dest Destination projection
-     * @param point Input point (will be cloned, not modified)
-     * @param enforceAxis Whether to enforce axis order adjustments
-     * @return Transformed point, or null if transformation failed
-     */
     public static Point transform(Proj source, Proj dest, Point point, boolean enforceAxis) {
-        // Clone the point to avoid modifying input
         Point p = point.copy();
         boolean hasZ = p.z != 0;
 
-        // Validate coordinates
         CheckSanity.check(p);
 
         ProjectionParams srcParams = source.getParams();
@@ -114,25 +98,13 @@ public final class Transform {
 
         // Transform source to geodetic (lon/lat radians)
         if ("longlat".equals(srcParams.projName)) {
-            // Already in degrees, convert to radians
-            p = new Point(
-                p.x * Values.D2R,
-                p.y * Values.D2R,
-                p.z
-            );
+            p = new Point(p.x * Values.D2R, p.y * Values.D2R, p.z);
             p.m = point.m;
         } else {
-            // Apply unit conversion if needed
             if (srcParams.toMeter != null && srcParams.toMeter != 0 && srcParams.toMeter != 1) {
-                p = new Point(
-                    p.x * srcParams.toMeter,
-                    p.y * srcParams.toMeter,
-                    p.z
-                );
+                p = new Point(p.x * srcParams.toMeter, p.y * srcParams.toMeter, p.z);
                 p.m = point.m;
             }
-
-            // Inverse projection: projected -> geodetic
             p = source.inverse(p);
             if (p == null) {
                 return null;
@@ -145,44 +117,28 @@ public final class Transform {
         }
 
         // Datum transformation
-        p = datumTransform(srcParams.datum, destParams.datum, p);
+        p = DatumTransform.transform(srcParams.datum, destParams.datum, p);
         if (p == null) {
             return null;
         }
 
         // Adjust for destination prime meridian
         if (destParams.fromGreenwich != null && destParams.fromGreenwich != 0) {
-            p = new Point(
-                p.x - destParams.fromGreenwich,
-                p.y,
-                p.z
-            );
+            p = new Point(p.x - destParams.fromGreenwich, p.y, p.z);
             p.m = point.m;
         }
 
         // Transform geodetic to destination
         if ("longlat".equals(destParams.projName)) {
-            // Convert radians to degrees
-            p = new Point(
-                p.x * Values.R2D,
-                p.y * Values.R2D,
-                p.z
-            );
+            p = new Point(p.x * Values.R2D, p.y * Values.R2D, p.z);
             p.m = point.m;
         } else {
-            // Forward projection: geodetic -> projected
             p = dest.forward(p);
             if (p == null) {
                 return null;
             }
-
-            // Apply unit conversion if needed
             if (destParams.toMeter != null && destParams.toMeter != 0 && destParams.toMeter != 1) {
-                p = new Point(
-                    p.x / destParams.toMeter,
-                    p.y / destParams.toMeter,
-                    p.z
-                );
+                p = new Point(p.x / destParams.toMeter, p.y / destParams.toMeter, p.z);
             }
         }
 
@@ -191,7 +147,6 @@ public final class Transform {
             p = AdjustAxis.adjust(destParams.axis, true, p, hasZ);
         }
 
-        // Remove z if input didn't have it
         if (p != null && !hasZ) {
             p.z = 0;
         }
@@ -199,52 +154,7 @@ public final class Transform {
         return p;
     }
 
-    /**
-     * Transform a point from source to destination projection (without axis enforcement).
-     */
     public static Point transform(Proj source, Proj dest, Point point) {
         return transform(source, dest, point, false);
-    }
-
-    /**
-     * Datum transformation between two datums.
-     * This is a placeholder that will be expanded in Phase 7.
-     * Currently handles WGS84 <-> WGS84 and same datum cases.
-     * 
-     * Mirrors: lib/datum_transform.js
-     */
-    private static Point datumTransform(DatumParams source, DatumParams dest, Point point) {
-        // If either datum is null or NODATUM, pass through
-        if (source == null || dest == null) {
-            return point;
-        }
-
-        if (source.isNoDatum() || dest.isNoDatum()) {
-            return point;
-        }
-
-        // If both are WGS84 (or equivalent), no transform needed
-        if (source.isWgs84() && dest.isWgs84()) {
-            return point;
-        }
-
-        // TODO: Implement full datum transform in Phase 7
-        // For now, we pass through - this is correct for same-datum transformations
-        // but will give slightly incorrect results for different datums
-        // 
-        // Full implementation will include:
-        // - 3-parameter Molodensky transformation
-        // - 7-parameter Helmert transformation  
-        // - Grid shift (NAD27->NAD83, etc.)
-
-        // Check if datums are the same (compare ellipsoid params)
-        if (Math.abs(source.getA() - dest.getA()) < 1e-10 &&
-            Math.abs(source.getB() - dest.getB()) < 1e-10) {
-            return point;
-        }
-
-        // Different datums - would need transformation
-        // For now, return the point as-is (this is a known limitation)
-        return point;
     }
 }

@@ -59,6 +59,7 @@ public class ProjectionParams {
 
     // Original definition
     public String srsCode;
+    public String datumCode;
 
     /**
      * Get long0 with default of 0.
