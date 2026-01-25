@@ -11,9 +11,9 @@ import java.util.regex.Pattern;
  * Registry of available projection implementations.
  * Mirrors: lib/projections.js
  * 
- * This class maintains a global registry of projection implementations that can be
+ * <p>This class maintains a global registry of projection implementations that can be
  * looked up by name. Projections register themselves with multiple aliases (e.g.,
- * "merc", "Mercator", "mercator") to support various naming conventions.
+ * "merc", "Mercator", "mercator") to support various naming conventions.</p>
  * 
  * <p>Usage:</p>
  * <pre>
@@ -118,12 +118,23 @@ public final class ProjectionRegistry {
      * <p>This method is thread-safe and idempotent - calling it multiple times
      * has no effect after the first call.</p>
      * 
-     * <p>Registered projections (in order):</p>
+     * <p>Registered projections:</p>
      * <ul>
      *   <li>LongLat - Geographic (lat/lon) identity projection</li>
      *   <li>Mercator - Standard Mercator projection</li>
      *   <li>ExtendedTransverseMercator - Accurate Transverse Mercator (etmerc/tmerc)</li>
      *   <li>UTM - Universal Transverse Mercator</li>
+     *   <li>LambertConformalConic - Lambert Conformal Conic (lcc)</li>
+     *   <li>AlbersEqualArea - Albers Equal Area Conic (aea)</li>
+     *   <li>EquidistantConic - Equidistant Conic (eqdc)</li>
+     *   <li>Stereographic - Polar Stereographic (stere)</li>
+     *   <li>LambertAzimuthalEqualArea - Lambert Azimuthal Equal Area (laea)</li>
+     *   <li>AzimuthalEquidistant - Azimuthal Equidistant (aeqd)</li>
+     *   <li>Sinusoidal - Sinusoidal (sinu)</li>
+     *   <li>Mollweide - Mollweide (moll)</li>
+     *   <li>Robinson - Robinson (robin)</li>
+     *   <li>EquidistantCylindrical - Equidistant Cylindrical / Plate Carrée (eqc)</li>
+     *   <li>CylindricalEqualArea - Cylindrical Equal Area (cea)</li>
      * </ul>
      */
     public static synchronized void start() {
@@ -132,12 +143,30 @@ public final class ProjectionRegistry {
         }
         started = true;
         
-        // Register built-in projections
-        // Mirrors: lib/projections.js projs array
+        // Identity / Geographic
         add(LongLat::new);
+        
+        // Cylindrical projections
         add(Mercator::new);
         add(ExtendedTransverseMercator::new);
         add(UTM::new);
+        add(EquidistantCylindrical::new);
+        add(CylindricalEqualArea::new);
+        
+        // Conic projections
+        add(LambertConformalConic::new);
+        add(AlbersEqualArea::new);
+        add(EquidistantConic::new);
+        
+        // Azimuthal projections
+        add(Stereographic::new);
+        add(LambertAzimuthalEqualArea::new);
+        add(AzimuthalEquidistant::new);
+        
+        // Pseudocylindrical projections
+        add(Sinusoidal::new);
+        add(Mollweide::new);
+        add(Robinson::new);
     }
 
     /**
