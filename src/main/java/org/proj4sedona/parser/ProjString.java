@@ -41,7 +41,7 @@ public final class ProjString {
         // Split by '+', trim, filter empty, create key-value pairs
         // Mirrors: lib/projString.js lines 13-23
         Map<String, String> paramObj = new HashMap<>();
-        String[] parts = defData.split("\\+");
+        String[] parts = defData.split("\\+(?=[a-zA-Z])");
         for (String part : parts) {
             String trimmed = part.trim();
             if (trimmed.isEmpty()) {

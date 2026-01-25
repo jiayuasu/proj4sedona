@@ -46,7 +46,6 @@ class ParserTest {
         Map<String, String> map = new HashMap<>();
         map.put("us-ft", "us_foot");
 
-        // Should match with various separators
         assertEquals("us_foot", Match.match(map, "us-ft"));
         assertEquals("us_foot", Match.match(map, "us_ft"));
         assertEquals("us_foot", Match.match(map, "us ft"));
@@ -69,7 +68,7 @@ class ParserTest {
         ProjectionDef def = ProjString.parse("+proj=longlat +datum=WGS84");
 
         assertEquals("longlat", def.getProjName());
-        assertEquals("WGS84", def.getDatumCode()); // WGS84 stays uppercase
+        assertEquals("WGS84", def.getDatumCode());
         assertEquals("+proj=longlat +datum=WGS84", def.getSrsCode());
     }
 
@@ -84,7 +83,6 @@ class ParserTest {
 
     @Test
     void testParseDatumLowercase() {
-        // Non-WGS84 datums should be lowercased
         ProjectionDef def = ProjString.parse("+proj=longlat +datum=NAD83");
 
         assertEquals("nad83", def.getDatumCode());
@@ -100,7 +98,7 @@ class ParserTest {
         assertEquals(32, def.getZone());
         assertEquals("WGS84", def.getDatumCode());
         assertEquals("m", def.getUnits());
-        assertNull(def.getUtmSouth()); // Not south
+        assertNull(def.getUtmSouth());
     }
 
     @Test
@@ -156,7 +154,6 @@ class ParserTest {
 
     @Test
     void testParseScaleK() {
-        // 'k' is an alias for 'k_0'
         ProjectionDef def = ProjString.parse("+proj=merc +k=0.5");
 
         assertEquals(0.5, def.getK0(), DELTA);
@@ -190,7 +187,6 @@ class ParserTest {
 
     @Test
     void testParseSphereRadius() {
-        // 'r' sets both a and b (sphere)
         ProjectionDef def = ProjString.parse("+proj=merc +r=6370997");
 
         assertEquals(6370997, def.getA(), DELTA);
@@ -294,7 +290,6 @@ class ParserTest {
 
     @Test
     void testParseNadgridsNull() {
-        // @null means no datum transform
         ProjectionDef def = ProjString.parse("+proj=longlat +nadgrids=@null");
 
         assertEquals("none", def.getDatumCode());
@@ -319,10 +314,9 @@ class ParserTest {
 
     @Test
     void testParseAxisInvalid() {
-        // Invalid axis should be ignored (keeps default)
         ProjectionDef def = ProjString.parse("+proj=longlat +axis=xyz");
 
-        assertEquals("enu", def.getAxis()); // Default
+        assertEquals("enu", def.getAxis());
     }
 
     // ========== Boolean Flag Tests ==========
@@ -379,6 +373,31 @@ class ParserTest {
         assertEquals(0, def.getLatTs(), DELTA);
         assertEquals(0, def.getLong0(), DELTA);
         assertEquals(1.0, def.getK0(), DELTA);
+    }
+
+    // ========== Scientific Notation Tests ==========
+
+    @Test
+    void testParseScientificNotationPositiveExponent() {
+        // 5E+5 = 500000 - the '+' in E+ should not be treated as a parameter separator
+        ProjectionDef def = ProjString.parse("+proj=merc +y_0=5E+5");
+
+        assertEquals("merc", def.getProjName());
+        assertEquals(500000.0, def.getY0(), DELTA);
+    }
+
+    @Test
+    void testParseScientificNotationNegativeExponent() {
+        ProjectionDef def = ProjString.parse("+proj=merc +k=1e-3");
+
+        assertEquals(0.001, def.getK0(), DELTA);
+    }
+
+    @Test
+    void testParseScientificNotationNoSign() {
+        ProjectionDef def = ProjString.parse("+proj=merc +x_0=5e5");
+
+        assertEquals(500000.0, def.getX0(), DELTA);
     }
 
     // ========== Error Handling Tests ==========
