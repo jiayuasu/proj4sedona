@@ -450,4 +450,216 @@ class WktParserTest {
         // Should remove "d_" prefix and normalize
         assertTrue(def.getDatumCode().equals("wgs84") || def.getDatumCode().equals("wgs_1984"));
     }
+
+    // ========== Unusual Units Tests ==========
+
+    @Test
+    @DisplayName("Parse WKT with US Survey Feet")
+    void testWktUsSurveyFeet() {
+        String wkt = "PROJCS[\"NAD83 / California zone 6 (ftUS)\"," +
+                "GEOGCS[\"NAD83\"," +
+                "DATUM[\"North_American_Datum_1983\"," +
+                "SPHEROID[\"GRS 1980\",6378137,298.257222101]]," +
+                "PRIMEM[\"Greenwich\",0]," +
+                "UNIT[\"degree\",0.0174532925199433]]," +
+                "PROJECTION[\"Lambert_Conformal_Conic_2SP\"]," +
+                "PARAMETER[\"standard_parallel_1\",33.88333333333333]," +
+                "PARAMETER[\"standard_parallel_2\",32.78333333333333]," +
+                "PARAMETER[\"latitude_of_origin\",32.16666666666666]," +
+                "PARAMETER[\"central_meridian\",-116.25]," +
+                "PARAMETER[\"false_easting\",6561666.667]," +
+                "PARAMETER[\"false_northing\",1640416.667]," +
+                "UNIT[\"US survey foot\",0.3048006096012192]]";
+        
+        ProjectionDef def = WktParser.parse(wkt);
+        
+        assertNotNull(def);
+        assertEquals("us survey foot", def.getUnits());
+        assertEquals(0.3048006096012192, def.getToMeter(), 1e-12);
+    }
+
+    @Test
+    @DisplayName("Parse WKT with chains")
+    void testWktChains() {
+        String wkt = "PROJCS[\"Test with chains\"," +
+                "GEOGCS[\"WGS 84\"," +
+                "DATUM[\"WGS_1984\"," +
+                "SPHEROID[\"WGS 84\",6378137,298.257223563]]]," +
+                "PROJECTION[\"Transverse_Mercator\"]," +
+                "UNIT[\"chain\",20.1168]]";
+        
+        ProjectionDef def = WktParser.parse(wkt);
+        
+        assertNotNull(def);
+        assertEquals("chain", def.getUnits());
+        assertEquals(20.1168, def.getToMeter(), 1e-6);
+    }
+
+    @Test
+    @DisplayName("Parse WKT with links")
+    void testWktLinks() {
+        String wkt = "PROJCS[\"Test with links\"," +
+                "GEOGCS[\"WGS 84\"," +
+                "DATUM[\"WGS_1984\"," +
+                "SPHEROID[\"WGS 84\",6378137,298.257223563]]]," +
+                "PROJECTION[\"Transverse_Mercator\"]," +
+                "UNIT[\"link\",0.201168]]";
+        
+        ProjectionDef def = WktParser.parse(wkt);
+        
+        assertNotNull(def);
+        assertEquals("link", def.getUnits());
+        assertEquals(0.201168, def.getToMeter(), 1e-8);
+    }
+
+    // ========== Non-Greenwich Prime Meridian Tests ==========
+
+    @Test
+    @DisplayName("Parse WKT with Paris prime meridian")
+    void testWktParisPrimeMeridian() {
+        String wkt = "GEOGCS[\"NTF (Paris)\"," +
+                "DATUM[\"Nouvelle_Triangulation_Francaise_Paris\"," +
+                "SPHEROID[\"Clarke 1880 (IGN)\",6378249.2,293.4660212936265]]," +
+                "PRIMEM[\"Paris\",2.33722917]," +
+                "UNIT[\"grad\",0.01570796326794897]]";
+        
+        ProjectionDef def = WktParser.parse(wkt);
+        
+        assertNotNull(def);
+        // Paris meridian is approximately 2.337 degrees east of Greenwich
+        assertNotNull(def.getFromGreenwich());
+        // The value should be in radians: 2.33722917 * D2R ≈ 0.0408 radians
+        assertEquals(2.33722917 * Values.D2R, def.getFromGreenwich(), 1e-6);
+    }
+
+    @Test
+    @DisplayName("Parse WKT with Ferro prime meridian")
+    void testWktFerroPrimeMeridian() {
+        String wkt = "GEOGCS[\"MGI (Ferro)\"," +
+                "DATUM[\"Militar_Geographische_Institut_Ferro\"," +
+                "SPHEROID[\"Bessel 1841\",6377397.155,299.1528128]]," +
+                "PRIMEM[\"Ferro\",-17.66666666666667]," +
+                "UNIT[\"degree\",0.0174532925199433]]";
+        
+        ProjectionDef def = WktParser.parse(wkt);
+        
+        assertNotNull(def);
+        // Ferro is approximately 17.67 degrees west of Greenwich (negative)
+        assertNotNull(def.getFromGreenwich());
+        assertEquals(-17.66666666666667 * Values.D2R, def.getFromGreenwich(), 1e-6);
+    }
+
+    // ========== Deeply Nested WKT Tests ==========
+
+    @Test
+    @DisplayName("Parse deeply nested WKT with COMPD_CS")
+    void testWktDeeplyNestedCompoundCrs() {
+        String wkt = "COMPD_CS[\"NAD83 / UTM zone 10N + NAVD88 height\"," +
+                "PROJCS[\"NAD83 / UTM zone 10N\"," +
+                "GEOGCS[\"NAD83\"," +
+                "DATUM[\"North_American_Datum_1983\"," +
+                "SPHEROID[\"GRS 1980\",6378137,298.257222101]," +
+                "TOWGS84[0,0,0,0,0,0,0]]," +
+                "PRIMEM[\"Greenwich\",0]," +
+                "UNIT[\"degree\",0.0174532925199433]]," +
+                "PROJECTION[\"Transverse_Mercator\"]," +
+                "PARAMETER[\"latitude_of_origin\",0]," +
+                "PARAMETER[\"central_meridian\",-123]," +
+                "PARAMETER[\"scale_factor\",0.9996]," +
+                "PARAMETER[\"false_easting\",500000]," +
+                "PARAMETER[\"false_northing\",0]," +
+                "UNIT[\"metre\",1]]," +
+                "VERT_CS[\"NAVD88 height\"," +
+                "VERT_DATUM[\"North American Vertical Datum 1988\",2005]," +
+                "UNIT[\"metre\",1]]]";
+        
+        // Should parse without throwing an exception
+        List<Object> ast = WktParser.parseToAst(wkt);
+        assertNotNull(ast);
+        assertEquals("COMPD_CS", ast.get(0));
+        
+        // The nested PROJCS should be present
+        boolean hasProjcs = false;
+        for (Object item : ast) {
+            if (item instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Object> child = (List<Object>) item;
+                if (!child.isEmpty() && "PROJCS".equals(child.get(0))) {
+                    hasProjcs = true;
+                    break;
+                }
+            }
+        }
+        assertTrue(hasProjcs, "Should contain nested PROJCS");
+    }
+
+    @Test
+    @DisplayName("Parse WKT with multiple nested AUTHORITY")
+    void testWktMultipleAuthority() {
+        String wkt = "PROJCS[\"WGS 84 / UTM zone 32N\"," +
+                "GEOGCS[\"WGS 84\"," +
+                "DATUM[\"WGS_1984\"," +
+                "SPHEROID[\"WGS 84\",6378137,298.257223563," +
+                "AUTHORITY[\"EPSG\",\"7030\"]]," +
+                "AUTHORITY[\"EPSG\",\"6326\"]]," +
+                "PRIMEM[\"Greenwich\",0," +
+                "AUTHORITY[\"EPSG\",\"8901\"]]," +
+                "UNIT[\"degree\",0.0174532925199433," +
+                "AUTHORITY[\"EPSG\",\"9122\"]]," +
+                "AUTHORITY[\"EPSG\",\"4326\"]]," +
+                "PROJECTION[\"Transverse_Mercator\"]," +
+                "PARAMETER[\"latitude_of_origin\",0]," +
+                "PARAMETER[\"central_meridian\",9]," +
+                "PARAMETER[\"scale_factor\",0.9996]," +
+                "PARAMETER[\"false_easting\",500000]," +
+                "PARAMETER[\"false_northing\",0]," +
+                "UNIT[\"metre\",1," +
+                "AUTHORITY[\"EPSG\",\"9001\"]]," +
+                "AUTHORITY[\"EPSG\",\"32632\"]]";
+        
+        ProjectionDef def = WktParser.parse(wkt);
+        
+        assertNotNull(def);
+        assertEquals("Transverse_Mercator", def.getProjName());
+        // Should extract the title from AUTHORITY
+        assertNotNull(def.getTitle());
+        assertTrue(def.getTitle().contains("EPSG") || def.getTitle().contains("32632"));
+    }
+
+    // ========== Latitude of Standard Parallel Tests ==========
+
+    @Test
+    @DisplayName("latitude_of_standard_parallel sets both lat0 and lat1")
+    void testLatitudeOfStandardParallel() {
+        // This tests the applyCalculatedProperties fix
+        Map<String, Object> projjson = new HashMap<>();
+        projjson.put("type", "ProjectedCRS");
+        projjson.put("name", "Test Projection");
+        
+        Map<String, Object> conversion = new HashMap<>();
+        Map<String, Object> method = new HashMap<>();
+        method.put("name", "Lambert_Conformal_Conic_1SP");
+        conversion.put("method", method);
+        
+        // Add latitude_of_standard_parallel as a parameter
+        java.util.List<Map<String, Object>> params = new java.util.ArrayList<>();
+        Map<String, Object> param = new HashMap<>();
+        param.put("name", "Latitude of standard parallel");
+        param.put("value", 45.0);
+        Map<String, Object> unit = new HashMap<>();
+        unit.put("conversion_factor", Values.D2R); // Convert to radians
+        param.put("unit", unit);
+        params.add(param);
+        conversion.put("parameters", params);
+        
+        projjson.put("conversion", conversion);
+        
+        ProjectionDef def = WktParser.parse(projjson);
+        
+        assertNotNull(def);
+        // Both lat0 and lat1 should be set from latitude_of_standard_parallel
+        assertNotNull(def.getLat0());
+        assertNotNull(def.getLat1());
+        assertEquals(def.getLat0(), def.getLat1(), 1e-9);
+    }
 }

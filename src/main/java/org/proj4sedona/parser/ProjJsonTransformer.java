@@ -491,6 +491,12 @@ public final class ProjJsonTransformer {
         if (def.getLat0() == null && def.getLat1() != null) {
             def.setLat0(def.getLat1());
         }
+        
+        // If latitude_of_standard_parallel was set (stored in lat0), also set lat1
+        // This handles projections that use a single standard parallel
+        if (def.getLat1() == null && def.getLat0() != null) {
+            def.setLat1(def.getLat0());
+        }
     }
 
     /**

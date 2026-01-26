@@ -270,6 +270,17 @@ public final class WktUtils {
                     wkt.put("datum_params", towgs84);
                 }
             }
+            
+            // Extract PRIMEM (prime meridian offset from Greenwich)
+            Object primem = geogcs.get("PRIMEM");
+            if (primem instanceof Map) {
+                Map<String, Object> primemMap = (Map<String, Object>) primem;
+                Object convert = primemMap.get("convert");
+                if (convert != null) {
+                    // Convert from degrees to radians
+                    wkt.put("from_greenwich", toDouble(convert) * Values.D2R);
+                }
+            }
         }
 
         // Handle b (semi-minor axis) - if infinite, set to a
