@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import org.proj4sedona.constants.Datum;
 import org.proj4sedona.constants.Values;
 import org.proj4sedona.defs.Defs;
+import org.proj4sedona.parser.CRSSerializer;
 import org.proj4sedona.parser.ProjString;
 import org.proj4sedona.parser.WktParser;
 import org.proj4sedona.projection.Projection;
@@ -327,5 +328,67 @@ public class Proj {
      */
     public boolean isSphere() {
         return params.sphere;
+    }
+
+    // ==================== Export Methods ====================
+
+    /**
+     * Export this CRS to PROJ string format.
+     * 
+     * @return PROJ string (e.g., "+proj=longlat +datum=WGS84 +no_defs")
+     */
+    public String toProjString() {
+        return CRSSerializer.toProjString(this);
+    }
+
+    /**
+     * Export this CRS to OGC WKT 1 format.
+     * 
+     * @return WKT1 string
+     */
+    public String toWkt1() {
+        return CRSSerializer.toWkt1(this);
+    }
+
+    /**
+     * Export this CRS to ISO 19162 WKT 2 format.
+     * 
+     * @return WKT2 string
+     */
+    public String toWkt2() {
+        return CRSSerializer.toWkt2(this);
+    }
+
+    /**
+     * Export this CRS to PROJJSON format.
+     * 
+     * @return PROJJSON string (pretty-printed)
+     */
+    public String toProjJson() {
+        return CRSSerializer.toProjJson(this);
+    }
+
+    /**
+     * Export this CRS to PROJJSON format.
+     * 
+     * @param prettyPrint Whether to pretty-print the JSON
+     * @return PROJJSON string
+     */
+    public String toProjJson(boolean prettyPrint) {
+        return CRSSerializer.toProjJson(this, prettyPrint);
+    }
+
+    /**
+     * Attempt to identify the EPSG code for this CRS.
+     * 
+     * @return EPSG code (e.g., "EPSG:4326") or null if not found
+     */
+    public String toEpsgCode() {
+        return CRSSerializer.toEpsgCode(this);
+    }
+
+    @Override
+    public String toString() {
+        return toProjString();
     }
 }
