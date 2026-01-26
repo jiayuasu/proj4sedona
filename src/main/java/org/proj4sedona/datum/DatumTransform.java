@@ -16,14 +16,16 @@ import java.util.List;
  * Performs datum transformations between coordinate systems.
  * Mirrors: lib/datum_transform.js
  * 
- * The transformation process:
- * 1. Check if datums are identical (no transform needed)
- * 2. Apply grid shift if source uses grid shift (NAD27->NAD83, etc.)
- * 3. Convert from geodetic to geocentric coordinates
- * 4. Apply 3-param or 7-param transform to WGS84 (if needed)
- * 5. Apply inverse 3-param or 7-param transform from WGS84 (if needed)
- * 6. Convert from geocentric to geodetic coordinates
- * 7. Apply grid shift if destination uses grid shift
+ * &lt;p&gt;The transformation process:&lt;/p&gt;
+ * &lt;ol&gt;
+ * &lt;li&gt;Check if datums are identical (no transform needed)&lt;/li&gt;
+ * &lt;li&gt;Apply grid shift if source uses grid shift (NAD27 to NAD83, etc.)&lt;/li&gt;
+ * &lt;li&gt;Convert from geodetic to geocentric coordinates&lt;/li&gt;
+ * &lt;li&gt;Apply 3-param or 7-param transform to WGS84 (if needed)&lt;/li&gt;
+ * &lt;li&gt;Apply inverse 3-param or 7-param transform from WGS84 (if needed)&lt;/li&gt;
+ * &lt;li&gt;Convert from geocentric to geodetic coordinates&lt;/li&gt;
+ * &lt;li&gt;Apply grid shift if destination uses grid shift&lt;/li&gt;
+ * &lt;/ol&gt;
  */
 public final class DatumTransform {
 

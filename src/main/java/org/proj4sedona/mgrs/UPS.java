@@ -4,8 +4,10 @@ package org.proj4sedona.mgrs;
  * Universal Polar Stereographic (UPS) coordinate converter.
  * 
  * UPS is used for polar regions outside the UTM/MGRS coverage area:
- * - North polar region: latitude > 84°N
- * - South polar region: latitude < 80°S
+ * &lt;ul&gt;
+ * &lt;li&gt;North polar region: latitude &gt; 84°N&lt;/li&gt;
+ * &lt;li&gt;South polar region: latitude &lt; -80°&lt;/li&gt;
+ * &lt;/ul&gt;
  * 
  * UPS coordinates consist of:
  * - Zone designator: 'A' or 'B' for south pole, 'Y' or 'Z' for north pole
@@ -45,14 +47,20 @@ public final class UPS {
     }
 
     /**
-     * Check if a latitude is in the UPS north zone (>84°N).
+     * Check if a latitude is in the UPS north zone (&gt;84°N).
+     *
+     * @param lat latitude in degrees
+     * @return true if latitude is in the north polar zone
      */
     public static boolean isNorthPolar(double lat) {
         return lat > NORTH_LIMIT;
     }
 
     /**
-     * Check if a latitude is in the UPS south zone (<80°S).
+     * Check if a latitude is in the UPS south zone (&lt;-80°).
+     *
+     * @param lat latitude in degrees
+     * @return true if latitude is in the south polar zone
      */
     public static boolean isSouthPolar(double lat) {
         return lat < SOUTH_LIMIT;
@@ -60,6 +68,9 @@ public final class UPS {
 
     /**
      * Check if a latitude is in a UPS zone (outside UTM coverage).
+     *
+     * @param lat latitude in degrees
+     * @return true if latitude is in a UPS zone
      */
     public static boolean isUPS(double lat) {
         return isNorthPolar(lat) || isSouthPolar(lat);
