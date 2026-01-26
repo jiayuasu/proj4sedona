@@ -1,6 +1,7 @@
 package org.proj4sedona.core;
 
 import org.proj4sedona.constants.Values;
+import org.proj4sedona.grid.NadgridInfo;
 
 import java.util.List;
 
@@ -19,7 +20,8 @@ public class DatumParams {
     private double b;              // Semi-minor axis of the ellipsoid
     private double es;             // Eccentricity squared
     private double ep2;            // Second eccentricity squared
-    private List<Object> grids;    // NAD grid objects (for PJD_GRIDSHIFT)
+    private List<NadgridInfo> grids;  // NAD grid info objects (for PJD_GRIDSHIFT)
+    private String nadgrids;       // NAD grids string (e.g., "@conus,null")
 
     /**
      * Create datum parameters.
@@ -76,8 +78,24 @@ public class DatumParams {
 
         if (nadgrids != null && !nadgrids.isEmpty()) {
             this.datumType = Values.PJD_GRIDSHIFT;
-            this.grids = nadgrids;
+            @SuppressWarnings("unchecked")
+            List<NadgridInfo> gridList = (List<NadgridInfo>) (List<?>) nadgrids;
+            this.grids = gridList;
         }
+    }
+
+    /**
+     * Factory method to create DatumParams with nadgrids string.
+     */
+    public static DatumParams withNadgrids(String datumCode, double[] datumParamsArray, 
+                                            double a, double b, double es, double ep2, 
+                                            String nadgridsStr) {
+        DatumParams params = new DatumParams(datumCode, datumParamsArray, a, b, es, ep2, (List<Object>) null);
+        if (nadgridsStr != null && !nadgridsStr.isEmpty()) {
+            params.nadgrids = nadgridsStr;
+            params.datumType = Values.PJD_GRIDSHIFT;
+        }
+        return params;
     }
 
     /**
@@ -134,7 +152,8 @@ public class DatumParams {
     public double getB() { return b; }
     public double getEs() { return es; }
     public double getEp2() { return ep2; }
-    public List<Object> getGrids() { return grids; }
+    public List<NadgridInfo> getGrids() { return grids; }
+    public String getNadgrids() { return nadgrids; }
 
     // Setters (for special cases)
 
@@ -143,7 +162,8 @@ public class DatumParams {
     public void setB(double b) { this.b = b; }
     public void setEs(double es) { this.es = es; }
     public void setEp2(double ep2) { this.ep2 = ep2; }
-    public void setGrids(List<Object> grids) { this.grids = grids; }
+    public void setGrids(List<NadgridInfo> grids) { this.grids = grids; }
+    public void setNadgrids(String nadgrids) { this.nadgrids = nadgrids; }
 
     @Override
     public String toString() {

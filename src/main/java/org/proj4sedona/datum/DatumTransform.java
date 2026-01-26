@@ -3,6 +3,14 @@ package org.proj4sedona.datum;
 import org.proj4sedona.constants.Values;
 import org.proj4sedona.core.DatumParams;
 import org.proj4sedona.core.Point;
+import org.proj4sedona.grid.GridInterpolator;
+import org.proj4sedona.grid.GridData;
+import org.proj4sedona.grid.GridLoader;
+import org.proj4sedona.grid.NadgridInfo;
+import org.proj4sedona.grid.Subgrid;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Performs datum transformations between coordinate systems.
@@ -121,8 +129,6 @@ public final class DatumTransform {
 
     /**
      * Apply grid shift transformation.
-     * This is a placeholder for Phase 14 (NAD Grid Support).
-     * 
      * Mirrors: lib/datum_transform.js applyGridShift
      * 
      * @param datum Datum with grid shift information
@@ -131,22 +137,84 @@ public final class DatumTransform {
      * @return 0 on success, -1 on failure
      */
     private static int applyGridShift(DatumParams datum, boolean inverse, Point point) {
-        // Grid shift requires grid files to be loaded
-        // This will be implemented in Phase 14 (NAD Grid Support)
-        if (datum.getGrids() == null || datum.getGrids().isEmpty()) {
-            // No grids available - this is an error for grid shift datums
-            // For now, return success and pass through (known limitation)
-            // In full implementation, this would return -1
-            return 0;
+        // Get grid information from nadgrids string
+        List<NadgridInfo> grids = datum.getGrids();
+        
+        // If no grids from DatumParams, try to parse from nadgrids string
+        if ((grids == null || grids.isEmpty()) && datum.getNadgrids() != null) {
+            grids = GridLoader.getNadgrids(datum.getNadgrids());
+        }
+        
+        if (grids == null || grids.isEmpty()) {
+            System.err.println("Grid shift grids not found");
+            return -1;
         }
 
-        // TODO: Implement full grid shift in Phase 14
-        // The implementation will include:
-        // - Iterate through available grids
-        // - Find the grid containing the point
-        // - Interpolate shift values
-        // - Apply forward or inverse shift
+        // Note: proj4js uses negative longitude internally for grid operations
+        double inputX = -point.x;
+        double inputY = point.y;
+        
+        double outputX = Double.NaN;
+        double outputY = Double.NaN;
+        List<String> attemptedGrids = new ArrayList<>();
 
+        // Iterate through grids to find one containing the point
+        outer:
+        for (NadgridInfo gridInfo : grids) {
+            attemptedGrids.add(gridInfo.getName());
+            
+            // Handle "null" grid - pass through unchanged
+            if (gridInfo.isNull()) {
+                outputX = inputX;
+                outputY = inputY;
+                break;
+            }
+            
+            // Check if grid is loaded
+            GridData grid = gridInfo.getGrid();
+            if (grid == null) {
+                if (gridInfo.isMandatory()) {
+                    System.err.println("Unable to find mandatory grid '" + gridInfo.getName() + "'");
+                    return -1;
+                }
+                continue;
+            }
+            
+            // Search subgrids for one containing the point
+            for (Subgrid subgrid : grid.getSubgrids()) {
+                // Check if point is within subgrid bounds
+                if (!subgrid.contains(inputX, inputY)) {
+                    continue;
+                }
+                
+                // Apply shift
+                double[] result;
+                if (inverse) {
+                    result = GridInterpolator.applyInverse(inputX, inputY, subgrid);
+                } else {
+                    result = GridInterpolator.applyForward(inputX, inputY, subgrid);
+                }
+                
+                if (!Double.isNaN(result[0])) {
+                    outputX = result[0];
+                    outputY = result[1];
+                    break outer;
+                }
+            }
+        }
+
+        // Check if we found a valid shift
+        if (Double.isNaN(outputX)) {
+            System.err.println("Failed to find a grid shift table for location '" +
+                    (-inputX * Values.R2D) + " " + (inputY * Values.R2D) +
+                    "' tried: '" + attemptedGrids + "'");
+            return -1;
+        }
+
+        // Update point (convert back from negative longitude)
+        point.x = -outputX;
+        point.y = outputY;
+        
         return 0;
     }
 }

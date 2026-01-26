@@ -20,11 +20,12 @@
     </properties>
 
     <dependencies>
-        <!-- GeoTIFF reading (for datum grids) -->
+        <!-- GeoTIFF reading (for datum grids) - using geotiff.java -->
         <dependency>
-            <groupId>mil.nga</groupId>
-            <artifactId>tiff</artifactId>
-            <version>3.0.0</version>
+            <groupId>io.github.geotiff</groupId>
+            <artifactId>geotiff</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+            <optional>true</optional>
         </dependency>
 
         <!-- JSON parsing for PROJJSON -->
