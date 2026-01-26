@@ -34,6 +34,14 @@
             <version>2.10.1</version>
         </dependency>
 
+        <!-- JTS Topology Suite for geometry transformations -->
+        <dependency>
+            <groupId>org.locationtech.jts</groupId>
+            <artifactId>jts-core</artifactId>
+            <version>1.20.0</version>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>

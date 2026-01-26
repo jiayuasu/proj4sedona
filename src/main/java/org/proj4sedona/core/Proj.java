@@ -1,5 +1,6 @@
 package org.proj4sedona.core;
 
+import com.google.gson.Gson;
 import org.proj4sedona.constants.Datum;
 import org.proj4sedona.constants.Values;
 import org.proj4sedona.defs.Defs;
@@ -8,6 +9,8 @@ import org.proj4sedona.parser.WktParser;
 import org.proj4sedona.projection.Projection;
 import org.proj4sedona.projection.ProjectionParams;
 import org.proj4sedona.projection.ProjectionRegistry;
+
+import java.util.Map;
 
 /**
  * Main projection class that initializes and manages coordinate system transformations.
@@ -80,15 +83,42 @@ public class Proj {
     /**
      * Parse the SRS code into a ProjectionDef.
      * Supports PROJ strings, WKT1, WKT2, PROJJSON formats, and Defs lookups.
+     * 
+     * <p>Format detection (all near O(1) cost):</p>
+     * <ul>
+     *   <li>PROJ string: starts with '+'</li>
+     *   <li>PROJJSON: starts with '{'</li>
+     *   <li>WKT1/WKT2: contains '['</li>
+     *   <li>EPSG codes: looked up in Defs registry</li>
+     * </ul>
      */
+    @SuppressWarnings("unchecked")
     private ProjectionDef parseCode(String srsCode) {
         if (srsCode == null || srsCode.isEmpty()) {
             return null;
         }
 
+        String trimmed = srsCode.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+
+        char firstChar = trimmed.charAt(0);
+
         // Check if it's a PROJ string (starts with +)
-        if (srsCode.charAt(0) == '+') {
+        if (firstChar == '+') {
             return ProjString.parse(srsCode);
+        }
+
+        // Check if it's a PROJJSON string (starts with {)
+        if (firstChar == '{') {
+            try {
+                Gson gson = new Gson();
+                Map<String, Object> json = gson.fromJson(srsCode, Map.class);
+                return WktParser.parse(json);
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Invalid PROJJSON: " + e.getMessage(), e);
+            }
         }
 
         // Check if it's WKT format (contains '[' and doesn't start with '+')

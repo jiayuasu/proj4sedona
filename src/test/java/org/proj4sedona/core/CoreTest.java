@@ -1,7 +1,10 @@
 package org.proj4sedona.core;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.DisplayName;
 import org.proj4sedona.constants.Values;
+import org.proj4sedona.projection.ProjectionRegistry;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -307,5 +310,139 @@ class CoreTest {
         String str = datum.toString();
         assertTrue(str.contains("3PARAM"));
         assertTrue(str.contains("6378137"));
+    }
+
+    // ========== PROJJSON String Parsing Tests ==========
+
+    @BeforeAll
+    static void setupProjections() {
+        ProjectionRegistry.start();
+    }
+
+    @Test
+    @DisplayName("Parse PROJJSON string: GeographicCRS (WGS 84)")
+    void testProjJsonGeographicCRS() {
+        String projJson = "{" +
+            "\"type\": \"GeographicCRS\"," +
+            "\"name\": \"WGS 84\"," +
+            "\"datum\": {" +
+                "\"type\": \"GeodeticReferenceFrame\"," +
+                "\"name\": \"World Geodetic System 1984\"," +
+                "\"ellipsoid\": {" +
+                    "\"name\": \"WGS 84\"," +
+                    "\"semi_major_axis\": 6378137," +
+                    "\"inverse_flattening\": 298.257223563" +
+                "}" +
+            "}" +
+        "}";
+
+        Proj proj = new Proj(projJson);
+
+        assertNotNull(proj);
+        assertEquals("longlat", proj.getParams().projName);
+        assertEquals(6378137.0, proj.getA(), 0.1);
+    }
+
+    @Test
+    @DisplayName("Parse PROJJSON string: ProjectedCRS (UTM)")
+    void testProjJsonProjectedCRS() {
+        String projJson = "{" +
+            "\"type\": \"ProjectedCRS\"," +
+            "\"name\": \"WGS 84 / UTM zone 32N\"," +
+            "\"base_crs\": {" +
+                "\"type\": \"GeographicCRS\"," +
+                "\"name\": \"WGS 84\"," +
+                "\"datum\": {" +
+                    "\"type\": \"GeodeticReferenceFrame\"," +
+                    "\"name\": \"World Geodetic System 1984\"," +
+                    "\"ellipsoid\": {" +
+                        "\"name\": \"WGS 84\"," +
+                        "\"semi_major_axis\": 6378137," +
+                        "\"inverse_flattening\": 298.257223563" +
+                    "}" +
+                "}" +
+            "}," +
+            "\"conversion\": {" +
+                "\"name\": \"UTM zone 32N\"," +
+                "\"method\": {\"name\": \"Transverse Mercator\"}," +
+                "\"parameters\": [" +
+                    "{\"name\": \"Latitude of natural origin\", \"value\": 0, \"unit\": {\"type\": \"AngularUnit\", \"name\": \"degree\", \"conversion_factor\": 0.0174532925199433}}," +
+                    "{\"name\": \"Longitude of natural origin\", \"value\": 9, \"unit\": {\"type\": \"AngularUnit\", \"name\": \"degree\", \"conversion_factor\": 0.0174532925199433}}," +
+                    "{\"name\": \"Scale factor at natural origin\", \"value\": 0.9996}," +
+                    "{\"name\": \"False easting\", \"value\": 500000}," +
+                    "{\"name\": \"False northing\", \"value\": 0}" +
+                "]" +
+            "}" +
+        "}";
+
+        Proj proj = new Proj(projJson);
+
+        assertNotNull(proj);
+        assertEquals("Transverse Mercator", proj.getParams().projName);
+        assertEquals(6378137.0, proj.getA(), 0.1);
+        assertEquals(0.9996, proj.getParams().k0, 1e-6);
+        assertEquals(500000.0, proj.getParams().x0, 0.1);
+    }
+
+    @Test
+    @DisplayName("Parse PROJJSON string: malformed JSON throws exception")
+    void testProjJsonMalformed() {
+        String invalidJson = "{ invalid json }";
+
+        assertThrows(IllegalArgumentException.class, () -> new Proj(invalidJson));
+    }
+
+    @Test
+    @DisplayName("Existing PROJ string parsing still works")
+    void testProjStringStillWorks() {
+        Proj proj = new Proj("+proj=longlat +datum=WGS84 +no_defs");
+
+        assertNotNull(proj);
+        assertEquals("longlat", proj.getParams().projName);
+    }
+
+    @Test
+    @DisplayName("Existing WKT parsing still works")
+    void testWktStillWorks() {
+        String wkt = "GEOGCS[\"WGS 84\"," +
+                "DATUM[\"WGS_1984\"," +
+                "SPHEROID[\"WGS 84\",6378137,298.257223563]]," +
+                "PRIMEM[\"Greenwich\",0]," +
+                "UNIT[\"degree\",0.0174532925199433]]";
+
+        Proj proj = new Proj(wkt);
+
+        assertNotNull(proj);
+        assertEquals("longlat", proj.getParams().projName);
+        assertEquals(6378137.0, proj.getA(), 0.1);
+    }
+
+    @Test
+    @DisplayName("Existing EPSG code parsing still works")
+    void testEpsgStillWorks() {
+        Proj proj = new Proj("EPSG:4326");
+
+        assertNotNull(proj);
+        assertEquals("longlat", proj.getParams().projName);
+    }
+
+    @Test
+    @DisplayName("PROJJSON with whitespace is handled correctly")
+    void testProjJsonWithWhitespace() {
+        // JSON with leading/trailing whitespace
+        String projJson = "  {" +
+            "\"type\": \"GeographicCRS\"," +
+            "\"name\": \"WGS 84\"," +
+            "\"datum\": {" +
+                "\"ellipsoid\": {" +
+                    "\"semi_major_axis\": 6378137," +
+                    "\"inverse_flattening\": 298.257223563" +
+                "}" +
+            "}" +
+        "}  ";
+
+        Proj proj = new Proj(projJson);
+        assertNotNull(proj);
+        assertEquals("longlat", proj.getParams().projName);
     }
 }
