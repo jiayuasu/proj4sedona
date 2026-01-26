@@ -1,0 +1,52 @@
+# Dependabot configuration file
+# Automatically keeps dependencies and GitHub Actions up to date
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # Keep GitHub Actions up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      # Group all GitHub Actions updates into a single PR
+      actions:
+        patterns:
+          - "*"
+
+  # Keep Maven dependencies up to date
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+      - "java"
+    open-pull-requests-limit: 5
+    ignore:
+      # Ignore major version updates for stability
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # Keep Python dependencies up to date (for scripts)
+  - package-ecosystem: "pip"
+    directory: "/scripts/pyproj-reference"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+      - "python"
+    open-pull-requests-limit: 3

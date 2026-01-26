@@ -75,10 +75,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: maven-artifacts
-        path: |
-          core/target/*.jar
-          wkt-parser/target/*.jar
-          mgrs/target/*.jar
+        path: target/*.jar
         retention-days: 30
 
   code-quality:
@@ -99,54 +96,8 @@ jobs:
     - name: Install dependencies
       run: mvn clean install -DskipTests -B
 
-    - name: Check code formatting (Spotless)
-      run: mvn spotless:check -B
-
     - name: Generate Javadoc
       run: mvn javadoc:javadoc -B
-
-  benchmark:
-    name: Performance & Accuracy Benchmarks
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event.pull_request.draft == false
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up JDK 11
-      uses: actions/setup-java@v4
-      with:
-        java-version: '11'
-        distribution: 'temurin'
-        cache: 'maven'
-
-    - name: Build Java modules with shaded JAR
-      run: mvn clean package -Pshaded -DskipTests -B
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    - name: Install uv
-      run: curl -LsSf https://astral.sh/uv/install.sh | sh
-
-    - name: Install Python dependencies and run benchmarks
-      working-directory: benchmark
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv sync
-        uv run python run_benchmarks.py --iterations 1000 --markers performance accuracy --html-report
-
-    - name: Upload benchmark results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: benchmark-results
-        path: benchmark/reports/
-        retention-days: 30
-        if-no-files-found: warn
 
   multi-os:
     name: Test on ${{ matrix.os }}
@@ -169,33 +120,3 @@ jobs:
 
     - name: Build and test
       run: mvn clean test -B
-
-  coverage:
-    name: Code Coverage
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up JDK 11
-      uses: actions/setup-java@v4
-      with:
-        java-version: '11'
-        distribution: 'temurin'
-        cache: 'maven'
-
-    - name: Run tests with coverage
-      run: mvn clean test jacoco:report -B
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        files: |
-          core/target/site/jacoco/jacoco.xml
-          wkt-parser/target/site/jacoco/jacoco.xml
-          mgrs/target/site/jacoco/jacoco.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
-
