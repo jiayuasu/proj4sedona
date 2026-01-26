@@ -21,18 +21,14 @@ on:
         description: 'Regenerate pyproj reference data'
         type: boolean
         default: false
-      run_benchmarks:
-        description: 'Run performance benchmarks'
-        type: boolean
-        default: false
 
 env:
-  JAVA_VERSION: '11'
+  JAVA_VERSION: '17'
   PYTHON_VERSION: '3.11'
 
 jobs:
   integration-tests:
-    name: Integration Tests
+    name: Integration Tests & Benchmarks
     runs-on: ubuntu-latest
     
     steps:
@@ -70,6 +66,180 @@ jobs:
       - name: Run integration tests
         run: mvn verify -Pintegration-tests -DskipUnitTests=true -B
 
+      - name: Build for benchmarks
+        run: mvn package -DskipTests -B
+
+      # Run pyproj benchmarks
+      - name: Run pyproj benchmarks
+        run: |
+          python scripts/pyproj-reference/run_pyproj_benchmarks.py \
+            --output target/pyproj_benchmark_results.json
+
+      # Run Java JMH benchmarks
+      - name: Run Java JMH benchmarks
+        run: |
+          java -cp "target/test-classes:target/classes:$(mvn dependency:build-classpath -q -DincludeScope=test -Dmdep.outputFile=/dev/stdout)" \
+            org.openjdk.jmh.Main -f 1 -wi 2 -i 3 -r 1 \
+            "org.proj4sedona.benchmark.*" \
+            -rf json -rff target/jmh-results.json
+
+      # Generate comparison report
+      - name: Generate benchmark comparison report
+        run: |
+          python scripts/pyproj-reference/compare_benchmarks.py \
+            --pyproj target/pyproj_benchmark_results.json \
+            --java target/java_benchmark_results.json \
+            --output target/benchmark_comparison_report.md || true
+          
+          # Generate enhanced report from JMH results
+          python3 << 'EOF'
+          import json
+          from datetime import datetime
+          
+          # Load pyproj results
+          try:
+              with open('target/pyproj_benchmark_results.json') as f:
+                  pyproj = json.load(f)
+          except:
+              pyproj = {'benchmarks': {}}
+          
+          # Load JMH results
+          try:
+              with open('target/jmh-results.json') as f:
+                  jmh = json.load(f)
+          except:
+              jmh = []
+          
+          # Build JMH lookup
+          jmh_data = {}
+          for b in jmh:
+              name = b['benchmark'].split('.')[-1]
+              score = b['primaryMetric']['score']
+              unit = b['primaryMetric']['scoreUnit']
+              jmh_data[name] = {'score': score, 'unit': unit}
+          
+          # Generate report
+          report = []
+          report.append("# Performance Comparison: proj4sedona vs pyproj")
+          report.append("")
+          report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+          report.append("")
+          report.append("## Environment")
+          report.append("")
+          report.append("| Library | Version |")
+          report.append("|---------|---------|")
+          report.append(f"| proj4sedona | 1.0-SNAPSHOT |")
+          report.append(f"| pyproj | {pyproj.get('pyproj_version', 'N/A')} |")
+          report.append("")
+          
+          report.append("## Single Point Transform Performance")
+          report.append("")
+          report.append("| Operation | pyproj | proj4sedona | Winner | Speedup |")
+          report.append("|-----------|--------|-------------|--------|---------|")
+          
+          # Transform comparisons
+          pyproj_merc = pyproj.get('benchmarks', {}).get('transform_single_merc', {}).get('throughput_ops_per_sec', 0)
+          java_merc = jmh_data.get('transformWgs84ToMerc', {}).get('score', 0) * 1e6 if jmh_data.get('transformWgs84ToMerc', {}).get('unit') == 'ops/us' else 0
+          
+          pyproj_utm = pyproj.get('benchmarks', {}).get('transform_single_utm', {}).get('throughput_ops_per_sec', 0)
+          java_utm = jmh_data.get('transformWgs84ToUtm', {}).get('score', 0) * 1e6 if jmh_data.get('transformWgs84ToUtm', {}).get('unit') == 'ops/us' else 0
+          
+          def fmt_ops(v):
+              if v >= 1e6: return f"{v/1e6:.2f}M ops/s"
+              if v >= 1e3: return f"{v/1e3:.2f}K ops/s"
+              return f"{v:.2f} ops/s"
+          
+          def compare(py, java, name):
+              if py > 0 and java > 0:
+                  if java > py:
+                      return f"| {name} | {fmt_ops(py)} | **{fmt_ops(java)}** | Java | **{java/py:.1f}x** |"
+                  else:
+                      return f"| {name} | **{fmt_ops(py)}** | {fmt_ops(java)} | Python | **{py/java:.1f}x** |"
+              return f"| {name} | {fmt_ops(py) if py else 'N/A'} | {fmt_ops(java) if java else 'N/A'} | - | - |"
+          
+          report.append(compare(pyproj_merc, java_merc, "WGS84 → Mercator"))
+          report.append(compare(pyproj_utm, java_utm, "WGS84 → UTM"))
+          report.append("")
+          
+          report.append("## CRS Initialization Performance")
+          report.append("")
+          report.append("| Operation | pyproj | proj4sedona | Winner | Speedup |")
+          report.append("|-----------|--------|-------------|--------|---------|")
+          
+          pyproj_init = pyproj.get('benchmarks', {}).get('crs_init_epsg_4326', {}).get('throughput_ops_per_sec', 0)
+          java_init = jmh_data.get('projInitWgs84', {}).get('score', 0) * 1e6 if jmh_data.get('projInitWgs84', {}).get('unit') == 'ops/us' else 0
+          java_cached = jmh_data.get('projInitCachedWgs84', {}).get('score', 0) * 1e6 if jmh_data.get('projInitCachedWgs84', {}).get('unit') == 'ops/us' else 0
+          
+          report.append(compare(pyproj_init, java_init, "EPSG:4326 Init"))
+          if java_cached:
+              report.append(f"| EPSG:4326 (Cached) | N/A | **{fmt_ops(java_cached)}** | Java | - |")
+          report.append("")
+          
+          report.append("## Summary")
+          report.append("")
+          if java_merc > pyproj_merc:
+              report.append(f"- **proj4sedona is {java_merc/pyproj_merc:.1f}x faster** for single-point Mercator transforms")
+          if java_utm > pyproj_utm:
+              report.append(f"- **proj4sedona is {java_utm/pyproj_utm:.1f}x faster** for single-point UTM transforms")
+          if java_init > pyproj_init:
+              report.append(f"- **proj4sedona is {java_init/pyproj_init:.1f}x faster** for CRS initialization")
+          if java_cached:
+              report.append(f"- **proj4sedona cached lookups**: {fmt_ops(java_cached)}")
+          report.append("")
+          
+          with open('target/benchmark_comparison_report.md', 'w') as f:
+              f.write('\n'.join(report))
+          
+          print("Report generated successfully!")
+          EOF
+
+      # Post test summary to GitHub Actions
+      - name: Post summary to GitHub Actions
+        if: always()
+        run: |
+          echo "## 🧪 Integration Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Extract test results from failsafe reports
+          if [ -d "target/failsafe-reports" ]; then
+            echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Test Suite | Tests | Passed | Failed | Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "|------------|-------|--------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+            
+            for file in target/failsafe-reports/*.txt; do
+              if [ -f "$file" ]; then
+                suite=$(basename "$file" .txt)
+                line=$(grep "^Tests run:" "$file" 2>/dev/null || echo "")
+                if [ -n "$line" ]; then
+                  tests=$(echo "$line" | sed 's/.*Tests run: \([0-9]*\).*/\1/')
+                  failures=$(echo "$line" | sed 's/.*Failures: \([0-9]*\).*/\1/')
+                  errors=$(echo "$line" | sed 's/.*Errors: \([0-9]*\).*/\1/')
+                  skipped=$(echo "$line" | sed 's/.*Skipped: \([0-9]*\).*/\1/')
+                  passed=$((tests - failures - errors - skipped))
+                  
+                  if [ "$failures" -eq 0 ] && [ "$errors" -eq 0 ]; then
+                    status="✅"
+                  else
+                    status="❌"
+                  fi
+                  
+                  echo "| $status $suite | $tests | $passed | $((failures + errors)) | $skipped |" >> $GITHUB_STEP_SUMMARY
+                fi
+              fi
+            done
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Add benchmark comparison report
+          if [ -f "target/benchmark_comparison_report.md" ]; then
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## 🚀 Performance Benchmarks" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat target/benchmark_comparison_report.md >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Upload test reports
         uses: actions/upload-artifact@v4
         if: always()
@@ -80,69 +250,16 @@ jobs:
             target/failsafe-reports/
           retention-days: 7
 
-  benchmarks:
-    name: Performance Benchmarks
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.run_benchmarks == 'true' || github.event_name == 'workflow_dispatch' }}
-    needs: integration-tests
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Java ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'temurin'
-          cache: maven
-
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: scripts/pyproj-reference/requirements.txt
-
-      - name: Install Python dependencies
-        run: |
-          pip install -r scripts/pyproj-reference/requirements.txt
-
-      - name: Compile project
-        run: mvn compile test-compile -B
-
-      - name: Run pyproj benchmarks
-        run: |
-          python scripts/pyproj-reference/run_pyproj_benchmarks.py \
-            --output target/pyproj_benchmark_results.json
-
-      - name: Run Java JMH benchmarks
-        run: |
-          mvn exec:java -Pbenchmarks \
-            -Dexec.args="--output target/java_benchmark_results.json" -B
-
-      - name: Generate comparison report
-        run: |
-          python scripts/pyproj-reference/compare_benchmarks.py \
-            --pyproj target/pyproj_benchmark_results.json \
-            --java target/java_benchmark_results.json \
-            --output target/benchmark_comparison_report.md
-
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: benchmark-results
           path: |
             target/pyproj_benchmark_results.json
-            target/java_benchmark_results.json
+            target/jmh-results.json
             target/benchmark_comparison_report.md
           retention-days: 30
-
-      - name: Post benchmark summary
-        run: |
-          echo "## Benchmark Comparison Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          cat target/benchmark_comparison_report.md >> $GITHUB_STEP_SUMMARY
 
   regenerate-reference:
     name: Regenerate Reference Data
