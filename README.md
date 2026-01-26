@@ -25,8 +25,35 @@ Proj4Sedona provides coordinate system transformations, datum conversions, and p
 ### MGRS Coordinates
 
 
-### Datum Transformations with GeoTIFF Grids
+### Datum Transformations with Grid Shift Files
 
+Proj4Sedona supports NAD grid shift transformations using NTv2 (.gsb) and GeoTIFF (.tif) files
+from the PROJ CDN (https://cdn.proj.org/).
+
+```java
+import org.proj4sedona.grid.GridLoader;
+import org.proj4sedona.grid.GridData;
+
+// Load a grid file (format auto-detected)
+GridLoader.loadFile("conus", "/path/to/us_noaa_conus.tif");
+
+// Or load from byte array
+byte[] gridData = Files.readAllBytes(Path.of("/path/to/grid.gsb"));
+GridLoader.load("my_grid", gridData);
+
+// Check if grid is loaded
+if (GridLoader.has("conus")) {
+    GridData grid = GridLoader.get("conus");
+    System.out.println("Loaded " + grid.getSubgrids().size() + " subgrids");
+}
+
+// Clear all loaded grids
+GridLoader.clear();
+```
+
+**Grid File Support:**
+- **NTv2 (.gsb)**: Native support
+- **GeoTIFF (.tif)**: Supported via `geotiff.java` (included as dependency)
 
 ## Supported Projections
 

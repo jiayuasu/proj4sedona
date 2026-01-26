@@ -20,12 +20,11 @@
     </properties>
 
     <dependencies>
-        <!-- GeoTIFF reading (for datum grids) - using geotiff.java -->
+        <!-- GeoTIFF reading (for datum grids) - https://github.com/geotiffjs/geotiff.java -->
         <dependency>
-            <groupId>io.github.geotiff</groupId>
+            <groupId>org.datasyslab</groupId>
             <artifactId>geotiff</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
-            <optional>true</optional>
+            <version>0.0.1-20260125</version>
         </dependency>
 
         <!-- JSON parsing for PROJJSON -->
