@@ -24,7 +24,7 @@ import java.util.Map;
  * ProjectionDef def = WktParser.parse("PROJCRS[\"WGS 84 / UTM zone 32N\", ...]");
  * 
  * // Parse PROJJSON
- * Map<String, Object> projjson = ...; // PROJJSON as Map
+ * Map&lt;String, Object&gt; projjson = ...; // PROJJSON as Map
  * ProjectionDef def = WktParser.parse(projjson);
  * </pre>
  */

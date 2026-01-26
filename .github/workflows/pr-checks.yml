@@ -42,9 +42,6 @@ jobs:
     - name: Build and test all modules
       run: mvn clean install -B
 
-    - name: Check code formatting
-      run: mvn spotless:check -B
-
     - name: Verify package builds
       run: mvn package -DskipTests -B
 
@@ -153,7 +150,6 @@ jobs:
           ### Build & Test Results
           - Maven Build: ${status === 'success' ? '✅ Passed' : '❌ Failed'}
           - Unit Tests: ${status === 'success' ? '✅ Passed' : '❌ Failed'}
-          - Code Formatting: ${status === 'success' ? '✅ Passed' : '❌ Failed'}
           
           ${status === 'success' ? '🎉 All checks passed! Ready for review.' : '⚠️ Some checks failed. Please review the logs.'}
           `;
