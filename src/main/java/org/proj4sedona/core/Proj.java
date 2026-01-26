@@ -2,8 +2,9 @@ package org.proj4sedona.core;
 
 import org.proj4sedona.constants.Datum;
 import org.proj4sedona.constants.Values;
-import org.proj4sedona.parser.ProjString;
 import org.proj4sedona.defs.Defs;
+import org.proj4sedona.parser.ProjString;
+import org.proj4sedona.parser.WktParser;
 import org.proj4sedona.projection.Projection;
 import org.proj4sedona.projection.ProjectionParams;
 import org.proj4sedona.projection.ProjectionRegistry;
@@ -12,21 +13,11 @@ import org.proj4sedona.projection.ProjectionRegistry;
  * Main projection class that initializes and manages coordinate system transformations.
  * Mirrors: lib/Proj.js
  * 
- * <p>This class:</p>
- * <ol>
- *   <li>Parses the SRS code (PROJ string, EPSG code, etc.)</li>
- *   <li>Looks up from the definition registry if applicable</li>
- *   <li>Looks up datum definitions</li>
- *   <li>Derives ellipsoid and eccentricity constants</li>
- *   <li>Initializes the projection implementation</li>
- * </ol>
- * 
- * <p>Supported input formats:</p>
- * <ul>
- *   <li>PROJ strings: "+proj=longlat +datum=WGS84"</li>
- *   <li>EPSG codes: "EPSG:4326", "EPSG:3857"</li>
- *   <li>Aliases: "WGS84", "GOOGLE"</li>
- * </ul>
+ * This class:
+ * 1. Parses the SRS code (PROJ string, etc.)
+ * 2. Looks up datum definitions
+ * 3. Derives ellipsoid and eccentricity constants
+ * 4. Initializes the projection implementation
  */
 public class Proj {
 
@@ -34,17 +25,14 @@ public class Proj {
     private final Projection projection;
 
     /**
-     * Create a projection from an SRS code.
+     * Create a projection from an SRS code (PROJ string).
      * 
-     * @param srsCode The SRS code (PROJ string, EPSG code, or alias)
+     * @param srsCode The SRS code (e.g., "+proj=longlat +datum=WGS84")
      * @throws IllegalArgumentException if the projection cannot be parsed or is not supported
      */
     public Proj(String srsCode) {
-        // Ensure registries are initialized
+        // Ensure registry is initialized
         ProjectionRegistry.start();
-        if (!Defs.isGlobalsInitialized()) {
-            Defs.globals();
-        }
 
         // Parse the SRS code
         ProjectionDef def = parseCode(srsCode);
@@ -91,17 +79,7 @@ public class Proj {
 
     /**
      * Parse the SRS code into a ProjectionDef.
-     * Mirrors: lib/parseCode.js
-     * 
-     * <p>Resolution order:</p>
-     * <ol>
-     *   <li>PROJ string (starts with "+")</li>
-     *   <li>Definition registry lookup (EPSG codes, aliases)</li>
-     *   <li>WKT parsing (Phase 13 - TODO)</li>
-     * </ol>
-     * 
-     * @param srsCode The input SRS code
-     * @return The parsed ProjectionDef, or null if parsing fails
+     * Supports PROJ strings, WKT1, WKT2, PROJJSON formats, and Defs lookups.
      */
     private ProjectionDef parseCode(String srsCode) {
         if (srsCode == null || srsCode.isEmpty()) {
@@ -110,33 +88,23 @@ public class Proj {
 
         // Check if it's a PROJ string (starts with +)
         if (srsCode.charAt(0) == '+') {
-            ProjectionDef def = ProjString.parse(srsCode);
-            if (def.getSrsCode() == null) {
-                def.setSrsCode(srsCode);
-            }
-            return def;
+            return ProjString.parse(srsCode);
         }
 
-        // Check the definition registry (EPSG codes, aliases like WGS84, GOOGLE)
-        ProjectionDef def = Defs.get(srsCode);
-        if (def != null) {
-            // Return the cached definition - it's already parsed
-            return def;
+        // Check if it's WKT format (contains '[' and doesn't start with '+')
+        if (WktParser.isWkt(srsCode)) {
+            return WktParser.parse(srsCode);
         }
 
-        // TODO: Add WKT parsing in Phase 13
-        // Check for WKT format: contains '[' and doesn't start with '+'
-        // if (srsCode.indexOf('[') != -1) {
-        //     return WktParser.parse(srsCode);
-        // }
+        // Try looking up in the Defs registry (for EPSG codes, aliases, etc.)
+        ProjectionDef defFromRegistry = Defs.get(srsCode);
+        if (defFromRegistry != null) {
+            return defFromRegistry;
+        }
 
-        // Last resort: try parsing as PROJ string anyway
+        // Try parsing as PROJ string anyway (for simple strings without +)
         try {
-            ProjectionDef parsed = ProjString.parse(srsCode);
-            if (parsed.getSrsCode() == null) {
-                parsed.setSrsCode(srsCode);
-            }
-            return parsed;
+            return ProjString.parse(srsCode);
         } catch (Exception e) {
             return null;
         }

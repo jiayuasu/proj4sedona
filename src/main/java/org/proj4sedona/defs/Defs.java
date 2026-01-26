@@ -95,6 +95,10 @@ public final class Defs {
      * @return The ProjectionDef, or null if not found
      */
     public static ProjectionDef get(String name) {
+        // Auto-initialize globals if not yet done
+        if (!globalsInitialized) {
+            globals();
+        }
         return definitions.get(name);
     }
 

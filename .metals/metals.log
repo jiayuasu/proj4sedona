@@ -1,3 +1,10 @@
 2026.01.24 22:40:43 INFO  Started: Metals version 1.6.5 in folders '/Users/jiayu/GitHub/proj4sedona' for client Cursor 1.105.1.
 2026.01.24 22:40:43 INFO  Memory monitor started
 2026.01.24 22:40:44 WARN  Using H2 2.4.240 which is newer than the version Flyway has been verified with. The latest verified version of H2 is 2.3.232.
+2026.01.24 23:25:19 INFO  no build target found for /Users/jiayu/GitHub/proj4sedona/src/main/java/org/proj4sedona/constants/Datum.java. Using fallback presentation compiler.
+2026.01.24 23:25:24 INFO  no build target found for /Users/jiayu/GitHub/proj4sedona/src/main/java/org/proj4sedona/constants/Datum.java. Using fallback presentation compiler.
+2026.01.24 23:25:24 INFO  no build target found for /Users/jiayu/GitHub/proj4sedona/src/main/java/org/proj4sedona/constants/Datum.java. Using fallback presentation compiler.
+2026.01.24 23:27:25 INFO  no build target found for /Users/jiayu/GitHub/proj4sedona/src/main/java/org/proj4sedona/constants/Datum.java. Using fallback presentation compiler.
+2026.01.24 23:30:15 INFO  no build target found for /Users/jiayu/GitHub/proj4sedona/src/main/java/org/proj4sedona/constants/Datum.java. Using fallback presentation compiler.
+2026.01.24 23:32:14 INFO  no build target found for /Users/jiayu/GitHub/proj4sedona/src/main/java/org/proj4sedona/constants/Datum.java. Using fallback presentation compiler.
+2026.01.25 01:19:52 INFO  no build target found for /Users/jiayu/GitHub/proj4sedona/src/main/java/org/proj4sedona/constants/Datum.java. Using fallback presentation compiler.
