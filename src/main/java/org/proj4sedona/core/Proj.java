@@ -186,7 +186,22 @@ public class Proj {
     private DatumParams createDatum(ProjectionDef def, 
                                      DeriveConstants.SphereResult sphere,
                                      DeriveConstants.EccentricityResult ecc) {
-        // TODO: Handle nadgrids lookup in Phase 14
+        // Check if nadgrids is specified
+        String nadgrids = def.getNadgrids();
+        if (nadgrids != null && !nadgrids.isEmpty()) {
+            // Use factory method that handles nadgrids string
+            return DatumParams.withNadgrids(
+                def.getDatumCode(),
+                def.getDatumParams(),
+                sphere.a,
+                sphere.b,
+                ecc.es,
+                ecc.ep2,
+                nadgrids
+            );
+        }
+        
+        // Standard datum without grid shift
         return new DatumParams(
             def.getDatumCode(),
             def.getDatumParams(),
@@ -194,7 +209,7 @@ public class Proj {
             sphere.b,
             ecc.es,
             ecc.ep2,
-            null  // nadgrids will be added later
+            null
         );
     }
 

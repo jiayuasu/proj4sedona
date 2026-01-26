@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.*;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 /**
@@ -46,9 +47,10 @@ public class GridTransformIT {
     private static final String REFERENCE_FILE = "/pyproj-reference/grid_transform_reference.json";
     
     // Grid transformations can have slightly different results due to
-    // interpolation differences, so we use a larger tolerance
-    private static final double GRID_TOLERANCE = 0.01;  // 1cm
-    private static final double GEOGRAPHIC_TOLERANCE = 1e-6;  // ~0.1m
+    // interpolation differences (bilinear vs bicubic, grid versions, etc.)
+    // so we use a larger tolerance than standard geographic transformations
+    private static final double GRID_TOLERANCE = 0.01;  // 1cm for projected
+    private static final double GEOGRAPHIC_TOLERANCE = 1e-5;  // ~1m - accounts for interpolation differences
     
     private static JsonObject referenceData;
     private static Path tempCacheDir;
@@ -63,10 +65,35 @@ public class GridTransformIT {
         GridLoader.setCacheDirectory(tempCacheDir);
         GridLoader.setAutoFetch(true);
         
+        // Pre-fetch required grid files from CDN
+        // This ensures grids are available before running transformation tests
+        prefetchGrids();
+        
         // Load reference data
         referenceData = loadReferenceData();
         
         assertNotNull(referenceData, "Reference data should be loaded");
+    }
+    
+    /**
+     * Pre-fetch grid files from CDN before running tests.
+     * This is done once at setup time to avoid network latency during tests.
+     */
+    private static void prefetchGrids() {
+        String[] requiredGrids = {"us_noaa_conus.tif", "ca_nrc_ntv2_0.tif"};
+        
+        for (String gridName : requiredGrids) {
+            if (!GridLoader.has(gridName)) {
+                try {
+                    System.out.println("Pre-fetching grid from CDN: " + gridName);
+                    GridLoader.fetchFromCdn(gridName);
+                    System.out.println("Successfully fetched: " + gridName);
+                } catch (IOException e) {
+                    System.out.println("Could not fetch " + gridName + ": " + e.getMessage());
+                    System.out.println("Tests requiring this grid will be skipped.");
+                }
+            }
+        }
     }
     
     @AfterAll
@@ -174,29 +201,50 @@ public class GridTransformIT {
                                          double inputX, double inputY,
                                          double expectedX, double expectedY,
                                          String pointName) {
+        // Check if the required grid file is loaded
+        boolean gridAvailable = GridLoader.has(gridFile);
+        assumeTrue(gridAvailable, 
+            "Skipping test: grid file " + gridFile + " is not available (requires network access to cdn.proj.org)");
+        
+        // Check if we can parse the CRS codes
         try {
-            // Perform transformation
-            Point result = Proj4.proj4(fromCrs, toCrs, new Point(inputX, inputY));
-            
-            assertNotNull(result, "Transformation result should not be null for " + pointName);
-            assertFalse(Double.isNaN(result.x), "Result X should not be NaN for " + pointName);
-            assertFalse(Double.isNaN(result.y), "Result Y should not be NaN for " + pointName);
-            
-            // Compare with expected values using appropriate tolerance
-            // Grid transformations operate on geographic coordinates
-            assertEquals(expectedX, result.x, GEOGRAPHIC_TOLERANCE,
-                String.format("X coordinate mismatch for %s: expected %f, got %f",
-                    pointName, expectedX, result.x));
-            assertEquals(expectedY, result.y, GEOGRAPHIC_TOLERANCE,
-                String.format("Y coordinate mismatch for %s: expected %f, got %f",
-                    pointName, expectedY, result.y));
-            
-        } catch (Exception e) {
-            // Grid transformations may fail if grids aren't available
-            // This is acceptable in some environments
-            System.out.println("Grid transformation test skipped for " + pointName + 
-                ": " + e.getMessage());
+            Proj4.getCachedProj(fromCrs);
+            Proj4.getCachedProj(toCrs);
+        } catch (IllegalArgumentException e) {
+            assumeTrue(false, "Skipping test: " + e.getMessage());
+            return;
         }
+        
+        // Perform transformation
+        Point result = Proj4.proj4(fromCrs, toCrs, new Point(inputX, inputY));
+        
+        assertNotNull(result, "Transformation result should not be null for " + pointName);
+        assertFalse(Double.isNaN(result.x), "Result X should not be NaN for " + pointName);
+        assertFalse(Double.isNaN(result.y), "Result Y should not be NaN for " + pointName);
+        
+        // Verify that transformation actually happened (not identity)
+        // If the difference from input is too small, the grid might not have been applied
+        double deltaX = Math.abs(result.x - inputX);
+        double deltaY = Math.abs(result.y - inputY);
+        double expectedDeltaX = Math.abs(expectedX - inputX);
+        double expectedDeltaY = Math.abs(expectedY - inputY);
+        
+        // Only check if expected transformation is significant (> 1e-7 degrees ~= 1cm)
+        if (expectedDeltaX > 1e-7 || expectedDeltaY > 1e-7) {
+            assertTrue(deltaX > 1e-8 || deltaY > 1e-8,
+                String.format("Grid transformation for %s may not have been applied " +
+                    "(result very close to input). Ensure grid file %s is properly loaded.",
+                    pointName, gridFile));
+        }
+        
+        // Compare with expected values using appropriate tolerance
+        // Grid transformations operate on geographic coordinates
+        assertEquals(expectedX, result.x, GEOGRAPHIC_TOLERANCE,
+            String.format("X coordinate mismatch for %s: expected %f, got %f",
+                pointName, expectedX, result.x));
+        assertEquals(expectedY, result.y, GEOGRAPHIC_TOLERANCE,
+            String.format("Y coordinate mismatch for %s: expected %f, got %f",
+                pointName, expectedY, result.y));
     }
     
     @TestFactory

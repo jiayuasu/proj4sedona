@@ -14,8 +14,9 @@ import org.proj4sedona.core.Point;
 public class Stereographic implements Projection {
 
     private static final String[] NAMES = {
-        "stere", "Stereographic_South_Pole", "Polar_Stereographic_variant_A",
-        "Polar_Stereographic_variant_B", "Polar_Stereographic"
+        "stere", "Stereographic", "Stereographic_South_Pole", "Stereographic_North_Pole",
+        "Polar_Stereographic_variant_A", "Polar_Stereographic_variant_B", 
+        "Polar_Stereographic", "Oblique_Stereographic"
     };
 
     private double a, e, es, lat0, long0, k0, x0, y0;

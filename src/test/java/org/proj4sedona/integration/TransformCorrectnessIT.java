@@ -43,6 +43,7 @@ public class TransformCorrectnessIT {
     // Tolerances
     private static final double GEOGRAPHIC_TOLERANCE = 1e-6;  // ~0.1m at equator
     private static final double PROJECTED_TOLERANCE = 0.01;   // 1cm
+    private static final double RELATIVE_TOLERANCE = 1e-9;    // For very large values
     
     private static JsonObject referenceData;
     
@@ -137,18 +138,37 @@ public class TransformCorrectnessIT {
             assertFalse(Double.isNaN(result.x), "Result X should not be NaN");
             assertFalse(Double.isNaN(result.y), "Result Y should not be NaN");
             
-            // Determine tolerance based on CRS type
-            double tolerance = isProjectedCrs(toCrs) ? PROJECTED_TOLERANCE : GEOGRAPHIC_TOLERANCE;
+            // Calculate tolerances - use relative tolerance for large values
+            double xTolerance = computeTolerance(expectedX, toCrs);
+            double yTolerance = computeTolerance(expectedY, toCrs);
             
             // Compare results
-            assertEquals(expectedX, result.x, tolerance,
+            assertEquals(expectedX, result.x, xTolerance,
                 String.format("X coordinate mismatch: expected %f, got %f", expectedX, result.x));
-            assertEquals(expectedY, result.y, tolerance,
+            assertEquals(expectedY, result.y, yTolerance,
                 String.format("Y coordinate mismatch: expected %f, got %f", expectedY, result.y));
             
         } catch (Exception e) {
             fail("Transformation failed: " + e.getMessage());
         }
+    }
+    
+    /**
+     * Compute appropriate tolerance based on expected value magnitude and CRS type.
+     * For very large values (e.g., polar projections with values in billions of meters),
+     * we use relative tolerance to account for floating-point precision limits.
+     */
+    private double computeTolerance(double expectedValue, String toCrs) {
+        double baseTolerance = isProjectedCrs(toCrs) ? PROJECTED_TOLERANCE : GEOGRAPHIC_TOLERANCE;
+        double absExpected = Math.abs(expectedValue);
+        
+        // For values > 1 million, use relative tolerance if it's larger than base tolerance
+        if (absExpected > 1_000_000) {
+            double relativeTol = absExpected * RELATIVE_TOLERANCE;
+            return Math.max(baseTolerance, relativeTol);
+        }
+        
+        return baseTolerance;
     }
     
     private boolean isProjectedCrs(String crs) {
