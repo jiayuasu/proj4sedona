@@ -1,10 +1,14 @@
 package org.proj4sedona.defs;
 
+import com.google.gson.Gson;
 import org.proj4sedona.core.ProjectionDef;
 import org.proj4sedona.parser.ProjString;
+import org.proj4sedona.parser.WktParser;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Global registry of named projection definitions.
@@ -39,6 +43,12 @@ public final class Defs {
     
     /** Flag indicating whether global definitions have been initialized */
     private static boolean globalsInitialized = false;
+
+    /** Whether remote EPSG lookup is enabled (default: true) */
+    private static boolean remoteFetchEnabled = true;
+
+    /** Pattern to match EPSG codes (e.g., "EPSG:4326", "epsg:2154") */
+    private static final Pattern EPSG_PATTERN = Pattern.compile("^EPSG:(\\d+)$", Pattern.CASE_INSENSITIVE);
 
     private Defs() {
         // Utility class - prevent instantiation
@@ -91,6 +101,10 @@ public final class Defs {
     /**
      * Get a projection definition by name.
      * 
+     * <p>This method first checks the local registry. If not found and remote
+     * fetching is enabled, it will attempt to fetch the definition from
+     * spatialreference.org for EPSG codes.</p>
+     * 
      * @param name The name/code to look up (e.g., "EPSG:4326", "WGS84")
      * @return The ProjectionDef, or null if not found
      */
@@ -99,7 +113,53 @@ public final class Defs {
         if (!globalsInitialized) {
             globals();
         }
-        return definitions.get(name);
+
+        // Check local registry first
+        ProjectionDef def = definitions.get(name);
+        if (def != null) {
+            return def;
+        }
+
+        // Try remote fetch if enabled and code matches EPSG pattern
+        if (remoteFetchEnabled) {
+            Matcher matcher = EPSG_PATTERN.matcher(name);
+            if (matcher.matches()) {
+                String code = matcher.group(1);
+                def = fetchFromRemote("epsg", code, name);
+                if (def != null) {
+                    definitions.put(name, def);
+                    return def;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Fetch a projection definition from spatialreference.org.
+     * 
+     * @param authName The authority name (e.g., "epsg")
+     * @param code The CRS code (e.g., "2154")
+     * @param fullCode The full code string (e.g., "EPSG:2154")
+     * @return The ProjectionDef, or null if fetch failed
+     */
+    @SuppressWarnings("unchecked")
+    private static ProjectionDef fetchFromRemote(String authName, String code, String fullCode) {
+        try {
+            String projJson = SpatialReferenceFetcher.fetchProjJson(authName, code);
+            if (projJson != null) {
+                Gson gson = new Gson();
+                Map<String, Object> json = gson.fromJson(projJson, Map.class);
+                ProjectionDef def = WktParser.parse(json);
+                def.setSrsCode(fullCode);
+                return def;
+            }
+        } catch (Exception e) {
+            // Silently fail - return null to indicate "not found"
+            // Could add logging here if needed
+        }
+        return null;
     }
 
     /**
@@ -205,7 +265,7 @@ public final class Defs {
     }
 
     /**
-     * Clear all definitions and reset the globals flag.
+     * Clear all definitions and reset all flags.
      * 
      * <p><strong>Warning:</strong> This is primarily intended for testing.
      * Do not call in production code.</p>
@@ -213,6 +273,8 @@ public final class Defs {
     public static synchronized void reset() {
         definitions.clear();
         globalsInitialized = false;
+        remoteFetchEnabled = true;
+        SpatialReferenceFetcher.reset();
     }
 
     /**
@@ -222,5 +284,26 @@ public final class Defs {
      */
     public static boolean isGlobalsInitialized() {
         return globalsInitialized;
+    }
+
+    /**
+     * Enable or disable remote fetching of EPSG definitions.
+     * 
+     * <p>When enabled (default), the {@link #get(String)} method will attempt
+     * to fetch unknown EPSG codes from spatialreference.org.</p>
+     * 
+     * @param enabled true to enable remote fetching, false to disable
+     */
+    public static void setRemoteFetchEnabled(boolean enabled) {
+        remoteFetchEnabled = enabled;
+    }
+
+    /**
+     * Check if remote fetching is enabled.
+     * 
+     * @return true if remote fetching is enabled
+     */
+    public static boolean isRemoteFetchEnabled() {
+        return remoteFetchEnabled;
     }
 }
