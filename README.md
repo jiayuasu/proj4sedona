@@ -22,9 +22,9 @@ Proj4Sedona provides coordinate system transformations, datum conversions, and p
 ### Basic Usage
 
 ```java
-import org.proj4sedona.Proj4;
-import org.proj4sedona.core.Point;
-import org.proj4sedona.transform.Converter;
+import org.datasyslab.proj4sedona.Proj4;
+import org.datasyslab.proj4sedona.core.Point;
+import org.datasyslab.proj4sedona.transform.Converter;
 
 // Simple coordinate transformation
 double[] result = Proj4.proj4(
@@ -72,8 +72,8 @@ Converter conv = Proj4.cachedConverter("EPSG:4326", "EPSG:3857");
 Avoid repeated parsing overhead with projection caching:
 
 ```java
-import org.proj4sedona.Proj4;
-import org.proj4sedona.core.Proj;
+import org.datasyslab.proj4sedona.Proj4;
+import org.datasyslab.proj4sedona.core.Proj;
 
 // Preload common projections at startup (WGS84, Web Mercator, UTM zones 10-19)
 Proj4.preloadCommonProjections();
@@ -102,8 +102,8 @@ Proj4.clearCache();               // Clear all cached projections
 Convert between geographic coordinates and Military Grid Reference System (MGRS):
 
 ```java
-import org.proj4sedona.Proj4;
-import org.proj4sedona.mgrs.MGRS;
+import org.datasyslab.proj4sedona.Proj4;
+import org.datasyslab.proj4sedona.mgrs.MGRS;
 
 // Convert lon/lat to MGRS
 String mgrs = Proj4.toMGRS(-77.0369, 38.9072);  // "18SUJ2338308451"
@@ -128,8 +128,8 @@ from the PROJ CDN (https://cdn.proj.org/).
 #### Manual Loading
 
 ```java
-import org.proj4sedona.grid.GridLoader;
-import org.proj4sedona.grid.GridData;
+import org.datasyslab.proj4sedona.grid.GridLoader;
+import org.datasyslab.proj4sedona.grid.GridData;
 
 // Load a grid file from disk (format auto-detected)
 GridLoader.loadFile("conus", "/path/to/us_noaa_conus.tif");
@@ -150,7 +150,7 @@ if (GridLoader.has("conus")) {
 Grid files can be automatically downloaded from the PROJ CDN when needed:
 
 ```java
-import org.proj4sedona.grid.GridLoader;
+import org.datasyslab.proj4sedona.grid.GridLoader;
 import java.nio.file.Path;
 
 // Enable auto-fetching from CDN
@@ -169,8 +169,8 @@ List<NadgridInfo> grids = GridLoader.getNadgrids("@us_noaa_conus.tif,null");
 You can also fetch grids directly without enabling auto-fetch:
 
 ```java
-import org.proj4sedona.grid.GridLoader;
-import org.proj4sedona.grid.GridCdnFetcher;
+import org.datasyslab.proj4sedona.grid.GridLoader;
+import org.datasyslab.proj4sedona.grid.GridCdnFetcher;
 
 // Fetch and load a specific grid
 GridData grid = GridLoader.fetchFromCdn("us_noaa_conus.tif");
@@ -212,7 +212,7 @@ JMH benchmarks are available to measure transformation throughput:
 
 ```bash
 # Run benchmarks
-mvn exec:java -Dexec.mainClass="org.proj4sedona.benchmark.Proj4Benchmark"
+mvn exec:java -Dexec.mainClass="org.datasyslab.proj4sedona.benchmark.Proj4Benchmark"
 
 # Or run specific benchmark
 java -jar target/benchmarks.jar Proj4Benchmark.transformWgs84ToMerc

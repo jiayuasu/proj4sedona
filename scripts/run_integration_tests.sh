@@ -171,7 +171,7 @@ if [[ "$BENCHMARK" == true ]]; then
     # Run Java JMH benchmarks
     if [[ "$SKIP_JAVA" == false ]]; then
         echo "Running Java JMH benchmarks..."
-        mvn exec:java -Dexec.mainClass="org.proj4sedona.integration.IntegrationBenchmark" \
+        mvn exec:java -Dexec.mainClass="org.datasyslab.proj4sedona.integration.IntegrationBenchmark" \
             -Dexec.classpathScope=test \
             -Dexec.args="--output $PROJECT_ROOT/target/java_benchmark_results.json"
     fi
