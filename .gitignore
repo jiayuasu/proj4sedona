@@ -1,2 +1,5 @@
 /target/
 /.idea/
+/.metals/
+/.vscode/
+__pycache__/
