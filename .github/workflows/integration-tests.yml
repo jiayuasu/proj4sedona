@@ -1,0 +1,178 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'pom.xml'
+      - '.github/workflows/integration-tests.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'pom.xml'
+      - '.github/workflows/integration-tests.yml'
+  workflow_dispatch:
+    inputs:
+      regenerate_reference:
+        description: 'Regenerate pyproj reference data'
+        type: boolean
+        default: false
+      run_benchmarks:
+        description: 'Run performance benchmarks'
+        type: boolean
+        default: false
+
+env:
+  JAVA_VERSION: '11'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: scripts/pyproj-reference/requirements.txt
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r scripts/pyproj-reference/requirements.txt
+
+      - name: Regenerate reference data
+        if: ${{ github.event.inputs.regenerate_reference == 'true' }}
+        run: |
+          python scripts/pyproj-reference/generate_all.py \
+            --output-dir src/test/resources/pyproj-reference \
+            --verbose
+
+      - name: Run unit tests
+        run: mvn test -B
+
+      - name: Run integration tests
+        run: mvn verify -Pintegration-tests -DskipUnitTests=true -B
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: |
+            target/surefire-reports/
+            target/failsafe-reports/
+          retention-days: 7
+
+  benchmarks:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.run_benchmarks == 'true' || github.event_name == 'workflow_dispatch' }}
+    needs: integration-tests
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: scripts/pyproj-reference/requirements.txt
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r scripts/pyproj-reference/requirements.txt
+
+      - name: Compile project
+        run: mvn compile test-compile -B
+
+      - name: Run pyproj benchmarks
+        run: |
+          python scripts/pyproj-reference/run_pyproj_benchmarks.py \
+            --output target/pyproj_benchmark_results.json
+
+      - name: Run Java JMH benchmarks
+        run: |
+          mvn exec:java -Pbenchmarks \
+            -Dexec.args="--output target/java_benchmark_results.json" -B
+
+      - name: Generate comparison report
+        run: |
+          python scripts/pyproj-reference/compare_benchmarks.py \
+            --pyproj target/pyproj_benchmark_results.json \
+            --java target/java_benchmark_results.json \
+            --output target/benchmark_comparison_report.md
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            target/pyproj_benchmark_results.json
+            target/java_benchmark_results.json
+            target/benchmark_comparison_report.md
+          retention-days: 30
+
+      - name: Post benchmark summary
+        run: |
+          echo "## Benchmark Comparison Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat target/benchmark_comparison_report.md >> $GITHUB_STEP_SUMMARY
+
+  regenerate-reference:
+    name: Regenerate Reference Data
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.regenerate_reference == 'true' }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: scripts/pyproj-reference/requirements.txt
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r scripts/pyproj-reference/requirements.txt
+
+      - name: Generate reference data
+        run: |
+          python scripts/pyproj-reference/generate_all.py \
+            --output-dir src/test/resources/pyproj-reference \
+            --verbose
+
+      - name: Upload generated reference data
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-data
+          path: src/test/resources/pyproj-reference/
+          retention-days: 7

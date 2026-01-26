@@ -1,0 +1,1964 @@
+{
+  "version": "1.0",
+  "generator": "pyproj",
+  "pyproj_version": "3.7.2",
+  "test_cases": [
+    {
+      "name": "wgs84_geographic",
+      "description": "WGS84 Geographic",
+      "input": "EPSG:4326",
+      "exports": {
+        "wkt1": "GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]]",
+        "wkt2": "GEOGCRS[\"WGS 84\",ENSEMBLE[\"World Geodetic System 1984 ensemble\",MEMBER[\"World Geodetic System 1984 (Transit)\"],MEMBER[\"World Geodetic System 1984 (G730)\"],MEMBER[\"World Geodetic System 1984 (G873)\"],MEMBER[\"World Geodetic System 1984 (G1150)\"],MEMBER[\"World Geodetic System 1984 (G1674)\"],MEMBER[\"World Geodetic System 1984 (G1762)\"],MEMBER[\"World Geodetic System 1984 (G2139)\"],MEMBER[\"World Geodetic System 1984 (G2296)\"],ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]],ENSEMBLEACCURACY[2.0]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],CS[ellipsoidal,2],AXIS[\"geodetic latitude (Lat)\",north,ORDER[1],ANGLEUNIT[\"degree\",0.0174532925199433]],AXIS[\"geodetic longitude (Lon)\",east,ORDER[2],ANGLEUNIT[\"degree\",0.0174532925199433]],USAGE[SCOPE[\"Horizontal component of 3D system.\"],AREA[\"World.\"],BBOX[-90,-180,90,180]],ID[\"EPSG\",4326]]",
+        "proj_string": "+proj=longlat +datum=WGS84 +no_defs +type=crs",
+        "projjson": {
+          "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+          "type": "GeographicCRS",
+          "name": "WGS 84",
+          "datum_ensemble": {
+            "name": "World Geodetic System 1984 ensemble",
+            "members": [
+              {
+                "name": "World Geodetic System 1984 (Transit)",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 1166
+                }
+              },
+              {
+                "name": "World Geodetic System 1984 (G730)",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 1152
+                }
+              },
+              {
+                "name": "World Geodetic System 1984 (G873)",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 1153
+                }
+              },
+              {
+                "name": "World Geodetic System 1984 (G1150)",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 1154
+                }
+              },
+              {
+                "name": "World Geodetic System 1984 (G1674)",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 1155
+                }
+              },
+              {
+                "name": "World Geodetic System 1984 (G1762)",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 1156
+                }
+              },
+              {
+                "name": "World Geodetic System 1984 (G2139)",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 1309
+                }
+              },
+              {
+                "name": "World Geodetic System 1984 (G2296)",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 1383
+                }
+              }
+            ],
+            "ellipsoid": {
+              "name": "WGS 84",
+              "semi_major_axis": 6378137,
+              "inverse_flattening": 298.257223563
+            },
+            "accuracy": "2.0",
+            "id": {
+              "authority": "EPSG",
+              "code": 6326
+            }
+          },
+          "coordinate_system": {
+            "subtype": "ellipsoidal",
+            "axis": [
+              {
+                "name": "Geodetic latitude",
+                "abbreviation": "Lat",
+                "direction": "north",
+                "unit": "degree"
+              },
+              {
+                "name": "Geodetic longitude",
+                "abbreviation": "Lon",
+                "direction": "east",
+                "unit": "degree"
+              }
+            ]
+          },
+          "scope": "Horizontal component of 3D system.",
+          "area": "World.",
+          "bbox": {
+            "south_latitude": -90,
+            "west_longitude": -180,
+            "north_latitude": 90,
+            "east_longitude": 180
+          },
+          "id": {
+            "authority": "EPSG",
+            "code": 4326
+          }
+        }
+      },
+      "round_trip_verification": {
+        "wkt1": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "wkt2": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "proj_string": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "projjson": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "nad83_geographic",
+      "description": "NAD83 Geographic",
+      "input": "EPSG:4269",
+      "exports": {
+        "wkt1": "GEOGCS[\"NAD83\",DATUM[\"North_American_Datum_1983\",SPHEROID[\"GRS 1980\",6378137,298.257222101,AUTHORITY[\"EPSG\",\"7019\"]],AUTHORITY[\"EPSG\",\"6269\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4269\"]]",
+        "wkt2": "GEOGCRS[\"NAD83\",DATUM[\"North American Datum 1983\",ELLIPSOID[\"GRS 1980\",6378137,298.257222101,LENGTHUNIT[\"metre\",1]]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],CS[ellipsoidal,2],AXIS[\"geodetic latitude (Lat)\",north,ORDER[1],ANGLEUNIT[\"degree\",0.0174532925199433]],AXIS[\"geodetic longitude (Lon)\",east,ORDER[2],ANGLEUNIT[\"degree\",0.0174532925199433]],USAGE[SCOPE[\"Geodesy.\"],AREA[\"North America - onshore and offshore: Canada - Alberta; British Columbia; Manitoba; New Brunswick; Newfoundland and Labrador; Northwest Territories; Nova Scotia; Nunavut; Ontario; Prince Edward Island; Quebec; Saskatchewan; Yukon. Puerto Rico. United States (USA) - Alabama; Alaska; Arizona; Arkansas; California; Colorado; Connecticut; Delaware; Florida; Georgia; Hawaii; Idaho; Illinois; Indiana; Iowa; Kansas; Kentucky; Louisiana; Maine; Maryland; Massachusetts; Michigan; Minnesota; Mississippi; Missouri; Montana; Nebraska; Nevada; New Hampshire; New Jersey; New Mexico; New York; North Carolina; North Dakota; Ohio; Oklahoma; Oregon; Pennsylvania; Rhode Island; South Carolina; South Dakota; Tennessee; Texas; Utah; Vermont; Virginia; Washington; West Virginia; Wisconsin; Wyoming. US Virgin Islands. British Virgin Islands.\"],BBOX[14.92,167.65,86.45,-40.73]],ID[\"EPSG\",4269]]",
+        "proj_string": "+proj=longlat +datum=NAD83 +no_defs +type=crs",
+        "projjson": {
+          "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+          "type": "GeographicCRS",
+          "name": "NAD83",
+          "datum": {
+            "type": "GeodeticReferenceFrame",
+            "name": "North American Datum 1983",
+            "ellipsoid": {
+              "name": "GRS 1980",
+              "semi_major_axis": 6378137,
+              "inverse_flattening": 298.257222101
+            }
+          },
+          "coordinate_system": {
+            "subtype": "ellipsoidal",
+            "axis": [
+              {
+                "name": "Geodetic latitude",
+                "abbreviation": "Lat",
+                "direction": "north",
+                "unit": "degree"
+              },
+              {
+                "name": "Geodetic longitude",
+                "abbreviation": "Lon",
+                "direction": "east",
+                "unit": "degree"
+              }
+            ]
+          },
+          "scope": "Geodesy.",
+          "area": "North America - onshore and offshore: Canada - Alberta; British Columbia; Manitoba; New Brunswick; Newfoundland and Labrador; Northwest Territories; Nova Scotia; Nunavut; Ontario; Prince Edward Island; Quebec; Saskatchewan; Yukon. Puerto Rico. United States (USA) - Alabama; Alaska; Arizona; Arkansas; California; Colorado; Connecticut; Delaware; Florida; Georgia; Hawaii; Idaho; Illinois; Indiana; Iowa; Kansas; Kentucky; Louisiana; Maine; Maryland; Massachusetts; Michigan; Minnesota; Mississippi; Missouri; Montana; Nebraska; Nevada; New Hampshire; New Jersey; New Mexico; New York; North Carolina; North Dakota; Ohio; Oklahoma; Oregon; Pennsylvania; Rhode Island; South Carolina; South Dakota; Tennessee; Texas; Utah; Vermont; Virginia; Washington; West Virginia; Wisconsin; Wyoming. US Virgin Islands. British Virgin Islands.",
+          "bbox": {
+            "south_latitude": 14.92,
+            "west_longitude": 167.65,
+            "north_latitude": 86.45,
+            "east_longitude": -40.73
+          },
+          "id": {
+            "authority": "EPSG",
+            "code": 4269
+          }
+        }
+      },
+      "round_trip_verification": {
+        "wkt1": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "wkt2": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "proj_string": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "projjson": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "web_mercator",
+      "description": "Web Mercator",
+      "input": "EPSG:3857",
+      "exports": {
+        "wkt1": "PROJCS[\"WGS 84 / Pseudo-Mercator\",GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]],PROJECTION[\"Mercator_1SP\"],PARAMETER[\"central_meridian\",0],PARAMETER[\"scale_factor\",1],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH],EXTENSION[\"PROJ4\",\"+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs\"],AUTHORITY[\"EPSG\",\"3857\"]]",
+        "wkt2": "PROJCRS[\"WGS 84 / Pseudo-Mercator\",BASEGEOGCRS[\"WGS 84\",ENSEMBLE[\"World Geodetic System 1984 ensemble\",MEMBER[\"World Geodetic System 1984 (Transit)\"],MEMBER[\"World Geodetic System 1984 (G730)\"],MEMBER[\"World Geodetic System 1984 (G873)\"],MEMBER[\"World Geodetic System 1984 (G1150)\"],MEMBER[\"World Geodetic System 1984 (G1674)\"],MEMBER[\"World Geodetic System 1984 (G1762)\"],MEMBER[\"World Geodetic System 1984 (G2139)\"],MEMBER[\"World Geodetic System 1984 (G2296)\"],ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]],ENSEMBLEACCURACY[2.0]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],ID[\"EPSG\",4326]],CONVERSION[\"Popular Visualisation Pseudo-Mercator\",METHOD[\"Popular Visualisation Pseudo Mercator\",ID[\"EPSG\",1024]],PARAMETER[\"Latitude of natural origin\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8801]],PARAMETER[\"Longitude of natural origin\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8802]],PARAMETER[\"False easting\",0,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8806]],PARAMETER[\"False northing\",0,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8807]]],CS[Cartesian,2],AXIS[\"easting (X)\",east,ORDER[1],LENGTHUNIT[\"metre\",1]],AXIS[\"northing (Y)\",north,ORDER[2],LENGTHUNIT[\"metre\",1]],USAGE[SCOPE[\"Web mapping and visualisation.\"],AREA[\"World between 85.06\u00b0S and 85.06\u00b0N.\"],BBOX[-85.06,-180,85.06,180]],ID[\"EPSG\",3857]]",
+        "proj_string": "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs +type=crs",
+        "projjson": {
+          "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+          "type": "ProjectedCRS",
+          "name": "WGS 84 / Pseudo-Mercator",
+          "base_crs": {
+            "name": "WGS 84",
+            "datum_ensemble": {
+              "name": "World Geodetic System 1984 ensemble",
+              "members": [
+                {
+                  "name": "World Geodetic System 1984 (Transit)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1166
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G730)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1152
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G873)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1153
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1150)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1154
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1674)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1155
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1762)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1156
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G2139)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1309
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G2296)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1383
+                  }
+                }
+              ],
+              "ellipsoid": {
+                "name": "WGS 84",
+                "semi_major_axis": 6378137,
+                "inverse_flattening": 298.257223563
+              },
+              "accuracy": "2.0",
+              "id": {
+                "authority": "EPSG",
+                "code": 6326
+              }
+            },
+            "coordinate_system": {
+              "subtype": "ellipsoidal",
+              "axis": [
+                {
+                  "name": "Geodetic latitude",
+                  "abbreviation": "Lat",
+                  "direction": "north",
+                  "unit": "degree"
+                },
+                {
+                  "name": "Geodetic longitude",
+                  "abbreviation": "Lon",
+                  "direction": "east",
+                  "unit": "degree"
+                }
+              ]
+            },
+            "id": {
+              "authority": "EPSG",
+              "code": 4326
+            }
+          },
+          "conversion": {
+            "name": "Popular Visualisation Pseudo-Mercator",
+            "method": {
+              "name": "Popular Visualisation Pseudo Mercator",
+              "id": {
+                "authority": "EPSG",
+                "code": 1024
+              }
+            },
+            "parameters": [
+              {
+                "name": "Latitude of natural origin",
+                "value": 0,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8801
+                }
+              },
+              {
+                "name": "Longitude of natural origin",
+                "value": 0,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8802
+                }
+              },
+              {
+                "name": "False easting",
+                "value": 0,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8806
+                }
+              },
+              {
+                "name": "False northing",
+                "value": 0,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8807
+                }
+              }
+            ]
+          },
+          "coordinate_system": {
+            "subtype": "Cartesian",
+            "axis": [
+              {
+                "name": "Easting",
+                "abbreviation": "X",
+                "direction": "east",
+                "unit": "metre"
+              },
+              {
+                "name": "Northing",
+                "abbreviation": "Y",
+                "direction": "north",
+                "unit": "metre"
+              }
+            ]
+          },
+          "scope": "Web mapping and visualisation.",
+          "area": "World between 85.06\u00b0S and 85.06\u00b0N.",
+          "bbox": {
+            "south_latitude": -85.06,
+            "west_longitude": -180,
+            "north_latitude": 85.06,
+            "east_longitude": 180
+          },
+          "id": {
+            "authority": "EPSG",
+            "code": 3857
+          }
+        }
+      },
+      "round_trip_verification": {
+        "wkt1": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "wkt2": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "proj_string": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "projjson": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "utm_10n",
+      "description": "UTM Zone 10N",
+      "input": "EPSG:32610",
+      "exports": {
+        "wkt1": "PROJCS[\"WGS 84 / UTM zone 10N\",GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"latitude_of_origin\",0],PARAMETER[\"central_meridian\",-123],PARAMETER[\"scale_factor\",0.9996],PARAMETER[\"false_easting\",500000],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH],AUTHORITY[\"EPSG\",\"32610\"]]",
+        "wkt2": "PROJCRS[\"WGS 84 / UTM zone 10N\",BASEGEOGCRS[\"WGS 84\",ENSEMBLE[\"World Geodetic System 1984 ensemble\",MEMBER[\"World Geodetic System 1984 (Transit)\"],MEMBER[\"World Geodetic System 1984 (G730)\"],MEMBER[\"World Geodetic System 1984 (G873)\"],MEMBER[\"World Geodetic System 1984 (G1150)\"],MEMBER[\"World Geodetic System 1984 (G1674)\"],MEMBER[\"World Geodetic System 1984 (G1762)\"],MEMBER[\"World Geodetic System 1984 (G2139)\"],MEMBER[\"World Geodetic System 1984 (G2296)\"],ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]],ENSEMBLEACCURACY[2.0]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],ID[\"EPSG\",4326]],CONVERSION[\"UTM zone 10N\",METHOD[\"Transverse Mercator\",ID[\"EPSG\",9807]],PARAMETER[\"Latitude of natural origin\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8801]],PARAMETER[\"Longitude of natural origin\",-123,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8802]],PARAMETER[\"Scale factor at natural origin\",0.9996,SCALEUNIT[\"unity\",1],ID[\"EPSG\",8805]],PARAMETER[\"False easting\",500000,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8806]],PARAMETER[\"False northing\",0,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8807]]],CS[Cartesian,2],AXIS[\"(E)\",east,ORDER[1],LENGTHUNIT[\"metre\",1]],AXIS[\"(N)\",north,ORDER[2],LENGTHUNIT[\"metre\",1]],USAGE[SCOPE[\"Navigation and medium accuracy spatial referencing.\"],AREA[\"Between 126\u00b0W and 120\u00b0W, northern hemisphere between equator and 84\u00b0N, onshore and offshore. Canada - British Columbia (BC); Northwest Territories (NWT); Nunavut; Yukon. United States (USA) - Alaska (AK).\"],BBOX[0,-126,84,-120]],ID[\"EPSG\",32610]]",
+        "proj_string": "+proj=utm +zone=10 +datum=WGS84 +units=m +no_defs +type=crs",
+        "projjson": {
+          "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+          "type": "ProjectedCRS",
+          "name": "WGS 84 / UTM zone 10N",
+          "base_crs": {
+            "name": "WGS 84",
+            "datum_ensemble": {
+              "name": "World Geodetic System 1984 ensemble",
+              "members": [
+                {
+                  "name": "World Geodetic System 1984 (Transit)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1166
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G730)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1152
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G873)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1153
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1150)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1154
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1674)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1155
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1762)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1156
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G2139)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1309
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G2296)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1383
+                  }
+                }
+              ],
+              "ellipsoid": {
+                "name": "WGS 84",
+                "semi_major_axis": 6378137,
+                "inverse_flattening": 298.257223563
+              },
+              "accuracy": "2.0",
+              "id": {
+                "authority": "EPSG",
+                "code": 6326
+              }
+            },
+            "coordinate_system": {
+              "subtype": "ellipsoidal",
+              "axis": [
+                {
+                  "name": "Geodetic latitude",
+                  "abbreviation": "Lat",
+                  "direction": "north",
+                  "unit": "degree"
+                },
+                {
+                  "name": "Geodetic longitude",
+                  "abbreviation": "Lon",
+                  "direction": "east",
+                  "unit": "degree"
+                }
+              ]
+            },
+            "id": {
+              "authority": "EPSG",
+              "code": 4326
+            }
+          },
+          "conversion": {
+            "name": "UTM zone 10N",
+            "method": {
+              "name": "Transverse Mercator",
+              "id": {
+                "authority": "EPSG",
+                "code": 9807
+              }
+            },
+            "parameters": [
+              {
+                "name": "Latitude of natural origin",
+                "value": 0,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8801
+                }
+              },
+              {
+                "name": "Longitude of natural origin",
+                "value": -123,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8802
+                }
+              },
+              {
+                "name": "Scale factor at natural origin",
+                "value": 0.9996,
+                "unit": "unity",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8805
+                }
+              },
+              {
+                "name": "False easting",
+                "value": 500000,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8806
+                }
+              },
+              {
+                "name": "False northing",
+                "value": 0,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8807
+                }
+              }
+            ]
+          },
+          "coordinate_system": {
+            "subtype": "Cartesian",
+            "axis": [
+              {
+                "name": "Easting",
+                "abbreviation": "E",
+                "direction": "east",
+                "unit": "metre"
+              },
+              {
+                "name": "Northing",
+                "abbreviation": "N",
+                "direction": "north",
+                "unit": "metre"
+              }
+            ]
+          },
+          "scope": "Navigation and medium accuracy spatial referencing.",
+          "area": "Between 126\u00b0W and 120\u00b0W, northern hemisphere between equator and 84\u00b0N, onshore and offshore. Canada - British Columbia (BC); Northwest Territories (NWT); Nunavut; Yukon. United States (USA) - Alaska (AK).",
+          "bbox": {
+            "south_latitude": 0,
+            "west_longitude": -126,
+            "north_latitude": 84,
+            "east_longitude": -120
+          },
+          "id": {
+            "authority": "EPSG",
+            "code": 32610
+          }
+        }
+      },
+      "round_trip_verification": {
+        "wkt1": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "wkt2": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "proj_string": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "projjson": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "utm_32n",
+      "description": "UTM Zone 32N",
+      "input": "EPSG:32632",
+      "exports": {
+        "wkt1": "PROJCS[\"WGS 84 / UTM zone 32N\",GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"latitude_of_origin\",0],PARAMETER[\"central_meridian\",9],PARAMETER[\"scale_factor\",0.9996],PARAMETER[\"false_easting\",500000],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH],AUTHORITY[\"EPSG\",\"32632\"]]",
+        "wkt2": "PROJCRS[\"WGS 84 / UTM zone 32N\",BASEGEOGCRS[\"WGS 84\",ENSEMBLE[\"World Geodetic System 1984 ensemble\",MEMBER[\"World Geodetic System 1984 (Transit)\"],MEMBER[\"World Geodetic System 1984 (G730)\"],MEMBER[\"World Geodetic System 1984 (G873)\"],MEMBER[\"World Geodetic System 1984 (G1150)\"],MEMBER[\"World Geodetic System 1984 (G1674)\"],MEMBER[\"World Geodetic System 1984 (G1762)\"],MEMBER[\"World Geodetic System 1984 (G2139)\"],MEMBER[\"World Geodetic System 1984 (G2296)\"],ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]],ENSEMBLEACCURACY[2.0]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],ID[\"EPSG\",4326]],CONVERSION[\"UTM zone 32N\",METHOD[\"Transverse Mercator\",ID[\"EPSG\",9807]],PARAMETER[\"Latitude of natural origin\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8801]],PARAMETER[\"Longitude of natural origin\",9,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8802]],PARAMETER[\"Scale factor at natural origin\",0.9996,SCALEUNIT[\"unity\",1],ID[\"EPSG\",8805]],PARAMETER[\"False easting\",500000,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8806]],PARAMETER[\"False northing\",0,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8807]]],CS[Cartesian,2],AXIS[\"(E)\",east,ORDER[1],LENGTHUNIT[\"metre\",1]],AXIS[\"(N)\",north,ORDER[2],LENGTHUNIT[\"metre\",1]],USAGE[SCOPE[\"Navigation and medium accuracy spatial referencing.\"],AREA[\"Between 6\u00b0E and 12\u00b0E, northern hemisphere between equator and 84\u00b0N, onshore and offshore. Algeria. Austria. Cameroon. Denmark. Equatorial Guinea. France. Gabon. Germany. Italy. Libya. Liechtenstein. Monaco. Netherlands. Niger. Nigeria. Norway. Sao Tome and Principe. Svalbard. Sweden. Switzerland. Tunisia. Vatican City State.\"],BBOX[0,6,84,12]],ID[\"EPSG\",32632]]",
+        "proj_string": "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs +type=crs",
+        "projjson": {
+          "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+          "type": "ProjectedCRS",
+          "name": "WGS 84 / UTM zone 32N",
+          "base_crs": {
+            "name": "WGS 84",
+            "datum_ensemble": {
+              "name": "World Geodetic System 1984 ensemble",
+              "members": [
+                {
+                  "name": "World Geodetic System 1984 (Transit)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1166
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G730)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1152
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G873)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1153
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1150)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1154
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1674)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1155
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1762)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1156
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G2139)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1309
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G2296)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1383
+                  }
+                }
+              ],
+              "ellipsoid": {
+                "name": "WGS 84",
+                "semi_major_axis": 6378137,
+                "inverse_flattening": 298.257223563
+              },
+              "accuracy": "2.0",
+              "id": {
+                "authority": "EPSG",
+                "code": 6326
+              }
+            },
+            "coordinate_system": {
+              "subtype": "ellipsoidal",
+              "axis": [
+                {
+                  "name": "Geodetic latitude",
+                  "abbreviation": "Lat",
+                  "direction": "north",
+                  "unit": "degree"
+                },
+                {
+                  "name": "Geodetic longitude",
+                  "abbreviation": "Lon",
+                  "direction": "east",
+                  "unit": "degree"
+                }
+              ]
+            },
+            "id": {
+              "authority": "EPSG",
+              "code": 4326
+            }
+          },
+          "conversion": {
+            "name": "UTM zone 32N",
+            "method": {
+              "name": "Transverse Mercator",
+              "id": {
+                "authority": "EPSG",
+                "code": 9807
+              }
+            },
+            "parameters": [
+              {
+                "name": "Latitude of natural origin",
+                "value": 0,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8801
+                }
+              },
+              {
+                "name": "Longitude of natural origin",
+                "value": 9,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8802
+                }
+              },
+              {
+                "name": "Scale factor at natural origin",
+                "value": 0.9996,
+                "unit": "unity",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8805
+                }
+              },
+              {
+                "name": "False easting",
+                "value": 500000,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8806
+                }
+              },
+              {
+                "name": "False northing",
+                "value": 0,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8807
+                }
+              }
+            ]
+          },
+          "coordinate_system": {
+            "subtype": "Cartesian",
+            "axis": [
+              {
+                "name": "Easting",
+                "abbreviation": "E",
+                "direction": "east",
+                "unit": "metre"
+              },
+              {
+                "name": "Northing",
+                "abbreviation": "N",
+                "direction": "north",
+                "unit": "metre"
+              }
+            ]
+          },
+          "scope": "Navigation and medium accuracy spatial referencing.",
+          "area": "Between 6\u00b0E and 12\u00b0E, northern hemisphere between equator and 84\u00b0N, onshore and offshore. Algeria. Austria. Cameroon. Denmark. Equatorial Guinea. France. Gabon. Germany. Italy. Libya. Liechtenstein. Monaco. Netherlands. Niger. Nigeria. Norway. Sao Tome and Principe. Svalbard. Sweden. Switzerland. Tunisia. Vatican City State.",
+          "bbox": {
+            "south_latitude": 0,
+            "west_longitude": 6,
+            "north_latitude": 84,
+            "east_longitude": 12
+          },
+          "id": {
+            "authority": "EPSG",
+            "code": 32632
+          }
+        }
+      },
+      "round_trip_verification": {
+        "wkt1": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "wkt2": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "proj_string": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "projjson": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "utm_33s",
+      "description": "UTM Zone 33S",
+      "input": "EPSG:32733",
+      "exports": {
+        "wkt1": "PROJCS[\"WGS 84 / UTM zone 33S\",GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"latitude_of_origin\",0],PARAMETER[\"central_meridian\",15],PARAMETER[\"scale_factor\",0.9996],PARAMETER[\"false_easting\",500000],PARAMETER[\"false_northing\",10000000],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH],AUTHORITY[\"EPSG\",\"32733\"]]",
+        "wkt2": "PROJCRS[\"WGS 84 / UTM zone 33S\",BASEGEOGCRS[\"WGS 84\",ENSEMBLE[\"World Geodetic System 1984 ensemble\",MEMBER[\"World Geodetic System 1984 (Transit)\"],MEMBER[\"World Geodetic System 1984 (G730)\"],MEMBER[\"World Geodetic System 1984 (G873)\"],MEMBER[\"World Geodetic System 1984 (G1150)\"],MEMBER[\"World Geodetic System 1984 (G1674)\"],MEMBER[\"World Geodetic System 1984 (G1762)\"],MEMBER[\"World Geodetic System 1984 (G2139)\"],MEMBER[\"World Geodetic System 1984 (G2296)\"],ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]],ENSEMBLEACCURACY[2.0]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],ID[\"EPSG\",4326]],CONVERSION[\"UTM zone 33S\",METHOD[\"Transverse Mercator\",ID[\"EPSG\",9807]],PARAMETER[\"Latitude of natural origin\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8801]],PARAMETER[\"Longitude of natural origin\",15,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8802]],PARAMETER[\"Scale factor at natural origin\",0.9996,SCALEUNIT[\"unity\",1],ID[\"EPSG\",8805]],PARAMETER[\"False easting\",500000,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8806]],PARAMETER[\"False northing\",10000000,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8807]]],CS[Cartesian,2],AXIS[\"(E)\",east,ORDER[1],LENGTHUNIT[\"metre\",1]],AXIS[\"(N)\",north,ORDER[2],LENGTHUNIT[\"metre\",1]],USAGE[SCOPE[\"Navigation and medium accuracy spatial referencing.\"],AREA[\"Between 12\u00b0E and 18\u00b0E, southern hemisphere between 80\u00b0S and equator, onshore and offshore. Angola. Congo. Democratic Republic of the Congo (Zaire). Gabon. Namibia. South Africa.\"],BBOX[-80,12,0,18]],ID[\"EPSG\",32733]]",
+        "proj_string": "+proj=utm +zone=33 +south +datum=WGS84 +units=m +no_defs +type=crs",
+        "projjson": {
+          "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+          "type": "ProjectedCRS",
+          "name": "WGS 84 / UTM zone 33S",
+          "base_crs": {
+            "name": "WGS 84",
+            "datum_ensemble": {
+              "name": "World Geodetic System 1984 ensemble",
+              "members": [
+                {
+                  "name": "World Geodetic System 1984 (Transit)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1166
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G730)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1152
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G873)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1153
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1150)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1154
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1674)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1155
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1762)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1156
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G2139)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1309
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G2296)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1383
+                  }
+                }
+              ],
+              "ellipsoid": {
+                "name": "WGS 84",
+                "semi_major_axis": 6378137,
+                "inverse_flattening": 298.257223563
+              },
+              "accuracy": "2.0",
+              "id": {
+                "authority": "EPSG",
+                "code": 6326
+              }
+            },
+            "coordinate_system": {
+              "subtype": "ellipsoidal",
+              "axis": [
+                {
+                  "name": "Geodetic latitude",
+                  "abbreviation": "Lat",
+                  "direction": "north",
+                  "unit": "degree"
+                },
+                {
+                  "name": "Geodetic longitude",
+                  "abbreviation": "Lon",
+                  "direction": "east",
+                  "unit": "degree"
+                }
+              ]
+            },
+            "id": {
+              "authority": "EPSG",
+              "code": 4326
+            }
+          },
+          "conversion": {
+            "name": "UTM zone 33S",
+            "method": {
+              "name": "Transverse Mercator",
+              "id": {
+                "authority": "EPSG",
+                "code": 9807
+              }
+            },
+            "parameters": [
+              {
+                "name": "Latitude of natural origin",
+                "value": 0,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8801
+                }
+              },
+              {
+                "name": "Longitude of natural origin",
+                "value": 15,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8802
+                }
+              },
+              {
+                "name": "Scale factor at natural origin",
+                "value": 0.9996,
+                "unit": "unity",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8805
+                }
+              },
+              {
+                "name": "False easting",
+                "value": 500000,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8806
+                }
+              },
+              {
+                "name": "False northing",
+                "value": 10000000,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8807
+                }
+              }
+            ]
+          },
+          "coordinate_system": {
+            "subtype": "Cartesian",
+            "axis": [
+              {
+                "name": "Easting",
+                "abbreviation": "E",
+                "direction": "east",
+                "unit": "metre"
+              },
+              {
+                "name": "Northing",
+                "abbreviation": "N",
+                "direction": "north",
+                "unit": "metre"
+              }
+            ]
+          },
+          "scope": "Navigation and medium accuracy spatial referencing.",
+          "area": "Between 12\u00b0E and 18\u00b0E, southern hemisphere between 80\u00b0S and equator, onshore and offshore. Angola. Congo. Democratic Republic of the Congo (Zaire). Gabon. Namibia. South Africa.",
+          "bbox": {
+            "south_latitude": -80,
+            "west_longitude": 12,
+            "north_latitude": 0,
+            "east_longitude": 18
+          },
+          "id": {
+            "authority": "EPSG",
+            "code": 32733
+          }
+        }
+      },
+      "round_trip_verification": {
+        "wkt1": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "wkt2": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "proj_string": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "projjson": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "lcc_us",
+      "description": "Lambert Conformal Conic (US)",
+      "input": "+proj=lcc +lat_1=33 +lat_2=45 +lat_0=39 +lon_0=-96 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs",
+      "exports": {
+        "wkt1": "PROJCS[\"unknown\",GEOGCS[\"unknown\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]]],PROJECTION[\"Lambert_Conformal_Conic_2SP\"],PARAMETER[\"latitude_of_origin\",39],PARAMETER[\"central_meridian\",-96],PARAMETER[\"standard_parallel_1\",33],PARAMETER[\"standard_parallel_2\",45],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH]]",
+        "wkt2": "PROJCRS[\"unknown\",BASEGEOGCRS[\"unknown\",DATUM[\"World Geodetic System 1984\",ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]],ID[\"EPSG\",6326]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8901]]],CONVERSION[\"unknown\",METHOD[\"Lambert Conic Conformal (2SP)\",ID[\"EPSG\",9802]],PARAMETER[\"Latitude of false origin\",39,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8821]],PARAMETER[\"Longitude of false origin\",-96,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8822]],PARAMETER[\"Latitude of 1st standard parallel\",33,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8823]],PARAMETER[\"Latitude of 2nd standard parallel\",45,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8824]],PARAMETER[\"Easting at false origin\",0,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8826]],PARAMETER[\"Northing at false origin\",0,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8827]]],CS[Cartesian,2],AXIS[\"(E)\",east,ORDER[1],LENGTHUNIT[\"metre\",1,ID[\"EPSG\",9001]]],AXIS[\"(N)\",north,ORDER[2],LENGTHUNIT[\"metre\",1,ID[\"EPSG\",9001]]]]",
+        "proj_string": "+proj=lcc +lat_0=39 +lon_0=-96 +lat_1=33 +lat_2=45 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +type=crs",
+        "projjson": {
+          "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+          "type": "ProjectedCRS",
+          "name": "unknown",
+          "base_crs": {
+            "name": "unknown",
+            "datum": {
+              "type": "GeodeticReferenceFrame",
+              "name": "World Geodetic System 1984",
+              "ellipsoid": {
+                "name": "WGS 84",
+                "semi_major_axis": 6378137,
+                "inverse_flattening": 298.257223563
+              },
+              "id": {
+                "authority": "EPSG",
+                "code": 6326
+              }
+            },
+            "coordinate_system": {
+              "subtype": "ellipsoidal",
+              "axis": [
+                {
+                  "name": "Longitude",
+                  "abbreviation": "lon",
+                  "direction": "east",
+                  "unit": "degree"
+                },
+                {
+                  "name": "Latitude",
+                  "abbreviation": "lat",
+                  "direction": "north",
+                  "unit": "degree"
+                }
+              ]
+            }
+          },
+          "conversion": {
+            "name": "unknown",
+            "method": {
+              "name": "Lambert Conic Conformal (2SP)",
+              "id": {
+                "authority": "EPSG",
+                "code": 9802
+              }
+            },
+            "parameters": [
+              {
+                "name": "Latitude of false origin",
+                "value": 39,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8821
+                }
+              },
+              {
+                "name": "Longitude of false origin",
+                "value": -96,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8822
+                }
+              },
+              {
+                "name": "Latitude of 1st standard parallel",
+                "value": 33,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8823
+                }
+              },
+              {
+                "name": "Latitude of 2nd standard parallel",
+                "value": 45,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8824
+                }
+              },
+              {
+                "name": "Easting at false origin",
+                "value": 0,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8826
+                }
+              },
+              {
+                "name": "Northing at false origin",
+                "value": 0,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8827
+                }
+              }
+            ]
+          },
+          "coordinate_system": {
+            "subtype": "Cartesian",
+            "axis": [
+              {
+                "name": "Easting",
+                "abbreviation": "E",
+                "direction": "east",
+                "unit": "metre"
+              },
+              {
+                "name": "Northing",
+                "abbreviation": "N",
+                "direction": "north",
+                "unit": "metre"
+              }
+            ]
+          }
+        }
+      },
+      "round_trip_verification": {
+        "wkt1": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "wkt2": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "proj_string": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "projjson": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "tmerc_custom",
+      "description": "Transverse Mercator",
+      "input": "+proj=tmerc +lat_0=0 +lon_0=9 +k=0.9996 +x_0=500000 +y_0=0 +datum=WGS84 +units=m +no_defs",
+      "exports": {
+        "wkt1": "PROJCS[\"unknown\",GEOGCS[\"unknown\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"latitude_of_origin\",0],PARAMETER[\"central_meridian\",9],PARAMETER[\"scale_factor\",0.9996],PARAMETER[\"false_easting\",500000],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH]]",
+        "wkt2": "PROJCRS[\"unknown\",BASEGEOGCRS[\"unknown\",DATUM[\"World Geodetic System 1984\",ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]],ID[\"EPSG\",6326]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8901]]],CONVERSION[\"unknown\",METHOD[\"Transverse Mercator\",ID[\"EPSG\",9807]],PARAMETER[\"Latitude of natural origin\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8801]],PARAMETER[\"Longitude of natural origin\",9,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8802]],PARAMETER[\"Scale factor at natural origin\",0.9996,SCALEUNIT[\"unity\",1],ID[\"EPSG\",8805]],PARAMETER[\"False easting\",500000,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8806]],PARAMETER[\"False northing\",0,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8807]]],CS[Cartesian,2],AXIS[\"(E)\",east,ORDER[1],LENGTHUNIT[\"metre\",1,ID[\"EPSG\",9001]]],AXIS[\"(N)\",north,ORDER[2],LENGTHUNIT[\"metre\",1,ID[\"EPSG\",9001]]]]",
+        "proj_string": "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs +type=crs",
+        "projjson": {
+          "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+          "type": "ProjectedCRS",
+          "name": "unknown",
+          "base_crs": {
+            "name": "unknown",
+            "datum": {
+              "type": "GeodeticReferenceFrame",
+              "name": "World Geodetic System 1984",
+              "ellipsoid": {
+                "name": "WGS 84",
+                "semi_major_axis": 6378137,
+                "inverse_flattening": 298.257223563
+              },
+              "id": {
+                "authority": "EPSG",
+                "code": 6326
+              }
+            },
+            "coordinate_system": {
+              "subtype": "ellipsoidal",
+              "axis": [
+                {
+                  "name": "Longitude",
+                  "abbreviation": "lon",
+                  "direction": "east",
+                  "unit": "degree"
+                },
+                {
+                  "name": "Latitude",
+                  "abbreviation": "lat",
+                  "direction": "north",
+                  "unit": "degree"
+                }
+              ]
+            }
+          },
+          "conversion": {
+            "name": "unknown",
+            "method": {
+              "name": "Transverse Mercator",
+              "id": {
+                "authority": "EPSG",
+                "code": 9807
+              }
+            },
+            "parameters": [
+              {
+                "name": "Latitude of natural origin",
+                "value": 0,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8801
+                }
+              },
+              {
+                "name": "Longitude of natural origin",
+                "value": 9,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8802
+                }
+              },
+              {
+                "name": "Scale factor at natural origin",
+                "value": 0.9996,
+                "unit": "unity",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8805
+                }
+              },
+              {
+                "name": "False easting",
+                "value": 500000,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8806
+                }
+              },
+              {
+                "name": "False northing",
+                "value": 0,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8807
+                }
+              }
+            ]
+          },
+          "coordinate_system": {
+            "subtype": "Cartesian",
+            "axis": [
+              {
+                "name": "Easting",
+                "abbreviation": "E",
+                "direction": "east",
+                "unit": "metre"
+              },
+              {
+                "name": "Northing",
+                "abbreviation": "N",
+                "direction": "north",
+                "unit": "metre"
+              }
+            ]
+          }
+        }
+      },
+      "round_trip_verification": {
+        "wkt1": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "wkt2": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "proj_string": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "projjson": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "ups_north",
+      "description": "UPS North (Polar Stereographic)",
+      "input": "EPSG:5041",
+      "exports": {
+        "wkt1": "PROJCS[\"WGS 84 / UPS North (E,N)\",GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]],PROJECTION[\"Polar_Stereographic\"],PARAMETER[\"latitude_of_origin\",90],PARAMETER[\"central_meridian\",0],PARAMETER[\"scale_factor\",0.994],PARAMETER[\"false_easting\",2000000],PARAMETER[\"false_northing\",2000000],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AUTHORITY[\"EPSG\",\"5041\"]]",
+        "wkt2": "PROJCRS[\"WGS 84 / UPS North (E,N)\",BASEGEOGCRS[\"WGS 84\",ENSEMBLE[\"World Geodetic System 1984 ensemble\",MEMBER[\"World Geodetic System 1984 (Transit)\"],MEMBER[\"World Geodetic System 1984 (G730)\"],MEMBER[\"World Geodetic System 1984 (G873)\"],MEMBER[\"World Geodetic System 1984 (G1150)\"],MEMBER[\"World Geodetic System 1984 (G1674)\"],MEMBER[\"World Geodetic System 1984 (G1762)\"],MEMBER[\"World Geodetic System 1984 (G2139)\"],MEMBER[\"World Geodetic System 1984 (G2296)\"],ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]],ENSEMBLEACCURACY[2.0]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],ID[\"EPSG\",4326]],CONVERSION[\"Universal Polar Stereographic North\",METHOD[\"Polar Stereographic (variant A)\",ID[\"EPSG\",9810]],PARAMETER[\"Latitude of natural origin\",90,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8801]],PARAMETER[\"Longitude of natural origin\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8802]],PARAMETER[\"Scale factor at natural origin\",0.994,SCALEUNIT[\"unity\",1],ID[\"EPSG\",8805]],PARAMETER[\"False easting\",2000000,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8806]],PARAMETER[\"False northing\",2000000,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8807]]],CS[Cartesian,2],AXIS[\"(E)\",south,MERIDIAN[90,ANGLEUNIT[\"degree\",0.0174532925199433]],ORDER[1],LENGTHUNIT[\"metre\",1]],AXIS[\"(N)\",south,MERIDIAN[180,ANGLEUNIT[\"degree\",0.0174532925199433]],ORDER[2],LENGTHUNIT[\"metre\",1]],USAGE[SCOPE[\"Military survey.\"],AREA[\"Northern hemisphere - north of 60\u00b0N onshore and offshore, including Arctic.\"],BBOX[60,-180,90,180]],ID[\"EPSG\",5041]]",
+        "proj_string": "+proj=stere +lat_0=90 +lon_0=0 +k=0.994 +x_0=2000000 +y_0=2000000 +datum=WGS84 +units=m +no_defs +type=crs",
+        "projjson": {
+          "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+          "type": "ProjectedCRS",
+          "name": "WGS 84 / UPS North (E,N)",
+          "base_crs": {
+            "name": "WGS 84",
+            "datum_ensemble": {
+              "name": "World Geodetic System 1984 ensemble",
+              "members": [
+                {
+                  "name": "World Geodetic System 1984 (Transit)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1166
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G730)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1152
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G873)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1153
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1150)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1154
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1674)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1155
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G1762)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1156
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G2139)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1309
+                  }
+                },
+                {
+                  "name": "World Geodetic System 1984 (G2296)",
+                  "id": {
+                    "authority": "EPSG",
+                    "code": 1383
+                  }
+                }
+              ],
+              "ellipsoid": {
+                "name": "WGS 84",
+                "semi_major_axis": 6378137,
+                "inverse_flattening": 298.257223563
+              },
+              "accuracy": "2.0",
+              "id": {
+                "authority": "EPSG",
+                "code": 6326
+              }
+            },
+            "coordinate_system": {
+              "subtype": "ellipsoidal",
+              "axis": [
+                {
+                  "name": "Geodetic latitude",
+                  "abbreviation": "Lat",
+                  "direction": "north",
+                  "unit": "degree"
+                },
+                {
+                  "name": "Geodetic longitude",
+                  "abbreviation": "Lon",
+                  "direction": "east",
+                  "unit": "degree"
+                }
+              ]
+            },
+            "id": {
+              "authority": "EPSG",
+              "code": 4326
+            }
+          },
+          "conversion": {
+            "name": "Universal Polar Stereographic North",
+            "method": {
+              "name": "Polar Stereographic (variant A)",
+              "id": {
+                "authority": "EPSG",
+                "code": 9810
+              }
+            },
+            "parameters": [
+              {
+                "name": "Latitude of natural origin",
+                "value": 90,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8801
+                }
+              },
+              {
+                "name": "Longitude of natural origin",
+                "value": 0,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8802
+                }
+              },
+              {
+                "name": "Scale factor at natural origin",
+                "value": 0.994,
+                "unit": "unity",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8805
+                }
+              },
+              {
+                "name": "False easting",
+                "value": 2000000,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8806
+                }
+              },
+              {
+                "name": "False northing",
+                "value": 2000000,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8807
+                }
+              }
+            ]
+          },
+          "coordinate_system": {
+            "subtype": "Cartesian",
+            "axis": [
+              {
+                "name": "Easting",
+                "abbreviation": "E",
+                "direction": "south",
+                "meridian": {
+                  "longitude": 90
+                },
+                "unit": "metre"
+              },
+              {
+                "name": "Northing",
+                "abbreviation": "N",
+                "direction": "south",
+                "meridian": {
+                  "longitude": 180
+                },
+                "unit": "metre"
+              }
+            ]
+          },
+          "scope": "Military survey.",
+          "area": "Northern hemisphere - north of 60\u00b0N onshore and offshore, including Arctic.",
+          "bbox": {
+            "south_latitude": 60,
+            "west_longitude": -180,
+            "north_latitude": 90,
+            "east_longitude": 180
+          },
+          "id": {
+            "authority": "EPSG",
+            "code": 5041
+          }
+        }
+      },
+      "round_trip_verification": {
+        "wkt1": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "wkt2": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "proj_string": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "projjson": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "aea_conus",
+      "description": "Albers Equal Area (CONUS)",
+      "input": "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs",
+      "exports": {
+        "wkt1": "PROJCS[\"unknown\",GEOGCS[\"unknown\",DATUM[\"North_American_Datum_1983\",SPHEROID[\"GRS 1980\",6378137,298.257222101,AUTHORITY[\"EPSG\",\"7019\"]],AUTHORITY[\"EPSG\",\"6269\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]]],PROJECTION[\"Albers_Conic_Equal_Area\"],PARAMETER[\"latitude_of_center\",23],PARAMETER[\"longitude_of_center\",-96],PARAMETER[\"standard_parallel_1\",29.5],PARAMETER[\"standard_parallel_2\",45.5],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH]]",
+        "wkt2": "PROJCRS[\"unknown\",BASEGEOGCRS[\"unknown\",DATUM[\"North American Datum 1983\",ELLIPSOID[\"GRS 1980\",6378137,298.257222101,LENGTHUNIT[\"metre\",1]],ID[\"EPSG\",6269]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8901]]],CONVERSION[\"unknown\",METHOD[\"Albers Equal Area\",ID[\"EPSG\",9822]],PARAMETER[\"Latitude of false origin\",23,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8821]],PARAMETER[\"Longitude of false origin\",-96,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8822]],PARAMETER[\"Latitude of 1st standard parallel\",29.5,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8823]],PARAMETER[\"Latitude of 2nd standard parallel\",45.5,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8824]],PARAMETER[\"Easting at false origin\",0,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8826]],PARAMETER[\"Northing at false origin\",0,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8827]]],CS[Cartesian,2],AXIS[\"(E)\",east,ORDER[1],LENGTHUNIT[\"metre\",1,ID[\"EPSG\",9001]]],AXIS[\"(N)\",north,ORDER[2],LENGTHUNIT[\"metre\",1,ID[\"EPSG\",9001]]]]",
+        "proj_string": "+proj=aea +lat_0=23 +lon_0=-96 +lat_1=29.5 +lat_2=45.5 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs +type=crs",
+        "projjson": {
+          "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+          "type": "ProjectedCRS",
+          "name": "unknown",
+          "base_crs": {
+            "name": "unknown",
+            "datum": {
+              "type": "GeodeticReferenceFrame",
+              "name": "North American Datum 1983",
+              "ellipsoid": {
+                "name": "GRS 1980",
+                "semi_major_axis": 6378137,
+                "inverse_flattening": 298.257222101
+              },
+              "id": {
+                "authority": "EPSG",
+                "code": 6269
+              }
+            },
+            "coordinate_system": {
+              "subtype": "ellipsoidal",
+              "axis": [
+                {
+                  "name": "Longitude",
+                  "abbreviation": "lon",
+                  "direction": "east",
+                  "unit": "degree"
+                },
+                {
+                  "name": "Latitude",
+                  "abbreviation": "lat",
+                  "direction": "north",
+                  "unit": "degree"
+                }
+              ]
+            }
+          },
+          "conversion": {
+            "name": "unknown",
+            "method": {
+              "name": "Albers Equal Area",
+              "id": {
+                "authority": "EPSG",
+                "code": 9822
+              }
+            },
+            "parameters": [
+              {
+                "name": "Latitude of false origin",
+                "value": 23,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8821
+                }
+              },
+              {
+                "name": "Longitude of false origin",
+                "value": -96,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8822
+                }
+              },
+              {
+                "name": "Latitude of 1st standard parallel",
+                "value": 29.5,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8823
+                }
+              },
+              {
+                "name": "Latitude of 2nd standard parallel",
+                "value": 45.5,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8824
+                }
+              },
+              {
+                "name": "Easting at false origin",
+                "value": 0,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8826
+                }
+              },
+              {
+                "name": "Northing at false origin",
+                "value": 0,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8827
+                }
+              }
+            ]
+          },
+          "coordinate_system": {
+            "subtype": "Cartesian",
+            "axis": [
+              {
+                "name": "Easting",
+                "abbreviation": "E",
+                "direction": "east",
+                "unit": "metre"
+              },
+              {
+                "name": "Northing",
+                "abbreviation": "N",
+                "direction": "north",
+                "unit": "metre"
+              }
+            ]
+          }
+        }
+      },
+      "round_trip_verification": {
+        "wkt1": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "wkt2": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "proj_string": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "projjson": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "eqdc_custom",
+      "description": "Equidistant Conic",
+      "input": "+proj=eqdc +lat_0=40 +lon_0=-96 +lat_1=20 +lat_2=60 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs",
+      "exports": {
+        "wkt1": "PROJCS[\"unknown\",GEOGCS[\"unknown\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]]],PROJECTION[\"Equidistant_Conic\"],PARAMETER[\"latitude_of_center\",40],PARAMETER[\"longitude_of_center\",-96],PARAMETER[\"standard_parallel_1\",20],PARAMETER[\"standard_parallel_2\",60],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH]]",
+        "wkt2": "PROJCRS[\"unknown\",BASEGEOGCRS[\"unknown\",DATUM[\"World Geodetic System 1984\",ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]],ID[\"EPSG\",6326]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8901]]],CONVERSION[\"unknown\",METHOD[\"Equidistant Conic\",ID[\"EPSG\",1119]],PARAMETER[\"Latitude of false origin\",40,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8821]],PARAMETER[\"Longitude of false origin\",-96,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8822]],PARAMETER[\"Latitude of 1st standard parallel\",20,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8823]],PARAMETER[\"Latitude of 2nd standard parallel\",60,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8824]],PARAMETER[\"Easting at false origin\",0,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8826]],PARAMETER[\"Northing at false origin\",0,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8827]]],CS[Cartesian,2],AXIS[\"(E)\",east,ORDER[1],LENGTHUNIT[\"metre\",1,ID[\"EPSG\",9001]]],AXIS[\"(N)\",north,ORDER[2],LENGTHUNIT[\"metre\",1,ID[\"EPSG\",9001]]]]",
+        "proj_string": "+proj=eqdc +lat_0=40 +lon_0=-96 +lat_1=20 +lat_2=60 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +type=crs",
+        "projjson": {
+          "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+          "type": "ProjectedCRS",
+          "name": "unknown",
+          "base_crs": {
+            "name": "unknown",
+            "datum": {
+              "type": "GeodeticReferenceFrame",
+              "name": "World Geodetic System 1984",
+              "ellipsoid": {
+                "name": "WGS 84",
+                "semi_major_axis": 6378137,
+                "inverse_flattening": 298.257223563
+              },
+              "id": {
+                "authority": "EPSG",
+                "code": 6326
+              }
+            },
+            "coordinate_system": {
+              "subtype": "ellipsoidal",
+              "axis": [
+                {
+                  "name": "Longitude",
+                  "abbreviation": "lon",
+                  "direction": "east",
+                  "unit": "degree"
+                },
+                {
+                  "name": "Latitude",
+                  "abbreviation": "lat",
+                  "direction": "north",
+                  "unit": "degree"
+                }
+              ]
+            }
+          },
+          "conversion": {
+            "name": "unknown",
+            "method": {
+              "name": "Equidistant Conic",
+              "id": {
+                "authority": "EPSG",
+                "code": 1119
+              }
+            },
+            "parameters": [
+              {
+                "name": "Latitude of false origin",
+                "value": 40,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8821
+                }
+              },
+              {
+                "name": "Longitude of false origin",
+                "value": -96,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8822
+                }
+              },
+              {
+                "name": "Latitude of 1st standard parallel",
+                "value": 20,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8823
+                }
+              },
+              {
+                "name": "Latitude of 2nd standard parallel",
+                "value": 60,
+                "unit": "degree",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8824
+                }
+              },
+              {
+                "name": "Easting at false origin",
+                "value": 0,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8826
+                }
+              },
+              {
+                "name": "Northing at false origin",
+                "value": 0,
+                "unit": "metre",
+                "id": {
+                  "authority": "EPSG",
+                  "code": 8827
+                }
+              }
+            ]
+          },
+          "coordinate_system": {
+            "subtype": "Cartesian",
+            "axis": [
+              {
+                "name": "Easting",
+                "abbreviation": "E",
+                "direction": "east",
+                "unit": "metre"
+              },
+              {
+                "name": "Northing",
+                "abbreviation": "N",
+                "direction": "north",
+                "unit": "metre"
+              }
+            ]
+          }
+        }
+      },
+      "round_trip_verification": {
+        "wkt1": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "wkt2": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "proj_string": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        },
+        "projjson": {
+          "success": true,
+          "preserves_type": true,
+          "preserves_ellipsoid_a": true,
+          "error": null
+        }
+      },
+      "error": null
+    }
+  ]
+}

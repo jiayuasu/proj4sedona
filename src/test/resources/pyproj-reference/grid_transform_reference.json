@@ -1,0 +1,211 @@
+{
+  "version": "1.0",
+  "generator": "pyproj",
+  "pyproj_version": "3.7.2",
+  "proj_data_dir": "/opt/homebrew/Caskroom/miniforge/base/lib/python3.12/site-packages/pyproj/proj_dir/share/proj",
+  "notes": [
+    "Grid files are fetched from cdn.proj.org by pyproj automatically",
+    "Results may vary slightly based on pyproj/PROJ version and grid file version",
+    "Tolerance for grid-based transforms should be ~1cm (0.01m)"
+  ],
+  "test_cases": [
+    {
+      "name": "conus_nad83_to_harn",
+      "description": "NAD83 to NAD83(HARN) using CONUS grid",
+      "grid_file": "us_noaa_conus.tif",
+      "from_crs": "EPSG:4269",
+      "to_crs": "EPSG:4152",
+      "transform_result": {
+        "from_crs": "EPSG:4269",
+        "to_crs": "EPSG:4152",
+        "transformations": [
+          {
+            "point_name": "denver",
+            "input": {
+              "x": -104.9903,
+              "y": 39.7392
+            },
+            "output": {
+              "x": -104.99030054549964,
+              "y": 39.739202037998474
+            },
+            "error": null
+          },
+          {
+            "point_name": "chicago",
+            "input": {
+              "x": -87.6298,
+              "y": 41.8781
+            },
+            "output": {
+              "x": -87.62979690876624,
+              "y": 41.87809859179082
+            },
+            "error": null
+          },
+          {
+            "point_name": "los_angeles",
+            "input": {
+              "x": -118.2437,
+              "y": 34.0522
+            },
+            "output": {
+              "x": -118.24369987044591,
+              "y": 34.05219582400976
+            },
+            "error": null
+          },
+          {
+            "point_name": "miami",
+            "input": {
+              "x": -80.1918,
+              "y": 25.7617
+            },
+            "output": {
+              "x": -80.19179925888385,
+              "y": 25.76169929974481
+            },
+            "error": null
+          },
+          {
+            "point_name": "seattle",
+            "input": {
+              "x": -122.3321,
+              "y": 47.6062
+            },
+            "output": {
+              "x": -122.33209844439493,
+              "y": 47.606201693910926
+            },
+            "error": null
+          }
+        ],
+        "transformer_info": {
+          "num_transformers": 51,
+          "best_accuracy": true
+        },
+        "error": null
+      }
+    },
+    {
+      "name": "canada_nad27_to_nad83",
+      "description": "NAD27 to NAD83 using Canadian NTv2 grid",
+      "grid_file": "ca_nrc_ntv2_0.tif",
+      "from_crs": "EPSG:4267",
+      "to_crs": "EPSG:4269",
+      "transform_result": {
+        "from_crs": "EPSG:4267",
+        "to_crs": "EPSG:4269",
+        "transformations": [
+          {
+            "point_name": "toronto",
+            "input": {
+              "x": -79.3832,
+              "y": 43.6532
+            },
+            "output": {
+              "x": -79.3829865817316,
+              "y": 43.65324813972226
+            },
+            "error": null
+          },
+          {
+            "point_name": "vancouver",
+            "input": {
+              "x": -123.1207,
+              "y": 49.2827
+            },
+            "output": {
+              "x": -123.12201648406675,
+              "y": 49.28252469833709
+            },
+            "error": null
+          },
+          {
+            "point_name": "montreal",
+            "input": {
+              "x": -73.5673,
+              "y": 45.5017
+            },
+            "output": {
+              "x": -73.56689718714524,
+              "y": 45.50173389195694
+            },
+            "error": null
+          },
+          {
+            "point_name": "calgary",
+            "input": {
+              "x": -114.0719,
+              "y": 51.0447
+            },
+            "output": {
+              "x": -114.07289205905661,
+              "y": 51.04475621250974
+            },
+            "error": null
+          },
+          {
+            "point_name": "ottawa",
+            "input": {
+              "x": -75.6972,
+              "y": 45.4215
+            },
+            "output": {
+              "x": -75.69687542385925,
+              "y": 45.421543276407604
+            },
+            "error": null
+          }
+        ],
+        "transformer_info": {
+          "num_transformers": 8,
+          "best_accuracy": true
+        },
+        "error": null
+      }
+    },
+    {
+      "name": "proj_nadgrids_conus",
+      "description": "NAD83 with explicit nadgrids parameter",
+      "grid_file": "us_noaa_conus.tif",
+      "from_crs": "+proj=longlat +datum=NAD83 +no_defs",
+      "to_crs": "+proj=longlat +ellps=GRS80 +nadgrids=@us_noaa_conus.tif +no_defs",
+      "transform_result": {
+        "from_crs": "+proj=longlat +datum=NAD83 +no_defs",
+        "to_crs": "+proj=longlat +ellps=GRS80 +nadgrids=@us_noaa_conus.tif +no_defs",
+        "transformations": [
+          {
+            "point_name": "phoenix",
+            "input": {
+              "x": -112.074,
+              "y": 33.4484
+            },
+            "output": {
+              "x": -112.07329463744595,
+              "y": 33.448357889663505
+            },
+            "error": null
+          },
+          {
+            "point_name": "dallas",
+            "input": {
+              "x": -96.797,
+              "y": 32.7767
+            },
+            "output": {
+              "x": -96.79672586128041,
+              "y": 32.77656878994657
+            },
+            "error": null
+          }
+        ],
+        "transformer_info": {
+          "num_transformers": 53,
+          "best_accuracy": true
+        },
+        "error": null
+      }
+    }
+  ]
+}

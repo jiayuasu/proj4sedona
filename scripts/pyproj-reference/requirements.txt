@@ -1,0 +1,3 @@
+# Python dependencies for pyproj reference data generation
+pyproj>=3.6.0
+numpy>=1.24.0
