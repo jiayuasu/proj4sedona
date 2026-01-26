@@ -2,7 +2,7 @@
   "version": "1.0",
   "generator": "pyproj",
   "pyproj_version": "3.7.2",
-  "proj_data_dir": "/opt/homebrew/Caskroom/miniforge/base/lib/python3.12/site-packages/pyproj/proj_dir/share/proj",
+  "proj_data_dir": "/opt/homebrew/lib/python3.13/site-packages/pyproj/proj_dir/share/proj",
   "notes": [
     "Grid files are fetched from cdn.proj.org by pyproj automatically",
     "Results may vary slightly based on pyproj/PROJ version and grid file version",

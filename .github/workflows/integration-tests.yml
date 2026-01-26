@@ -54,7 +54,6 @@ jobs:
           pip install -r scripts/pyproj-reference/requirements.txt
 
       - name: Regenerate reference data
-        if: ${{ github.event.inputs.regenerate_reference == 'true' }}
         run: |
           python scripts/pyproj-reference/generate_all.py \
             --output-dir src/test/resources/pyproj-reference \
@@ -80,7 +79,7 @@ jobs:
         run: |
           java -cp "target/test-classes:target/classes:$(mvn dependency:build-classpath -q -DincludeScope=test -Dmdep.outputFile=/dev/stdout)" \
             org.openjdk.jmh.Main -f 1 -wi 2 -i 3 -r 1 \
-            "org.proj4sedona.benchmark.*" \
+            "org.datasyslab.proj4sedona.benchmark.*" \
             -rf json -rff target/jmh-results.json
 
       # Generate comparison report
