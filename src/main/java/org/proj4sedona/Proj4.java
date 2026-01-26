@@ -2,6 +2,7 @@ package org.proj4sedona;
 
 import org.proj4sedona.core.Point;
 import org.proj4sedona.core.Proj;
+import org.proj4sedona.mgrs.MGRS;
 import org.proj4sedona.transform.Converter;
 import org.proj4sedona.transform.Transform;
 
@@ -194,5 +195,82 @@ public final class Proj4 {
      */
     public static Point point(double[] coords) {
         return new Point(coords);
+    }
+
+    // ========== MGRS Methods ==========
+
+    /**
+     * Convert longitude/latitude to MGRS string.
+     * 
+     * @param lonLat Array with [longitude, latitude] in degrees (WGS84)
+     * @param accuracy Accuracy in digits (1-5): 5=1m, 4=10m, 3=100m, 2=1km, 1=10km
+     * @return MGRS string for the given location
+     */
+    public static String toMGRS(double[] lonLat, int accuracy) {
+        return MGRS.forward(lonLat, accuracy);
+    }
+
+    /**
+     * Convert longitude/latitude to MGRS string with 1m accuracy.
+     * 
+     * @param lonLat Array with [longitude, latitude] in degrees (WGS84)
+     * @return MGRS string for the given location
+     */
+    public static String toMGRS(double[] lonLat) {
+        return MGRS.forward(lonLat, 5);
+    }
+
+    /**
+     * Convert longitude/latitude to MGRS string.
+     * 
+     * @param lon Longitude in degrees (WGS84)
+     * @param lat Latitude in degrees (WGS84)
+     * @param accuracy Accuracy in digits (1-5)
+     * @return MGRS string for the given location
+     */
+    public static String toMGRS(double lon, double lat, int accuracy) {
+        return MGRS.forward(new double[]{lon, lat}, accuracy);
+    }
+
+    /**
+     * Convert longitude/latitude to MGRS string with 1m accuracy.
+     * 
+     * @param lon Longitude in degrees (WGS84)
+     * @param lat Latitude in degrees (WGS84)
+     * @return MGRS string for the given location
+     */
+    public static String toMGRS(double lon, double lat) {
+        return MGRS.forward(new double[]{lon, lat}, 5);
+    }
+
+    /**
+     * Convert MGRS string to longitude/latitude.
+     * 
+     * @param mgrs MGRS string
+     * @return Array with [longitude, latitude] in degrees (WGS84)
+     */
+    public static double[] fromMGRS(String mgrs) {
+        return MGRS.toPoint(mgrs);
+    }
+
+    /**
+     * Convert MGRS string to Point.
+     * 
+     * @param mgrs MGRS string
+     * @return Point with longitude and latitude in degrees (WGS84)
+     */
+    public static Point mgrsToPoint(String mgrs) {
+        double[] coords = MGRS.toPoint(mgrs);
+        return new Point(coords[0], coords[1]);
+    }
+
+    /**
+     * Get bounding box for an MGRS reference.
+     * 
+     * @param mgrs MGRS string
+     * @return Array with [left, bottom, right, top] in degrees (WGS84)
+     */
+    public static double[] mgrsInverse(String mgrs) {
+        return MGRS.inverse(mgrs);
     }
 }

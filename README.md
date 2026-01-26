@@ -24,6 +24,26 @@ Proj4Sedona provides coordinate system transformations, datum conversions, and p
 
 ### MGRS Coordinates
 
+Convert between geographic coordinates and Military Grid Reference System (MGRS):
+
+```java
+import org.proj4sedona.Proj4;
+import org.proj4sedona.mgrs.MGRS;
+
+// Convert lon/lat to MGRS
+String mgrs = Proj4.toMGRS(-77.0369, 38.9072);  // "18SUJ2338308451"
+
+// With custom accuracy (1=10km, 2=1km, 3=100m, 4=10m, 5=1m)
+String mgrs1km = Proj4.toMGRS(-77.0369, 38.9072, 2);  // "18SUJ2308"
+
+// Convert MGRS to lon/lat
+double[] lonLat = Proj4.fromMGRS("18SUJ2338308451");  // [-77.0369, 38.9072]
+
+// Or use the MGRS class directly
+String mgrs2 = MGRS.forward(new double[]{-77.0369, 38.9072}, 5);
+double[] point = MGRS.toPoint("18SUJ2338308451");
+double[] bbox = MGRS.inverse("18SUJ23");  // [left, bottom, right, top]
+```
 
 ### Datum Transformations with Grid Shift Files
 
