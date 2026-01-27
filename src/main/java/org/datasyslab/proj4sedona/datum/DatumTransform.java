@@ -207,9 +207,6 @@ public final class DatumTransform {
 
         // Check if we found a valid shift
         if (Double.isNaN(outputX)) {
-            System.err.println("Failed to find a grid shift table for location '" +
-                    (-inputX * Values.R2D) + " " + (inputY * Values.R2D) +
-                    "' tried: '" + attemptedGrids + "'");
             return -1;
         }
 

@@ -81,13 +81,14 @@ public class GridTest {
 
     @Test
     void testGetNadgridsWithMandatory() {
-        var grids = GridLoader.getNadgrids("conus,@fallback,null");
+        // Use optional grids (@) since mandatory grids throw if not found
+        var grids = GridLoader.getNadgrids("@conus,@fallback,null");
         assertNotNull(grids);
         assertEquals(3, grids.size());
         
-        assertTrue(grids.get(0).isMandatory());
-        assertFalse(grids.get(1).isMandatory());
-        assertTrue(grids.get(2).isMandatory());
+        assertFalse(grids.get(0).isMandatory()); // @conus is optional
+        assertFalse(grids.get(1).isMandatory()); // @fallback is optional
+        assertTrue(grids.get(2).isMandatory());  // null is mandatory (special case)
     }
 
     @Test

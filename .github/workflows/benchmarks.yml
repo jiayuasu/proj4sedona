@@ -57,7 +57,12 @@ jobs:
         if: always()
         run: |
           if [ -f "target/benchmark_report.md" ]; then
-            cat target/benchmark_report.md >> $GITHUB_STEP_SUMMARY
+            # Add emoji to the title
+            sed 's/^# proj4sedona Benchmark Report/# 📊 proj4sedona Benchmark Report/' target/benchmark_report.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "# ⚠️ Benchmark Report" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Benchmark report was not generated." >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Upload benchmark report
