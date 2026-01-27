@@ -13,7 +13,6 @@ import org.datasyslab.proj4sedona.parser.CRSSerializer;
 import org.datasyslab.proj4sedona.transform.Converter;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -38,10 +37,7 @@ public class SpeedBenchmark {
 
     // Pre-initialized objects for speed benchmarks
     private Proj wgs84;
-    private Proj webMercator;
-    private Proj utm32n;
     private Converter wgs84ToMerc;
-    private Converter wgs84ToUtm;
     private Converter ostn15Converter;
     private boolean ostn15Available = false;
 
@@ -103,10 +99,8 @@ public class SpeedBenchmark {
 
     private void setup() throws IOException {
         wgs84 = new Proj("+proj=longlat +datum=WGS84");
-        webMercator = new Proj("EPSG:3857");
-        utm32n = new Proj("EPSG:32632");
+        Proj webMercator = new Proj("EPSG:3857");
         wgs84ToMerc = new Converter(wgs84, webMercator);
-        wgs84ToUtm = new Converter(wgs84, utm32n);
 
         testPoint = new Point(-77.0369, 38.9072);
         testPointGb = new Point(-0.1276, 51.5074);
@@ -318,9 +312,9 @@ public class SpeedBenchmark {
         
         ErrorStats gridErrors = new ErrorStats("Grid transforms", "deg");
         
+        // Tests that use PROJ pipeline syntax (not supported)
         Set<String> skipSet = Set.of(
-            "conus_nad83_to_harn", "canada_nad27_to_nad83", 
-            "uk_etrs89_to_osgb36", "proj_pipeline_ostn15"
+            "proj_pipeline_ostn15"  // Uses +proj=pipeline syntax, not standard CRS definitions
         );
         
         for (JsonElement tcElem : testCases) {
@@ -328,7 +322,7 @@ public class SpeedBenchmark {
             String name = tc.get("name").getAsString();
             
             if (skipSet.contains(name)) {
-                skippedTests.add(name + ": Requires transformation registry");
+                skippedTests.add(name + ": Uses PROJ pipeline syntax (not supported)");
                 continue;
             }
             
