@@ -52,8 +52,6 @@
         <maven.compiler.target>11</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.10.0</junit.version>
-        <!-- Set to true to skip speed benchmarks -->
-        <skipBenchmarks>false</skipBenchmarks>
     </properties>
 
     <dependencies>
@@ -87,19 +85,6 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Benchmarking -->
-        <dependency>
-            <groupId>org.openjdk.jmh</groupId>
-            <artifactId>jmh-core</artifactId>
-            <version>1.37</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.openjdk.jmh</groupId>
-            <artifactId>jmh-generator-annprocess</artifactId>
-            <version>1.37</version>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
 
     <build>
@@ -117,29 +102,22 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.1.2</version>
-                <configuration>
-                    <!-- Exclude correctness benchmarks from regular test run -->
-                    <excludes>
-                        <exclude>**/*CorrectnessBenchmark.java</exclude>
-                    </excludes>
-                </configuration>
             </plugin>
         </plugins>
     </build>
 
     <profiles>
-        <!-- Benchmarks profile: correctness benchmarks (vs pyproj) + speed benchmarks (JMH) -->
+        <!-- Benchmarks profile: generates reference data, runs speed + correctness benchmarks, outputs MD report -->
         <profile>
             <id>benchmarks</id>
             <build>
                 <plugins>
-                    <!-- Generate pyproj reference data and run benchmarks -->
                     <plugin>
                         <groupId>org.codehaus.mojo</groupId>
                         <artifactId>exec-maven-plugin</artifactId>
                         <version>3.1.0</version>
                         <executions>
-                            <!-- Generate pyproj reference data before correctness benchmarks -->
+                            <!-- Generate pyproj reference data -->
                             <execution>
                                 <id>generate-pyproj-reference</id>
                                 <phase>pre-integration-test</phase>
@@ -156,41 +134,17 @@
                                     </arguments>
                                 </configuration>
                             </execution>
-                            <!-- Run speed benchmarks (JMH) after correctness benchmarks -->
+                            <!-- Run benchmarks (speed + correctness) and generate MD report -->
                             <execution>
-                                <id>run-speed-benchmarks</id>
-                                <phase>post-integration-test</phase>
+                                <id>run-benchmarks</id>
+                                <phase>integration-test</phase>
                                 <goals>
                                     <goal>java</goal>
                                 </goals>
                                 <configuration>
                                     <mainClass>org.datasyslab.proj4sedona.benchmark.SpeedBenchmark</mainClass>
                                     <classpathScope>test</classpathScope>
-                                    <skip>${skipBenchmarks}</skip>
                                 </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <!-- Correctness benchmarks (compare results against pyproj) -->
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-failsafe-plugin</artifactId>
-                        <version>3.1.2</version>
-                        <configuration>
-                            <includes>
-                                <include>**/*CorrectnessBenchmark.java</include>
-                            </includes>
-                            <!-- Allow network access for grid file downloads -->
-                            <systemPropertyVariables>
-                                <java.net.preferIPv4Stack>true</java.net.preferIPv4Stack>
-                            </systemPropertyVariables>
-                        </configuration>
-                        <executions>
-                            <execution>
-                                <goals>
-                                    <goal>integration-test</goal>
-                                    <goal>verify</goal>
-                                </goals>
                             </execution>
                         </executions>
                     </plugin>

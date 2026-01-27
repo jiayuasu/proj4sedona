@@ -208,27 +208,20 @@ mvn clean install
 
 ## Benchmarks
 
-Run correctness and speed benchmarks against pyproj:
+Run benchmarks against pyproj:
 
 ```bash
-# Run all benchmarks (correctness + speed)
 mvn verify -Pbenchmarks
-
-# Run correctness benchmarks only (skip speed benchmarks)
-mvn verify -Pbenchmarks -DskipBenchmarks=true
 ```
 
-**What runs:**
-1. Generates pyproj reference data using Python/pyproj
-2. **Correctness benchmarks**: Verifies transformation results match pyproj
-3. **Speed benchmarks**: JMH performance measurements
+This generates `target/benchmark_report.md` containing:
+1. **Speedup vs pyproj**: Performance comparison table
+2. **Correctness vs pyproj**: Error statistics (max/avg error per category)
 
-**Speed Benchmark Categories:**
-- CRS initialization: EPSG codes, PROJ strings
-- Single transformations: WGS84 to Mercator, UTM
-- Batch transformations: 1000 points
+**Benchmark Categories:**
+- CRS initialization
+- Single and batch transformations
 - OSTN15 grid-based transformations
-- CRS export: WKT1, WKT2, PROJ string, PROJJSON
 
 **Typical Results** (M1 MacBook Pro):
 | Operation | Throughput |

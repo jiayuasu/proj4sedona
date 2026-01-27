@@ -23,7 +23,7 @@ env:
 
 jobs:
   benchmarks:
-    name: Correctness & Speed Benchmarks
+    name: Benchmarks
     runs-on: ubuntu-latest
     
     steps:
@@ -45,94 +45,25 @@ jobs:
           cache-dependency-path: scripts/pyproj-reference/requirements.txt
 
       - name: Install Python dependencies
-        run: |
-          pip install -r scripts/pyproj-reference/requirements.txt
+        run: pip install -r scripts/pyproj-reference/requirements.txt
 
       - name: Run unit tests
         run: mvn test -B
 
-      - name: Run correctness and speed benchmarks
+      - name: Run benchmarks
         run: mvn verify -Pbenchmarks -B
 
-      # Run pyproj benchmarks for comparison
-      - name: Run pyproj benchmarks
-        run: |
-          python scripts/pyproj-reference/run_pyproj_benchmarks.py \
-            --output target/pyproj_benchmark_results.json
-
-      # Generate comparison report
-      - name: Generate benchmark comparison report
-        run: |
-          python scripts/pyproj-reference/compare_benchmarks.py \
-            --pyproj target/pyproj_benchmark_results.json \
-            --java target/java_benchmark_results.json \
-            --output target/benchmark_comparison_report.md || true
-
-      # Post test summary to GitHub Actions
-      - name: Post summary to GitHub Actions
+      - name: Post benchmark report to GitHub Actions
         if: always()
         run: |
-          echo "## 🧪 Benchmark Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Extract test results from failsafe reports
-          if [ -d "target/failsafe-reports" ]; then
-            echo "### Correctness Benchmarks" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Test Suite | Tests | Passed | Failed | Skipped |" >> $GITHUB_STEP_SUMMARY
-            echo "|------------|-------|--------|--------|---------|" >> $GITHUB_STEP_SUMMARY
-            
-            for file in target/failsafe-reports/*.txt; do
-              if [ -f "$file" ]; then
-                suite=$(basename "$file" .txt)
-                line=$(grep "^Tests run:" "$file" 2>/dev/null || echo "")
-                if [ -n "$line" ]; then
-                  tests=$(echo "$line" | sed 's/.*Tests run: \([0-9]*\).*/\1/')
-                  failures=$(echo "$line" | sed 's/.*Failures: \([0-9]*\).*/\1/')
-                  errors=$(echo "$line" | sed 's/.*Errors: \([0-9]*\).*/\1/')
-                  skipped=$(echo "$line" | sed 's/.*Skipped: \([0-9]*\).*/\1/')
-                  passed=$((tests - failures - errors - skipped))
-                  
-                  if [ "$failures" -eq 0 ] && [ "$errors" -eq 0 ]; then
-                    status="✅"
-                  else
-                    status="❌"
-                  fi
-                  
-                  echo "| $status $suite | $tests | $passed | $((failures + errors)) | $skipped |" >> $GITHUB_STEP_SUMMARY
-                fi
-              fi
-            done
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          # Add benchmark comparison report
-          if [ -f "target/benchmark_comparison_report.md" ]; then
-            echo "---" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "## 🚀 Speed Benchmarks" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            cat target/benchmark_comparison_report.md >> $GITHUB_STEP_SUMMARY
+          if [ -f "target/benchmark_report.md" ]; then
+            cat target/benchmark_report.md >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Upload test reports
+      - name: Upload benchmark report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-reports
-          path: |
-            target/surefire-reports/
-            target/failsafe-reports/
-          retention-days: 7
-
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: benchmark-results
-          path: |
-            target/pyproj_benchmark_results.json
-            target/java_benchmark_results.json
-            target/benchmark_comparison_report.md
+          name: benchmark-report
+          path: target/benchmark_report.md
           retention-days: 30
-
