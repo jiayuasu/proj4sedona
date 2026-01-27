@@ -25,7 +25,7 @@ jobs:
   benchmarks:
     name: Benchmarks
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -59,12 +59,11 @@ jobs:
           echo "Looking for benchmark report..."
           ls -la target/*.md 2>/dev/null || echo "No .md files in target/"
           if [ -f "target/benchmark_report.md" ]; then
-            echo "Found benchmark_report.md, posting to summary..."
-            cat target/benchmark_report.md >> $GITHUB_STEP_SUMMARY
+            sed 's/^# proj4sedona Benchmark Report/# 📊 proj4sedona Benchmark Report/' target/benchmark_report.md >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "## ⚠️ Benchmark Report Not Found" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "The benchmark report was not generated. Check the 'Run benchmarks' step for errors." >> $GITHUB_STEP_SUMMARY
+            echo "## ⚠️ Benchmark Report Not Found" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "The benchmark report was not generated. Check the 'Run benchmarks' step for errors." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload benchmark report

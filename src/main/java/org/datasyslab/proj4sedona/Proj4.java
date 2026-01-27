@@ -2,6 +2,8 @@ package org.datasyslab.proj4sedona;
 
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
+import org.datasyslab.proj4sedona.grid.GridLoader;
+import org.datasyslab.proj4sedona.grid.TransformationRegistry;
 import org.datasyslab.proj4sedona.mgrs.MGRS;
 import org.datasyslab.proj4sedona.transform.Converter;
 import org.datasyslab.proj4sedona.transform.Transform;
@@ -141,6 +143,67 @@ public final class Proj4 {
     }
 
     /**
+     * Create Proj objects with automatic grid injection if needed.
+     * Checks the TransformationRegistry for grid-based transformations.
+     * 
+     * <p>The nadgrids parameter placement depends on the grid's native direction:</p>
+     * <ul>
+     *   <li>Native direction (e.g., NAD27→NAD83 when grid is NAD27→NAD83): 
+     *       nadgrids on SOURCE for forward shift</li>
+     *   <li>Reverse direction (e.g., NAD83→NAD27 when grid is NAD27→NAD83): 
+     *       nadgrids on DESTINATION for inverse shift</li>
+     * </ul>
+     * 
+     * @param fromProj Source CRS definition
+     * @param toProj Destination CRS definition
+     * @return Array of [source Proj, destination Proj]
+     */
+    private static Proj[] createProjPair(String fromProj, String toProj) {
+        // Check if automatic grid injection is needed
+        TransformationRegistry.GridMapping mapping = TransformationRegistry.getGridMapping(fromProj, toProj);
+        
+        if (mapping != null) {
+            String gridFile = mapping.gridFile;
+            
+            // Try to ensure the grid is available
+            try {
+                if (!GridLoader.has(gridFile)) {
+                    GridLoader.fetchFromCdn(gridFile);
+                }
+            } catch (Exception e) {
+                // Grid fetch failed, fall back to non-grid transformation
+                return new Proj[] { new Proj(fromProj), new Proj(toProj) };
+            }
+            
+            if (mapping.applyToSource) {
+                // Native direction: apply grid to SOURCE (forward shift)
+                Proj from = new Proj(fromProj);
+                String fromProjStr = from.toProjString();
+                
+                if (fromProjStr != null && !fromProjStr.contains("+nadgrids")) {
+                    String modifiedProj = fromProjStr + " +nadgrids=@" + gridFile;
+                    from = new Proj(modifiedProj);
+                }
+                
+                return new Proj[] { from, new Proj(toProj) };
+            } else {
+                // Reverse direction: apply grid to DESTINATION (inverse shift)
+                Proj to = new Proj(toProj);
+                String toProjStr = to.toProjString();
+                
+                if (toProjStr != null && !toProjStr.contains("+nadgrids")) {
+                    String modifiedProj = toProjStr + " +nadgrids=@" + gridFile;
+                    to = new Proj(modifiedProj);
+                }
+                
+                return new Proj[] { new Proj(fromProj), to };
+            }
+        }
+        
+        return new Proj[] { new Proj(fromProj), new Proj(toProj) };
+    }
+
+    /**
      * Create a converter from WGS84 to the specified projection.
      * 
      * @param toProj Destination projection definition
@@ -153,15 +216,15 @@ public final class Proj4 {
 
     /**
      * Create a converter between two projections.
+     * Automatically injects grid files for known CRS pairs (e.g., NAD27 to NAD83).
      * 
      * @param fromProj Source projection definition
      * @param toProj Destination projection definition
      * @return Converter between the two projections
      */
     public static Converter proj4(String fromProj, String toProj) {
-        Proj from = new Proj(fromProj);
-        Proj to = new Proj(toProj);
-        return new Converter(from, to);
+        Proj[] projs = createProjPair(fromProj, toProj);
+        return new Converter(projs[0], projs[1]);
     }
 
     /**
@@ -193,6 +256,7 @@ public final class Proj4 {
 
     /**
      * Direct transformation between two projections.
+     * Automatically injects grid files for known CRS pairs (e.g., NAD27 to NAD83).
      * 
      * @param fromProj Source projection definition
      * @param toProj Destination projection definition
@@ -200,9 +264,8 @@ public final class Proj4 {
      * @return Transformed coordinates in destination CRS
      */
     public static Point proj4(String fromProj, String toProj, Point coord) {
-        Proj from = new Proj(fromProj);
-        Proj to = new Proj(toProj);
-        return Transform.transform(from, to, coord);
+        Proj[] projs = createProjPair(fromProj, toProj);
+        return Transform.transform(projs[0], projs[1], coord);
     }
 
     /**
