@@ -98,6 +98,8 @@ def generate_report(pyproj_results: Dict, java_results: Dict) -> str:
         ("CRS Init (UTM)", "crs_init_epsg_utm", "projInitUtm"),
         ("Transform Single (Mercator)", "transform_single_merc", "transformWgs84ToMerc"),
         ("Transform Single (UTM)", "transform_single_utm", "transformWgs84ToUtm"),
+        ("Transform Single (OSTN15 fwd)", "transform_single_ostn15", "transformOstn15Single"),
+        ("Transform Single (OSTN15 inv)", "transform_single_ostn15_inverse", "transformOstn15InverseSingle"),
         ("Transform Batch 1000 (Mercator)", "transform_batch_1000_merc", "transformBatch1000Points"),
         ("Export to WKT1", "crs_export_wkt1", "exportToWkt1"),
         ("Export to PROJ string", "crs_export_proj", "exportToProjString"),
@@ -141,6 +143,10 @@ def generate_report(pyproj_results: Dict, java_results: Dict) -> str:
     throughput_mappings = [
         ("Single Transform", "transform_single_merc", "transformWgs84ToMerc"),
         ("Batch Transform (per point)", "transform_batch_per_point_merc", "transformBatchPerPoint"),
+        ("OSTN15 Forward Single", "transform_single_ostn15", "transformOstn15Single"),
+        ("OSTN15 Forward Batch (per pt)", "transform_batch_per_point_ostn15", "transformOstn15BatchPerPoint"),
+        ("OSTN15 Inverse Single", "transform_single_ostn15_inverse", "transformOstn15InverseSingle"),
+        ("OSTN15 Inverse Batch (per pt)", "transform_batch_per_point_ostn15_inverse", "transformOstn15InverseBatchPerPoint"),
     ]
     
     for name, pyproj_key, java_key in throughput_mappings:
@@ -157,6 +163,48 @@ def generate_report(pyproj_results: Dict, java_results: Dict) -> str:
     
     lines.append("")
     
+    # OSTN15 Grid Transformation Section
+    lines.append("## OSTN15 Grid Transformation Comparison")
+    lines.append("")
+    lines.append("OSTN15 (Ordnance Survey National Grid Transformation 2015) provides high-accuracy")
+    lines.append("coordinate transformations between ETRS89 and OSGB36 for Great Britain.")
+    lines.append("")
+    lines.append("| Operation | pyproj (μs) | proj4sedona (μs) | Faster | Speedup |")
+    lines.append("|-----------|-------------|------------------|--------|---------|")
+    
+    ostn15_mappings = [
+        ("Forward Single (ETRS89→OSGB36)", "transform_single_ostn15", "transformOstn15Single"),
+        ("Forward Batch 1000 pts", "transform_batch_100_ostn15", "transformOstn15Batch1000Points"),
+        ("Inverse Single (OSGB36→ETRS89)", "transform_single_ostn15_inverse", "transformOstn15InverseSingle"),
+        ("Inverse Batch 1000 pts", "transform_batch_100_ostn15_inverse", "transformOstn15InverseBatch1000Points"),
+    ]
+    
+    for name, pyproj_key, java_key in ostn15_mappings:
+        pyproj_bench = pyproj_benchmarks.get(pyproj_key, {})
+        java_bench = java_benchmarks.get(java_key, {}) if java_key != "N/A" else {}
+        
+        pyproj_mean = pyproj_bench.get("mean_us", 0)
+        java_mean = java_bench.get("mean_us", 0)
+        
+        pyproj_str = format_time(pyproj_mean) if pyproj_mean > 0 else "N/A"
+        java_str = format_time(java_mean) if java_mean > 0 else "N/A"
+        
+        if pyproj_mean > 0 and java_mean > 0:
+            speedup = pyproj_mean / java_mean
+            if speedup >= 1:
+                faster = "Java ✓"
+                speedup_str = f"{speedup:.2f}x"
+            else:
+                faster = "Python ✓"
+                speedup_str = f"{1/speedup:.2f}x"
+        else:
+            faster = "N/A"
+            speedup_str = "N/A"
+        
+        lines.append(f"| {name} | {pyproj_str} | {java_str} | {faster} | {speedup_str} |")
+    
+    lines.append("")
+    
     # Notes
     lines.append("## Notes")
     lines.append("")
@@ -164,6 +212,7 @@ def generate_report(pyproj_results: Dict, java_results: Dict) -> str:
     lines.append("- Higher throughput values are better")
     lines.append("- Benchmarks run on the same hardware for fair comparison")
     lines.append("- Results may vary based on system load and configuration")
+    lines.append("- OSTN15 benchmarks require the uk_os_OSTN15_NTv2_OSGBtoETRS.tif grid file")
     lines.append("")
     
     return "\n".join(lines)

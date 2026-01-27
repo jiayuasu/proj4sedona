@@ -48,6 +48,8 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
  * <ul>
  *   <li><b>conus_nad83_to_harn</b>: EPSG:4269 to EPSG:4152 - requires automatic grid selection</li>
  *   <li><b>canada_nad27_to_nad83</b>: EPSG:4267 to EPSG:4269 - requires automatic grid selection</li>
+ *   <li><b>uk_etrs89_to_osgb36</b>: EPSG:4258 to EPSG:4277 - requires automatic OSTN15 grid selection</li>
+ *   <li><b>proj_pipeline_ostn15</b>: Uses PROJ pipeline syntax not yet supported</li>
  * </ul>
  * 
  * <h2>Workaround for Skipped Tests</h2>
@@ -90,7 +92,9 @@ public class GridTransformIT {
      */
     private static final Set<String> SKIPPED_TEST_CASES = Set.of(
         "conus_nad83_to_harn",    // EPSG:4269 -> EPSG:4152 requires transformation registry
-        "canada_nad27_to_nad83"  // EPSG:4267 -> EPSG:4269 requires transformation registry
+        "canada_nad27_to_nad83",  // EPSG:4267 -> EPSG:4269 requires transformation registry
+        "uk_etrs89_to_osgb36",    // EPSG:4258 -> EPSG:4277 requires automatic OSTN15 grid selection
+        "proj_pipeline_ostn15"   // PROJ pipeline syntax not yet supported
     );
     
     private static JsonObject referenceData;
@@ -121,7 +125,11 @@ public class GridTransformIT {
      * This is done once at setup time to avoid network latency during tests.
      */
     private static void prefetchGrids() {
-        String[] requiredGrids = {"us_noaa_conus.tif", "ca_nrc_ntv2_0.tif"};
+        String[] requiredGrids = {
+            "us_noaa_conus.tif", 
+            "ca_nrc_ntv2_0.tif",
+            "uk_os_OSTN15_NTv2_OSGBtoETRS.tif"  // OSTN15 grid for GB transformations
+        };
         
         for (String gridName : requiredGrids) {
             if (!GridLoader.has(gridName)) {

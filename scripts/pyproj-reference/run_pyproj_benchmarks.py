@@ -66,19 +66,49 @@ def run_benchmarks() -> Dict[str, Any]:
     print("Running pyproj benchmarks...")
     print()
     
+    # Enable network for grid downloads
+    import pyproj
+    pyproj.network.set_network_enabled(True)
+    
+    # Pre-fetch OSTN15 grid to avoid network latency during benchmarks
+    print("Pre-fetching OSTN15 grid (this may take a moment)...")
+    try:
+        # Create transformer once to trigger grid download
+        _prefetch = Transformer.from_crs("EPSG:4258", "EPSG:4277", always_xy=True)
+        _prefetch.transform(-0.1276, 51.5074)  # Trigger actual grid load
+        print("OSTN15 grid ready.")
+    except Exception as e:
+        print(f"Warning: Could not pre-fetch OSTN15 grid: {e}")
+    print()
+    
     # Pre-create reusable objects
     wgs84 = CRS("EPSG:4326")
     merc = CRS("EPSG:3857")
     utm32n = CRS("EPSG:32632")
+    etrs89 = CRS("EPSG:4258")  # ETRS89 for OSTN15
+    osgb36 = CRS("EPSG:4277")  # OSGB36 for OSTN15
     transformer_wgs84_merc = Transformer.from_crs(wgs84, merc, always_xy=True)
     transformer_wgs84_utm = Transformer.from_crs(wgs84, utm32n, always_xy=True)
+    transformer_ostn15 = Transformer.from_crs(etrs89, osgb36, always_xy=True)
+    transformer_ostn15_inverse = Transformer.from_crs(osgb36, etrs89, always_xy=True)
     
     # Test coordinates
     lon, lat = -77.0369, 38.9072  # Washington DC
+    lon_gb, lat_gb = -0.1276, 51.5074  # London, GB (ETRS89)
+    lon_gb_osgb, lat_gb_osgb = -0.12602, 51.50689  # London, GB (OSGB36)
     
     # Batch data
     batch_lons = np.random.uniform(-180, 180, 1000)
     batch_lats = np.random.uniform(-80, 80, 1000)
+    
+    # Batch data for GB (England area - dense grid coverage for reliable benchmarks)
+    np.random.seed(42)  # Reproducibility
+    # Use 100 points in England area where OSTN15 has dense coverage
+    batch_lons_gb = np.random.uniform(-2.0, 0.5, 100)    # England longitude (ETRS89)
+    batch_lats_gb = np.random.uniform(51.0, 53.0, 100)   # England latitude (ETRS89)
+    
+    # Pre-transform batch data for inverse benchmarks (OSGB36 coordinates)
+    batch_lons_gb_osgb, batch_lats_gb_osgb = transformer_ostn15.transform(batch_lons_gb, batch_lats_gb)
     
     # === CRS Initialization Benchmarks ===
     
@@ -123,6 +153,19 @@ def run_benchmarks() -> Dict[str, Any]:
     )
     print(f"{results['benchmarks']['transformer_create_utm']['mean_us']:.2f} us")
     
+    print("   - Transformer ETRS89 -> OSGB36 (OSTN15)...", end=" ")
+    # Use fewer iterations for OSTN15 as it involves grid operations
+    results["benchmarks"]["transformer_create_ostn15"] = benchmark(
+        lambda: Transformer.from_crs(etrs89, osgb36, always_xy=True), iterations=100, warmup=10
+    )
+    print(f"{results['benchmarks']['transformer_create_ostn15']['mean_us']:.2f} us")
+    
+    print("   - Transformer OSGB36 -> ETRS89 (OSTN15 inverse)...", end=" ")
+    results["benchmarks"]["transformer_create_ostn15_inverse"] = benchmark(
+        lambda: Transformer.from_crs(osgb36, etrs89, always_xy=True), iterations=100, warmup=10
+    )
+    print(f"{results['benchmarks']['transformer_create_ostn15_inverse']['mean_us']:.2f} us")
+    
     print()
     
     # === Single Point Transformation Benchmarks ===
@@ -140,6 +183,18 @@ def run_benchmarks() -> Dict[str, Any]:
         lambda: transformer_wgs84_utm.transform(lon, lat), iterations=10000
     )
     print(f"{results['benchmarks']['transform_single_utm']['mean_us']:.2f} us")
+    
+    print("   - ETRS89 -> OSGB36 (OSTN15)...", end=" ")
+    results["benchmarks"]["transform_single_ostn15"] = benchmark(
+        lambda: transformer_ostn15.transform(lon_gb, lat_gb), iterations=10000
+    )
+    print(f"{results['benchmarks']['transform_single_ostn15']['mean_us']:.2f} us")
+    
+    print("   - OSGB36 -> ETRS89 (OSTN15 inverse)...", end=" ")
+    results["benchmarks"]["transform_single_ostn15_inverse"] = benchmark(
+        lambda: transformer_ostn15_inverse.transform(lon_gb_osgb, lat_gb_osgb), iterations=10000
+    )
+    print(f"{results['benchmarks']['transform_single_ostn15_inverse']['mean_us']:.2f} us")
     
     print()
     
@@ -159,11 +214,36 @@ def run_benchmarks() -> Dict[str, Any]:
     )
     print(f"{results['benchmarks']['transform_batch_1000_utm']['mean_us']:.2f} us")
     
+    print("   - ETRS89 -> OSGB36 (OSTN15, 100 GB points)...", end=" ")
+    # Use fewer iterations and smaller batch for OSTN15 (grid interpolation is expensive)
+    results["benchmarks"]["transform_batch_100_ostn15"] = benchmark(
+        lambda: transformer_ostn15.transform(batch_lons_gb, batch_lats_gb), iterations=50, warmup=5
+    )
+    print(f"{results['benchmarks']['transform_batch_100_ostn15']['mean_us']:.2f} us")
+    
+    print("   - OSGB36 -> ETRS89 (OSTN15 inverse, 100 GB points)...", end=" ")
+    results["benchmarks"]["transform_batch_100_ostn15_inverse"] = benchmark(
+        lambda: transformer_ostn15_inverse.transform(batch_lons_gb_osgb, batch_lats_gb_osgb), iterations=50, warmup=5
+    )
+    print(f"{results['benchmarks']['transform_batch_100_ostn15_inverse']['mean_us']:.2f} us")
+    
     # Per-point throughput
     batch_merc_per_point = results["benchmarks"]["transform_batch_1000_merc"]["mean_us"] / 1000
     results["benchmarks"]["transform_batch_per_point_merc"] = {
         "mean_us": batch_merc_per_point,
         "throughput_ops_per_sec": 1_000_000 / batch_merc_per_point
+    }
+    
+    batch_ostn15_per_point = results["benchmarks"]["transform_batch_100_ostn15"]["mean_us"] / 100
+    results["benchmarks"]["transform_batch_per_point_ostn15"] = {
+        "mean_us": batch_ostn15_per_point,
+        "throughput_ops_per_sec": 1_000_000 / batch_ostn15_per_point
+    }
+    
+    batch_ostn15_inverse_per_point = results["benchmarks"]["transform_batch_100_ostn15_inverse"]["mean_us"] / 100
+    results["benchmarks"]["transform_batch_per_point_ostn15_inverse"] = {
+        "mean_us": batch_ostn15_inverse_per_point,
+        "throughput_ops_per_sec": 1_000_000 / batch_ostn15_inverse_per_point
     }
     
     print()
