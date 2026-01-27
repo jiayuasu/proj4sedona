@@ -1,4 +1,4 @@
-package org.datasyslab.proj4sedona.integration;
+package org.datasyslab.proj4sedona.benchmark;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -13,9 +13,11 @@ import org.datasyslab.proj4sedona.parser.CRSSerializer;
 import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -24,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 /**
- * Integration tests for CRS serialization/export correctness.
+ * Correctness benchmarks for CRS serialization/export.
  * 
  * <p>These tests verify that proj4sedona can correctly export CRS definitions
  * to various formats (WKT1, WKT2, PROJ string, PROJJSON) and that the exported
@@ -37,9 +39,9 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
  *   <li>Cross-format compatibility</li>
  * </ul>
  */
-public class SerializerCorrectnessIT {
+public class SerializerCorrectnessBenchmark {
 
-    private static final String REFERENCE_FILE = "/pyproj-reference/format_export_reference.json";
+    private static final Path REFERENCE_FILE = Paths.get("target/pyproj-reference/format_export_reference.json");
     
     private static final double ELLIPSOID_TOLERANCE = 0.1;
     
@@ -57,13 +59,12 @@ public class SerializerCorrectnessIT {
     }
     
     private static JsonObject loadReferenceData() throws IOException {
-        try (InputStream is = SerializerCorrectnessIT.class.getResourceAsStream(REFERENCE_FILE)) {
-            if (is == null) {
-                throw new IOException("Reference file not found: " + REFERENCE_FILE);
-            }
-            Gson gson = new Gson();
-            return gson.fromJson(new InputStreamReader(is, StandardCharsets.UTF_8), JsonObject.class);
+        if (!Files.exists(REFERENCE_FILE)) {
+            throw new IOException("Reference file not found: " + REFERENCE_FILE + 
+                ". Run 'mvn verify -Pbenchmarks' to generate pyproj reference data.");
         }
+        Gson gson = new Gson();
+        return gson.fromJson(new InputStreamReader(Files.newInputStream(REFERENCE_FILE), StandardCharsets.UTF_8), JsonObject.class);
     }
     
     @TestFactory

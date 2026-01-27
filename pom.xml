@@ -52,6 +52,8 @@
         <maven.compiler.target>11</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.10.0</junit.version>
+        <!-- Set to true to skip speed benchmarks -->
+        <skipBenchmarks>false</skipBenchmarks>
     </properties>
 
     <dependencies>
@@ -116,9 +118,9 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.1.2</version>
                 <configuration>
-                    <!-- Exclude integration tests from regular test run -->
+                    <!-- Exclude correctness benchmarks from regular test run -->
                     <excludes>
-                        <exclude>**/*IT.java</exclude>
+                        <exclude>**/*CorrectnessBenchmark.java</exclude>
                     </excludes>
                 </configuration>
             </plugin>
@@ -126,18 +128,57 @@
     </build>
 
     <profiles>
-        <!-- Integration tests profile -->
+        <!-- Benchmarks profile: correctness benchmarks (vs pyproj) + speed benchmarks (JMH) -->
         <profile>
-            <id>integration-tests</id>
+            <id>benchmarks</id>
             <build>
                 <plugins>
+                    <!-- Generate pyproj reference data and run benchmarks -->
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <!-- Generate pyproj reference data before correctness benchmarks -->
+                            <execution>
+                                <id>generate-pyproj-reference</id>
+                                <phase>pre-integration-test</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>python3</executable>
+                                    <workingDirectory>${project.basedir}/scripts/pyproj-reference</workingDirectory>
+                                    <arguments>
+                                        <argument>generate_all.py</argument>
+                                        <argument>--output-dir</argument>
+                                        <argument>${project.build.directory}/pyproj-reference</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                            <!-- Run speed benchmarks (JMH) after correctness benchmarks -->
+                            <execution>
+                                <id>run-speed-benchmarks</id>
+                                <phase>post-integration-test</phase>
+                                <goals>
+                                    <goal>java</goal>
+                                </goals>
+                                <configuration>
+                                    <mainClass>org.datasyslab.proj4sedona.benchmark.SpeedBenchmark</mainClass>
+                                    <classpathScope>test</classpathScope>
+                                    <skip>${skipBenchmarks}</skip>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Correctness benchmarks (compare results against pyproj) -->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-failsafe-plugin</artifactId>
                         <version>3.1.2</version>
                         <configuration>
                             <includes>
-                                <include>**/*IT.java</include>
+                                <include>**/*CorrectnessBenchmark.java</include>
                             </includes>
                             <!-- Allow network access for grid file downloads -->
                             <systemPropertyVariables>
@@ -152,24 +193,6 @@
                                 </goals>
                             </execution>
                         </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-
-        <!-- Benchmark profile -->
-        <profile>
-            <id>benchmarks</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.codehaus.mojo</groupId>
-                        <artifactId>exec-maven-plugin</artifactId>
-                        <version>3.1.0</version>
-                        <configuration>
-                            <mainClass>org.datasyslab.proj4sedona.integration.IntegrationBenchmark</mainClass>
-                            <classpathScope>test</classpathScope>
-                        </configuration>
                     </plugin>
                 </plugins>
             </build>

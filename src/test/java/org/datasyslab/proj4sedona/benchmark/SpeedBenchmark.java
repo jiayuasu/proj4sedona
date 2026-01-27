@@ -1,4 +1,4 @@
-package org.datasyslab.proj4sedona.integration;
+package org.datasyslab.proj4sedona.benchmark;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -25,7 +25,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
- * JMH benchmarks for integration testing performance comparison with pyproj.
+ * JMH speed benchmarks for performance comparison with pyproj.
  * 
  * <p>This class provides benchmarks that match the pyproj benchmark scenarios
  * for fair comparison between proj4sedona and pyproj.</p>
@@ -45,7 +45,7 @@ import java.util.concurrent.TimeUnit;
 @Warmup(iterations = 3, time = 1)
 @Measurement(iterations = 5, time = 1)
 @Fork(1)
-public class IntegrationBenchmark {
+public class SpeedBenchmark {
 
     // Pre-initialized objects
     private Proj wgs84;
@@ -336,7 +336,7 @@ public class IntegrationBenchmark {
         System.out.println();
         
         Options opt = new OptionsBuilder()
-                .include(IntegrationBenchmark.class.getSimpleName())
+                .include(SpeedBenchmark.class.getSimpleName())
                 .forks(1)
                 .warmupIterations(3)
                 .measurementIterations(5)

@@ -1,4 +1,4 @@
-package org.datasyslab.proj4sedona.integration;
+package org.datasyslab.proj4sedona.benchmark;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -15,11 +15,11 @@ import org.datasyslab.proj4sedona.grid.GridLoader;
 import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assumptions.*;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 /**
- * Integration tests for grid-based coordinate transformations.
+ * Correctness benchmarks for grid-based coordinate transformations.
  * 
  * <p>These tests verify coordinate transformations that use grid files
  * (like NTv2 grids) for higher accuracy datum transformations.</p>
@@ -72,9 +72,9 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
  * 
  * @see <a href="https://proj.org/operations/transformations/index.html">PROJ Transformations</a>
  */
-public class GridTransformIT {
+public class GridCorrectnessBenchmark {
 
-    private static final String REFERENCE_FILE = "/pyproj-reference/grid_transform_reference.json";
+    private static final Path REFERENCE_FILE = Paths.get("target/pyproj-reference/grid_transform_reference.json");
     
     // Grid transformations can have slightly different results due to
     // interpolation differences (bilinear vs bicubic, grid versions, etc.)
@@ -166,13 +166,12 @@ public class GridTransformIT {
     }
     
     private static JsonObject loadReferenceData() throws IOException {
-        try (InputStream is = GridTransformIT.class.getResourceAsStream(REFERENCE_FILE)) {
-            if (is == null) {
-                throw new IOException("Reference file not found: " + REFERENCE_FILE);
-            }
-            Gson gson = new Gson();
-            return gson.fromJson(new InputStreamReader(is, StandardCharsets.UTF_8), JsonObject.class);
+        if (!Files.exists(REFERENCE_FILE)) {
+            throw new IOException("Reference file not found: " + REFERENCE_FILE + 
+                ". Run 'mvn verify -Pbenchmarks' to generate pyproj reference data.");
         }
+        Gson gson = new Gson();
+        return gson.fromJson(new InputStreamReader(Files.newInputStream(REFERENCE_FILE), StandardCharsets.UTF_8), JsonObject.class);
     }
     
     @TestFactory
@@ -206,7 +205,7 @@ public class GridTransformIT {
                     assumeTrue(false, 
                         "Test '" + name + "' requires transformation registry for automatic grid selection. " +
                         "Use explicit PROJ strings with +nadgrids parameter as a workaround. " +
-                        "See GridTransformIT class Javadoc for details.");
+                        "See GridCorrectnessBenchmark class Javadoc for details.");
                 }));
                 continue;
             }
