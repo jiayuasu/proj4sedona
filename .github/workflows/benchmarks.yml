@@ -1,0 +1,69 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'pom.xml'
+      - '.github/workflows/benchmarks.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'pom.xml'
+      - '.github/workflows/benchmarks.yml'
+  workflow_dispatch:
+
+env:
+  JAVA_VERSION: '17'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  benchmarks:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: scripts/pyproj-reference/requirements.txt
+
+      - name: Install Python dependencies
+        run: pip install -r scripts/pyproj-reference/requirements.txt
+
+      - name: Run unit tests
+        run: mvn test -B
+
+      - name: Run benchmarks
+        run: mvn verify -Pbenchmarks -B
+
+      - name: Post benchmark report to GitHub Actions
+        if: always()
+        run: |
+          if [ -f "target/benchmark_report.md" ]; then
+            cat target/benchmark_report.md >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload benchmark report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-report
+          path: target/benchmark_report.md
+          retention-days: 30

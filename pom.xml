@@ -85,19 +85,6 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Benchmarking -->
-        <dependency>
-            <groupId>org.openjdk.jmh</groupId>
-            <artifactId>jmh-core</artifactId>
-            <version>1.37</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.openjdk.jmh</groupId>
-            <artifactId>jmh-generator-annprocess</artifactId>
-            <version>1.37</version>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
 
     <build>
@@ -115,49 +102,12 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.1.2</version>
-                <configuration>
-                    <!-- Exclude integration tests from regular test run -->
-                    <excludes>
-                        <exclude>**/*IT.java</exclude>
-                    </excludes>
-                </configuration>
             </plugin>
         </plugins>
     </build>
 
     <profiles>
-        <!-- Integration tests profile -->
-        <profile>
-            <id>integration-tests</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-failsafe-plugin</artifactId>
-                        <version>3.1.2</version>
-                        <configuration>
-                            <includes>
-                                <include>**/*IT.java</include>
-                            </includes>
-                            <!-- Allow network access for grid file downloads -->
-                            <systemPropertyVariables>
-                                <java.net.preferIPv4Stack>true</java.net.preferIPv4Stack>
-                            </systemPropertyVariables>
-                        </configuration>
-                        <executions>
-                            <execution>
-                                <goals>
-                                    <goal>integration-test</goal>
-                                    <goal>verify</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-
-        <!-- Benchmark profile -->
+        <!-- Benchmarks profile: generates reference data, runs speed + correctness benchmarks, outputs MD report -->
         <profile>
             <id>benchmarks</id>
             <build>
@@ -166,10 +116,37 @@
                         <groupId>org.codehaus.mojo</groupId>
                         <artifactId>exec-maven-plugin</artifactId>
                         <version>3.1.0</version>
-                        <configuration>
-                            <mainClass>org.datasyslab.proj4sedona.integration.IntegrationBenchmark</mainClass>
-                            <classpathScope>test</classpathScope>
-                        </configuration>
+                        <executions>
+                            <!-- Generate pyproj reference data -->
+                            <execution>
+                                <id>generate-pyproj-reference</id>
+                                <phase>pre-integration-test</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>python3</executable>
+                                    <workingDirectory>${project.basedir}/scripts/pyproj-reference</workingDirectory>
+                                    <arguments>
+                                        <argument>generate_all.py</argument>
+                                        <argument>--output-dir</argument>
+                                        <argument>${project.build.directory}/pyproj-reference</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                            <!-- Run benchmarks (speed + correctness) and generate MD report -->
+                            <execution>
+                                <id>run-benchmarks</id>
+                                <phase>integration-test</phase>
+                                <goals>
+                                    <goal>java</goal>
+                                </goals>
+                                <configuration>
+                                    <mainClass>org.datasyslab.proj4sedona.benchmark.SpeedBenchmark</mainClass>
+                                    <classpathScope>test</classpathScope>
+                                </configuration>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>

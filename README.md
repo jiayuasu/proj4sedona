@@ -206,33 +206,29 @@ CompletableFuture<GridData> future = GridCdnFetcher.fetchAndLoadAsync("ca_nrc_nt
 mvn clean install
 ```
 
-## Performance Benchmarks
+## Benchmarks
 
-JMH benchmarks are available to measure transformation throughput:
+Run benchmarks against pyproj:
 
 ```bash
-# Run benchmarks
-mvn exec:java -Dexec.mainClass="org.datasyslab.proj4sedona.benchmark.Proj4Benchmark"
-
-# Or run specific benchmark
-java -jar target/benchmarks.jar Proj4Benchmark.transformWgs84ToMerc
+mvn verify -Pbenchmarks
 ```
 
+This generates `target/benchmark_report.md` containing:
+1. **Speedup vs pyproj**: Performance comparison table
+2. **Correctness vs pyproj**: Error statistics (max/avg error per category)
+
 **Benchmark Categories:**
-- Point creation: constructor vs factory methods
-- Projection initialization: cached vs uncached
-- Single transformations: WGS84 to Mercator, UTM
-- Batch transformations: 1000 points
-- MGRS: encoding/decoding
+- CRS initialization
+- Single and batch transformations
+- OSTN15 grid-based transformations
 
 **Typical Results** (M1 MacBook Pro):
 | Operation | Throughput |
 |-----------|------------|
-| Point creation | ~50M ops/sec |
 | Cached projection lookup | ~100M ops/sec |
 | Single transformation | ~500K ops/sec |
 | Batch 1000 points | ~2ms |
-| MGRS encode | ~300K ops/sec |
 
 ## Use Cases
 

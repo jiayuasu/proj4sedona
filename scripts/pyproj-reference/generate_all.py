@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Master script to generate all pyproj reference data for proj4sedona integration tests.
+Master script to generate all pyproj reference data for proj4sedona correctness benchmarks.
 
 This script orchestrates the generation of all reference data files:
 - transform_reference.json: Coordinate transformation test cases
@@ -26,7 +26,7 @@ from generate_grid_reference import generate_grid_reference
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate all pyproj reference data for integration tests"
+        description="Generate all pyproj reference data for correctness benchmarks"
     )
     parser.add_argument(
         "--output-dir",

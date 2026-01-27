@@ -3,3 +3,4 @@
 /.metals/
 /.vscode/
 __pycache__/
+scripts/pyproj-reference/__pycache__/
