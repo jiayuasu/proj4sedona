@@ -1,5 +1,6 @@
 package org.datasyslab.proj4sedona.grid;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,6 +16,7 @@ import java.util.List;
  * 
  * Features:
  * - Manual loading from files or byte arrays
+ * - Automatic loading from local file paths in +nadgrids
  * - Automatic fetching from PROJ CDN (when enabled)
  * - Local caching of downloaded grids
  * 
@@ -22,6 +24,10 @@ import java.util.List;
  * <pre>
  * // Manual loading
  * GridLoader.loadFile("conus", Path.of("/path/to/us_noaa_conus.tif"));
+ * 
+ * // Local file path in +nadgrids (auto-loaded)
+ * new Proj("+proj=longlat +nadgrids=/path/to/grid.gsb");
+ * new Proj("+proj=longlat +nadgrids=./relative/path/grid.tif");
  * 
  * // Enable auto-fetching from CDN
  * GridLoader.setAutoFetch(true);
@@ -124,7 +130,10 @@ public final class GridLoader {
 
     /**
      * Parse a single nadgrid string.
-     * If auto-fetch is enabled and the grid is not loaded, attempts to fetch it.
+     * Supports:
+     * - Registry lookup (pre-loaded grids)
+     * - Local file paths (absolute or relative)
+     * - CDN auto-fetch (if enabled)
      */
     private static NadgridInfo parseNadgridString(String value) {
         if (value.isEmpty()) {
@@ -143,12 +152,54 @@ public final class GridLoader {
         // Try to get from registry first
         GridData grid = NadgridRegistry.get(value);
 
-        // If not found and auto-fetch is enabled, try to fetch from CDN
+        // If not found and looks like a file path, try to load from local file
+        if (grid == null && isFilePath(value)) {
+            grid = tryLoadFromFile(value, !optional);
+        }
+
+        // If still not found and auto-fetch is enabled, try to fetch from CDN
         if (grid == null && GridCdnFetcher.isAutoFetchEnabled()) {
             grid = tryAutoFetch(value, !optional);
         }
 
         return new NadgridInfo(value, !optional, grid, false);
+    }
+
+    /**
+     * Check if a value looks like a file path.
+     * Matches absolute paths, relative paths, and paths with directory separators.
+     */
+    private static boolean isFilePath(String value) {
+        return value.startsWith("/") ||           // Unix absolute
+               value.startsWith("./") ||          // Relative current dir
+               value.startsWith("../") ||         // Relative parent dir
+               value.contains(File.separator) ||  // Contains OS path separator
+               (value.length() > 2 && value.charAt(1) == ':');  // Windows drive letter (e.g., C:\)
+    }
+
+    /**
+     * Attempt to load a grid from a local file path.
+     * 
+     * @param filePath The file path
+     * @param mandatory Whether the grid is mandatory
+     * @return The loaded GridData, or null if load failed
+     */
+    private static GridData tryLoadFromFile(String filePath, boolean mandatory) {
+        try {
+            Path path = Path.of(filePath);
+            if (Files.exists(path)) {
+                System.out.println("Loading grid from local file: " + filePath);
+                return loadFile(filePath, path);
+            } else if (mandatory) {
+                System.err.println("Warning: Grid file not found: " + filePath);
+            }
+        } catch (IOException e) {
+            if (mandatory) {
+                System.err.println("Warning: Failed to load grid from file '" + filePath + 
+                        "': " + e.getMessage());
+            }
+        }
+        return null;
     }
 
     /**
