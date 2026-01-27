@@ -2,8 +2,13 @@ package org.datasyslab.proj4sedona.grid;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,6 +22,7 @@ import java.util.List;
  * Features:
  * - Manual loading from files or byte arrays
  * - Automatic loading from local file paths in +nadgrids
+ * - Automatic loading from HTTP/HTTPS URLs in +nadgrids
  * - Automatic fetching from PROJ CDN (when enabled)
  * - Local caching of downloaded grids
  * 
@@ -28,6 +34,9 @@ import java.util.List;
  * // Local file path in +nadgrids (auto-loaded)
  * new Proj("+proj=longlat +nadgrids=/path/to/grid.gsb");
  * new Proj("+proj=longlat +nadgrids=./relative/path/grid.tif");
+ * 
+ * // URL in +nadgrids (auto-downloaded)
+ * new Proj("+proj=longlat +nadgrids=https://cdn.proj.org/uk_os_OSTN15_NTv2_OSGBtoETRS.tif");
  * 
  * // Enable auto-fetching from CDN
  * GridLoader.setAutoFetch(true);
@@ -132,6 +141,7 @@ public final class GridLoader {
      * Parse a single nadgrid string.
      * Supports:
      * - Registry lookup (pre-loaded grids)
+     * - HTTP/HTTPS URLs (auto-downloaded)
      * - Local file paths (absolute or relative)
      * - CDN auto-fetch (if enabled)
      */
@@ -152,6 +162,11 @@ public final class GridLoader {
         // Try to get from registry first
         GridData grid = NadgridRegistry.get(value);
 
+        // If not found and looks like a URL, try to download
+        if (grid == null && isUrl(value)) {
+            grid = tryLoadFromUrl(value, !optional);
+        }
+
         // If not found and looks like a file path, try to load from local file
         if (grid == null && isFilePath(value)) {
             grid = tryLoadFromFile(value, !optional);
@@ -162,7 +177,19 @@ public final class GridLoader {
             grid = tryAutoFetch(value, !optional);
         }
 
+        // If grid is mandatory but not found, throw an exception
+        if (grid == null && !optional) {
+            throw new RuntimeException("Required grid not found: " + value);
+        }
+
         return new NadgridInfo(value, !optional, grid, false);
+    }
+
+    /**
+     * Check if a value looks like an HTTP/HTTPS URL.
+     */
+    private static boolean isUrl(String value) {
+        return value.startsWith("http://") || value.startsWith("https://");
     }
 
     /**
@@ -188,18 +215,69 @@ public final class GridLoader {
         try {
             Path path = Path.of(filePath);
             if (Files.exists(path)) {
-                System.out.println("Loading grid from local file: " + filePath);
+                // Debug: Loading grid from local file
                 return loadFile(filePath, path);
-            } else if (mandatory) {
-                System.err.println("Warning: Grid file not found: " + filePath);
             }
         } catch (IOException e) {
-            if (mandatory) {
-                System.err.println("Warning: Failed to load grid from file '" + filePath + 
-                        "': " + e.getMessage());
-            }
+            // Grid loading failed
         }
         return null;
+    }
+
+    /**
+     * Attempt to load a grid from an HTTP/HTTPS URL.
+     * 
+     * @param url The URL to download from
+     * @param mandatory Whether the grid is mandatory
+     * @return The loaded GridData, or null if download/load failed
+     */
+    private static GridData tryLoadFromUrl(String url, boolean mandatory) {
+        try {
+            // Debug: Downloading grid from URL
+            
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(30))
+                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .build();
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofMinutes(2))
+                    .GET()
+                    .build();
+            
+            HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            
+            if (response.statusCode() == 200) {
+                byte[] data = response.body();
+                // Use the URL as the key (or extract filename from URL)
+                String key = extractFilenameFromUrl(url);
+                GridData grid = load(key, data);
+                // Debug: Downloaded and loaded grid
+                return grid;
+            }
+        } catch (Exception e) {
+            // URL download failed
+        }
+        return null;
+    }
+
+    /**
+     * Extract the filename from a URL.
+     * E.g., "https://cdn.proj.org/uk_os_OSTN15.tif" -> "uk_os_OSTN15.tif"
+     */
+    private static String extractFilenameFromUrl(String url) {
+        int lastSlash = url.lastIndexOf('/');
+        if (lastSlash >= 0 && lastSlash < url.length() - 1) {
+            String filename = url.substring(lastSlash + 1);
+            // Remove query parameters if any
+            int queryStart = filename.indexOf('?');
+            if (queryStart > 0) {
+                filename = filename.substring(0, queryStart);
+            }
+            return filename;
+        }
+        return url;  // Fallback to full URL as key
     }
 
     /**
@@ -211,13 +289,10 @@ public final class GridLoader {
      */
     private static GridData tryAutoFetch(String gridName, boolean mandatory) {
         try {
-            System.out.println("Auto-fetching grid from CDN: " + gridName);
+            // Debug: Auto-fetching grid from CDN
             return GridCdnFetcher.fetchAndLoad(gridName);
         } catch (IOException e) {
-            if (mandatory) {
-                System.err.println("Warning: Failed to fetch mandatory grid '" + gridName + 
-                        "' from CDN: " + e.getMessage());
-            }
+            // CDN fetch failed
             return null;
         }
     }
