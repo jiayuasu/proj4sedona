@@ -230,6 +230,13 @@ This generates `target/benchmark_report.md` containing:
 | Single transformation | ~500K ops/sec |
 | Batch 1000 points | ~2ms |
 
+## Releasing
+
+To release a new version to Maven Central:
+
+1. Update the version in `pom.xml`
+2. Run `mvn clean deploy -DperformRelease -DskipTests`
+
 ## Use Cases
 
 Proj4Sedona is suitable for a wide range of geospatial applications.
