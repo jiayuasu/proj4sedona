@@ -194,6 +194,74 @@ class GridLoaderExtendedTest {
         assertThrows(RuntimeException.class, () -> conv.forward(new Point(-79.0, 43.0)));
     }
 
+    // ==================== URL Caching Tests ====================
+
+    /**
+     * Regression test: Verify that grids loaded from URLs are cached correctly.
+     * 
+     * Previously there was a bug where:
+     * - Grid was stored under the filename key (e.g., "grid.tif")
+     * - But lookup used the full URL key (e.g., "https://example.com/grid.tif")
+     * - This caused re-downloading on every call
+     * 
+     * This test verifies the fix: grids loaded from URLs should be cached
+     * under the URL key and reused on subsequent calls.
+     */
+    @Test
+    void testUrlGridCachingUsesUrlAsKey() {
+        NadgridRegistry.clear();
+        
+        String url = "https://cdn.proj.org/us_noaa_conus.tif";
+        
+        // First call - downloads and caches
+        var grids1 = GridLoader.getNadgrids(url);
+        assertNotNull(grids1);
+        assertEquals(1, grids1.size());
+        GridData grid1 = grids1.get(0).getGrid();
+        assertNotNull(grid1, "Grid should be loaded from URL");
+        
+        // Verify the grid is cached under the URL key (not just filename)
+        assertTrue(NadgridRegistry.has(url), 
+            "Grid should be cached under the full URL key");
+        
+        // Second call - should return cached grid, not re-download
+        var grids2 = GridLoader.getNadgrids(url);
+        assertNotNull(grids2);
+        GridData grid2 = grids2.get(0).getGrid();
+        
+        // Verify same grid object is returned (from cache)
+        assertSame(grid1, grid2, 
+            "Second call should return the same cached grid object, not re-download");
+    }
+
+    @Test
+    void testUrlGridCachingPerformance() {
+        NadgridRegistry.clear();
+        
+        String url = "https://cdn.proj.org/ca_nrc_ntv2_0.tif";
+        
+        // First call - cold (downloads from network)
+        long coldStart = System.nanoTime();
+        var grids1 = GridLoader.getNadgrids(url);
+        long coldTime = System.nanoTime() - coldStart;
+        assertNotNull(grids1);
+        
+        // Second call - warm (from cache)
+        long warmStart = System.nanoTime();
+        var grids2 = GridLoader.getNadgrids(url);
+        long warmTime = System.nanoTime() - warmStart;
+        assertNotNull(grids2);
+        
+        // Warm call should be at least 100x faster than cold call
+        // (cold: network download ~1-3s, warm: hash lookup ~1μs)
+        double speedup = (double) coldTime / warmTime;
+        System.out.printf("URL grid caching: cold=%.2fms, warm=%.3fms, speedup=%.0fx%n",
+            coldTime / 1e6, warmTime / 1e6, speedup);
+        
+        assertTrue(speedup > 100, 
+            "Cached lookup should be >100x faster than download. Speedup was: " + speedup);
+    }
+
     // ==================== Combined Tests ====================
 
     @Test

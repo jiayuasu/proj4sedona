@@ -250,9 +250,8 @@ public final class GridLoader {
             
             if (response.statusCode() == 200) {
                 byte[] data = response.body();
-                // Use the URL as the key (or extract filename from URL)
-                String key = extractFilenameFromUrl(url);
-                GridData grid = load(key, data);
+                // Use the full URL as the key to match the lookup in parseNadgridString
+                GridData grid = load(url, data);
                 // Debug: Downloaded and loaded grid
                 return grid;
             }
