@@ -41,36 +41,40 @@ class SpatialReferenceFetcherTest {
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void testFetchProjJson_EPSG2154() {
         // EPSG:2154 - RGF93 / Lambert-93 (French national projection)
-        String projJson = SpatialReferenceFetcher.fetchProjJson("epsg", "2154");
+        SpatialReferenceFetcher.FetchResult result = SpatialReferenceFetcher.fetchProjJson("epsg", "2154");
         
-        assertNotNull(projJson, "Should fetch PROJJSON for EPSG:2154");
-        assertTrue(projJson.contains("RGF93") || projJson.contains("Lambert"), 
+        assertTrue(result.isSuccess(), "Should fetch PROJJSON for EPSG:2154");
+        assertNotNull(result.getProjJson());
+        assertTrue(result.getProjJson().contains("RGF93") || result.getProjJson().contains("Lambert"), 
                 "PROJJSON should contain projection name");
-        assertTrue(projJson.startsWith("{"), "Should be valid JSON");
+        assertTrue(result.getProjJson().startsWith("{"), "Should be valid JSON");
+        assertEquals(1, result.getAttemptCount(), "Should succeed on first attempt");
     }
 
     @Test
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void testFetchProjJson_NonExistent() {
         // EPSG:999999 should not exist
-        String projJson = SpatialReferenceFetcher.fetchProjJson("epsg", "999999");
+        SpatialReferenceFetcher.FetchResult result = SpatialReferenceFetcher.fetchProjJson("epsg", "999999");
         
-        assertNull(projJson, "Should return null for non-existent EPSG code");
+        assertTrue(result.isNotFound(), "Should return NOT_FOUND for non-existent EPSG code");
+        assertNull(result.getProjJson());
     }
 
     @Test
     void testNegativeCache() {
         // First call should add to negative cache
-        String result1 = SpatialReferenceFetcher.fetchProjJson("epsg", "999999");
-        assertNull(result1);
+        SpatialReferenceFetcher.FetchResult result1 = SpatialReferenceFetcher.fetchProjJson("epsg", "999999");
+        assertTrue(result1.isNotFound());
         
         // Verify it's in the negative cache
         assertTrue(SpatialReferenceFetcher.isInNotFoundCache("epsg", "999999"),
                 "Non-existent code should be in negative cache");
         
-        // Second call should return null immediately from cache
-        String result2 = SpatialReferenceFetcher.fetchProjJson("epsg", "999999");
-        assertNull(result2);
+        // Second call should return from cache immediately (0 attempts)
+        SpatialReferenceFetcher.FetchResult result2 = SpatialReferenceFetcher.fetchProjJson("epsg", "999999");
+        assertTrue(result2.isNotFound());
+        assertEquals(0, result2.getAttemptCount(), "Should return from cache with 0 attempts");
     }
 
     @Test
@@ -101,6 +105,140 @@ class SpatialReferenceFetcherTest {
         SpatialReferenceFetcher.resetBaseUrl();
         assertEquals(SpatialReferenceFetcher.DEFAULT_BASE_URL, 
                 SpatialReferenceFetcher.getBaseUrl());
+    }
+
+    @Test
+    void testTimeoutConfiguration() {
+        // Verify defaults
+        assertEquals(SpatialReferenceFetcher.DEFAULT_CONNECT_TIMEOUT_SECONDS, 
+                SpatialReferenceFetcher.getConnectTimeout());
+        assertEquals(SpatialReferenceFetcher.DEFAULT_READ_TIMEOUT_SECONDS, 
+                SpatialReferenceFetcher.getReadTimeout());
+        
+        // Set custom timeouts
+        SpatialReferenceFetcher.setConnectTimeout(5);
+        SpatialReferenceFetcher.setReadTimeout(15);
+        
+        assertEquals(5, SpatialReferenceFetcher.getConnectTimeout());
+        assertEquals(15, SpatialReferenceFetcher.getReadTimeout());
+        
+        // Reset restores defaults
+        SpatialReferenceFetcher.reset();
+        assertEquals(SpatialReferenceFetcher.DEFAULT_CONNECT_TIMEOUT_SECONDS, 
+                SpatialReferenceFetcher.getConnectTimeout());
+    }
+
+    @Test
+    void testRetryConfiguration() {
+        // Verify defaults
+        assertEquals(SpatialReferenceFetcher.DEFAULT_MAX_RETRIES, 
+                SpatialReferenceFetcher.getMaxRetries());
+        assertEquals(SpatialReferenceFetcher.DEFAULT_INITIAL_BACKOFF_MS, 
+                SpatialReferenceFetcher.getInitialBackoffMs());
+        
+        // Set custom
+        SpatialReferenceFetcher.setMaxRetries(5);
+        SpatialReferenceFetcher.setInitialBackoffMs(100);
+        
+        assertEquals(5, SpatialReferenceFetcher.getMaxRetries());
+        assertEquals(100, SpatialReferenceFetcher.getInitialBackoffMs());
+        
+        // Reset restores defaults
+        SpatialReferenceFetcher.reset();
+        assertEquals(SpatialReferenceFetcher.DEFAULT_MAX_RETRIES, 
+                SpatialReferenceFetcher.getMaxRetries());
+    }
+
+    // ==================== Network Failure Tests ====================
+
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void testFetchWithUnreachableServer_RetriesAndFails() {
+        // Configure for fast failure
+        SpatialReferenceFetcher.setBaseUrl("http://localhost:59999/");  // Unreachable port
+        SpatialReferenceFetcher.setConnectTimeout(1);  // 1 second timeout
+        SpatialReferenceFetcher.setReadTimeout(1);
+        SpatialReferenceFetcher.setMaxRetries(3);
+        SpatialReferenceFetcher.setInitialBackoffMs(100);  // Fast backoff for testing
+        SpatialReferenceFetcher.resetAttemptCounter();
+        
+        long startTime = System.currentTimeMillis();
+        SpatialReferenceFetcher.FetchResult result = SpatialReferenceFetcher.fetchProjJson("epsg", "4326");
+        long elapsed = System.currentTimeMillis() - startTime;
+        
+        assertTrue(result.isNetworkError(), "Should return NETWORK_ERROR for unreachable server");
+        assertNotNull(result.getLastException(), "Should have a last exception");
+        assertEquals(3, result.getAttemptCount(), "Should have attempted 3 times");
+        
+        // Verify total attempts counter
+        assertEquals(3, SpatialReferenceFetcher.getTotalAttemptCount(), 
+            "Total attempt counter should reflect 3 attempts");
+        
+        // Verify it took some time (due to retries and backoff)
+        // With 100ms initial backoff, expect at least ~200ms (100 + 200 for 2 backoffs)
+        assertTrue(elapsed >= 200, "Should have taken time for retries, took " + elapsed + "ms");
+    }
+
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void testFetchRetryCount_VerifyExactlyThreeAttempts() {
+        // Configure for fast failure with exactly 3 retries
+        SpatialReferenceFetcher.setBaseUrl("http://localhost:59998/");  // Different unreachable port
+        SpatialReferenceFetcher.setConnectTimeout(1);
+        SpatialReferenceFetcher.setReadTimeout(1);
+        SpatialReferenceFetcher.setMaxRetries(3);
+        SpatialReferenceFetcher.setInitialBackoffMs(50);
+        SpatialReferenceFetcher.resetAttemptCounter();
+        
+        // Make multiple fetch calls to verify counter increments correctly
+        SpatialReferenceFetcher.FetchResult result1 = SpatialReferenceFetcher.fetchProjJson("epsg", "1234");
+        assertEquals(3, result1.getAttemptCount(), "First call should make 3 attempts");
+        assertEquals(3, SpatialReferenceFetcher.getTotalAttemptCount());
+        
+        // Second call should also make 3 attempts
+        SpatialReferenceFetcher.FetchResult result2 = SpatialReferenceFetcher.fetchProjJson("epsg", "5678");
+        assertEquals(3, result2.getAttemptCount(), "Second call should also make 3 attempts");
+        assertEquals(6, SpatialReferenceFetcher.getTotalAttemptCount(), "Total should be 6 attempts");
+    }
+
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void testFetchWithCustomRetryCount() {
+        // Configure for 5 retries
+        SpatialReferenceFetcher.setBaseUrl("http://localhost:59997/");
+        SpatialReferenceFetcher.setConnectTimeout(1);
+        SpatialReferenceFetcher.setReadTimeout(1);
+        SpatialReferenceFetcher.setMaxRetries(5);
+        SpatialReferenceFetcher.setInitialBackoffMs(10);
+        SpatialReferenceFetcher.resetAttemptCounter();
+        
+        SpatialReferenceFetcher.FetchResult result = SpatialReferenceFetcher.fetchProjJson("epsg", "4326");
+        
+        assertTrue(result.isNetworkError());
+        assertEquals(5, result.getAttemptCount(), "Should have attempted 5 times");
+        assertEquals(5, SpatialReferenceFetcher.getTotalAttemptCount());
+    }
+
+    @Test
+    void testAttemptCounterReset() {
+        SpatialReferenceFetcher.setBaseUrl("http://localhost:59996/");
+        SpatialReferenceFetcher.setConnectTimeout(1);
+        SpatialReferenceFetcher.setMaxRetries(2);
+        SpatialReferenceFetcher.setInitialBackoffMs(10);
+        
+        // Make a call
+        SpatialReferenceFetcher.fetchProjJson("epsg", "1111");
+        assertTrue(SpatialReferenceFetcher.getTotalAttemptCount() > 0);
+        
+        // Reset counter
+        SpatialReferenceFetcher.resetAttemptCounter();
+        assertEquals(0, SpatialReferenceFetcher.getTotalAttemptCount());
+        
+        // Full reset also resets counter
+        SpatialReferenceFetcher.fetchProjJson("epsg", "2222");
+        assertTrue(SpatialReferenceFetcher.getTotalAttemptCount() > 0);
+        SpatialReferenceFetcher.reset();
+        assertEquals(0, SpatialReferenceFetcher.getTotalAttemptCount());
     }
 
     // ==================== Defs Remote Lookup Tests ====================
@@ -139,14 +277,14 @@ class SpatialReferenceFetcherTest {
     }
 
     @Test
-    void testDefsGet_DisableRemoteFetch() {
+    void testDefsGet_DisableRemoteFetch_ReturnsNull() {
         // Disable remote fetching
         Defs.setRemoteFetchEnabled(false);
         assertFalse(Defs.isRemoteFetchEnabled());
         
-        // Should return null for unknown code (no remote fetch)
+        // Should return null for unknown code (no remote fetch, no exception)
         ProjectionDef def = Defs.get("EPSG:2154");
-        assertNull(def, "Should not fetch remotely when disabled");
+        assertNull(def, "Should return null when remote fetch is disabled");
         
         // Re-enable
         Defs.setRemoteFetchEnabled(true);
@@ -154,17 +292,60 @@ class SpatialReferenceFetcherTest {
     }
 
     @Test
-    void testDefsGet_NonEpsgPattern() {
-        // Non-EPSG patterns should not trigger remote fetch
-        ProjectionDef def = Defs.get("CUSTOM:12345");
-        assertNull(def, "Non-EPSG codes should not trigger remote fetch");
+    void testDefsGet_NonAuthorityPattern_ReturnsNull() {
+        // Non-authority patterns should return null, not trigger remote fetch
+        ProjectionDef def = Defs.get("CUSTOMNAME");
+        assertNull(def, "Non-authority pattern should return null");
     }
 
     @Test
-    void testDefsGet_InvalidEpsgCode() {
-        // Invalid EPSG code (non-numeric)
-        ProjectionDef def = Defs.get("EPSG:abc");
-        assertNull(def, "Invalid EPSG code should return null");
+    void testDefsGet_ThrowsOnNotFound() {
+        // Invalid EPSG code should throw CRSFetchException with NOT_FOUND reason
+        CRSFetchException ex = assertThrows(CRSFetchException.class, () -> {
+            Defs.get("EPSG:999999999");
+        });
+        
+        assertEquals("EPSG:999999999", ex.getCrsCode());
+        assertEquals(CRSFetchException.Reason.NOT_FOUND, ex.getReason());
+        assertTrue(ex.getMessage().contains("not found"));
+    }
+
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void testDefsGet_ThrowsOnNetworkError() {
+        // Configure for unreachable server
+        SpatialReferenceFetcher.setBaseUrl("http://localhost:59995/");
+        SpatialReferenceFetcher.setConnectTimeout(1);
+        SpatialReferenceFetcher.setReadTimeout(1);
+        SpatialReferenceFetcher.setMaxRetries(2);
+        SpatialReferenceFetcher.setInitialBackoffMs(50);
+        
+        // Should throw CRSFetchException with NETWORK_ERROR reason
+        CRSFetchException ex = assertThrows(CRSFetchException.class, () -> {
+            Defs.get("ESRI:102001");  // Use ESRI to avoid hitting built-in cache
+        });
+        
+        assertEquals("ESRI:102001", ex.getCrsCode());
+        assertEquals(CRSFetchException.Reason.NETWORK_ERROR, ex.getReason());
+        assertTrue(ex.getMessage().contains("Failed to fetch"));
+        assertNotNull(ex.getCause(), "Should have underlying cause");
+    }
+
+    @Test
+    void testCRSFetchException_ContainsAllDetails() {
+        CRSFetchException ex = assertThrows(CRSFetchException.class, () -> {
+            Defs.get("EPSG:999999999");
+        });
+        
+        // Verify all details are accessible
+        assertNotNull(ex.getCrsCode());
+        assertNotNull(ex.getReason());
+        assertNotNull(ex.getMessage());
+        
+        // toString should include all info
+        String str = ex.toString();
+        assertTrue(str.contains("EPSG:999999999"));
+        assertTrue(str.contains("NOT_FOUND"));
     }
 
     // ==================== Integration Tests ====================
@@ -213,10 +394,38 @@ class SpatialReferenceFetcherTest {
         // EPSG:28992 - Amersfoort / RD New (Netherlands)
         ProjectionDef def2 = Defs.get("EPSG:28992");
         
-        // At least one should succeed (depends on what spatialreference.org has)
-        // We're mainly testing that multiple fetches work
-        assertTrue(def1 != null || def2 != null, 
-                "At least one remote EPSG code should be fetchable");
+        // Both should succeed
+        assertNotNull(def1, "EPSG:32188 should be fetchable");
+        assertNotNull(def2, "EPSG:28992 should be fetchable");
+    }
+
+    @Test
+    void testTransformationThrowsWhenCRSNotFound() {
+        // Verify that creating a transformation with a non-existent CRS throws
+        CRSFetchException ex = assertThrows(CRSFetchException.class, () -> {
+            Proj4.proj4("EPSG:4326", "ESRI:999999999");
+        });
+        
+        assertEquals("ESRI:999999999", ex.getCrsCode());
+        assertEquals(CRSFetchException.Reason.NOT_FOUND, ex.getReason());
+    }
+
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void testTransformationThrowsOnNetworkError() {
+        // Configure for unreachable server
+        SpatialReferenceFetcher.setBaseUrl("http://localhost:59994/");
+        SpatialReferenceFetcher.setConnectTimeout(1);
+        SpatialReferenceFetcher.setReadTimeout(1);
+        SpatialReferenceFetcher.setMaxRetries(2);
+        SpatialReferenceFetcher.setInitialBackoffMs(50);
+        
+        // Verify that creating a transformation with network issues throws
+        CRSFetchException ex = assertThrows(CRSFetchException.class, () -> {
+            Proj4.proj4("EPSG:4326", "ESRI:102001");
+        });
+        
+        assertEquals(CRSFetchException.Reason.NETWORK_ERROR, ex.getReason());
     }
 
     // ==================== Case Sensitivity Tests ====================
@@ -228,9 +437,8 @@ class SpatialReferenceFetcherTest {
         ProjectionDef def1 = Defs.get("epsg:2154");
         assertNotNull(def1, "Should handle lowercase 'epsg:'");
         
-        // Clear and test mixed case
-        Defs.reset();
-        ProjectionDef def2 = Defs.get("Epsg:2154");
-        assertNotNull(def2, "Should handle mixed case 'Epsg:'");
+        // Second fetch with uppercase should return same cached object
+        ProjectionDef def2 = Defs.get("EPSG:2154");
+        assertSame(def1, def2, "Should return same cached definition regardless of case");
     }
 }

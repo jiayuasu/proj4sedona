@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.datasyslab.proj4sedona.util.CRSUtils;
+
 /**
  * Global registry of named projection definitions.
  * Mirrors: lib/defs.js
@@ -38,17 +40,18 @@ import java.util.regex.Pattern;
  */
 public final class Defs {
 
-    /** Storage for projection definitions, keyed by name (case-sensitive) */
+    /** Storage for projection definitions, keyed by name (authority codes normalized to uppercase) */
     private static final Map<String, ProjectionDef> definitions = new HashMap<>();
     
     /** Flag indicating whether global definitions have been initialized */
     private static boolean globalsInitialized = false;
 
-    /** Whether remote EPSG lookup is enabled (default: true) */
+    /** Whether remote CRS lookup is enabled (default: true) */
     private static boolean remoteFetchEnabled = true;
 
-    /** Pattern to match EPSG codes (e.g., "EPSG:4326", "epsg:2154") */
-    private static final Pattern EPSG_PATTERN = Pattern.compile("^EPSG:(\\d+)$", Pattern.CASE_INSENSITIVE);
+    /** Pattern to match authority:code (e.g., "EPSG:4326", "ESRI:102001", "IAU_2015:49900") */
+    private static final Pattern AUTHORITY_CODE_PATTERN = 
+        Pattern.compile("^([A-Za-z][A-Za-z0-9_]*):(\\S+)$");
 
     private Defs() {
         // Utility class - prevent instantiation
@@ -103,10 +106,14 @@ public final class Defs {
      * 
      * <p>This method first checks the local registry. If not found and remote
      * fetching is enabled, it will attempt to fetch the definition from
-     * spatialreference.org for EPSG codes.</p>
+     * spatialreference.org for authority:code patterns (EPSG, ESRI, IAU_2015, etc.).</p>
      * 
-     * @param name The name/code to look up (e.g., "EPSG:4326", "WGS84")
-     * @return The ProjectionDef, or null if not found
+     * <p>Authority codes are case-insensitive for the authority part (e.g., "epsg:4326"
+     * and "EPSG:4326" are equivalent).</p>
+     * 
+     * @param name The name/code to look up (e.g., "EPSG:4326", "WGS84", "ESRI:102001")
+     * @return The ProjectionDef, or null if not found in local registry and remote fetch is disabled
+     * @throws CRSFetchException if remote fetch is enabled and the CRS code is not found or a network error occurs
      */
     public static ProjectionDef get(String name) {
         // Auto-initialize globals if not yet done
@@ -114,22 +121,25 @@ public final class Defs {
             globals();
         }
 
+        // Normalize authority codes for case-insensitive lookup
+        String normalizedName = CRSUtils.normalizeAuthorityCode(name);
+
         // Check local registry first
-        ProjectionDef def = definitions.get(name);
+        ProjectionDef def = definitions.get(normalizedName);
         if (def != null) {
             return def;
         }
 
-        // Try remote fetch if enabled and code matches EPSG pattern
+        // Try remote fetch if enabled and code matches authority:code pattern
         if (remoteFetchEnabled) {
-            Matcher matcher = EPSG_PATTERN.matcher(name);
+            Matcher matcher = AUTHORITY_CODE_PATTERN.matcher(normalizedName);
             if (matcher.matches()) {
-                String code = matcher.group(1);
-                def = fetchFromRemote("epsg", code, name);
-                if (def != null) {
-                    definitions.put(name, def);
-                    return def;
-                }
+                String authority = matcher.group(1).toLowerCase();  // spatialreference.org uses lowercase paths
+                String code = matcher.group(2);
+                def = fetchFromRemote(authority, code, normalizedName);
+                // If we get here without throwing, def is valid
+                definitions.put(normalizedName, def);
+                return def;
             }
         }
 
@@ -142,61 +152,88 @@ public final class Defs {
      * @param authName The authority name (e.g., "epsg")
      * @param code The CRS code (e.g., "2154")
      * @param fullCode The full code string (e.g., "EPSG:2154")
-     * @return The ProjectionDef, or null if fetch failed
+     * @return The ProjectionDef (never null)
+     * @throws CRSFetchException if the CRS code is not found or a network error occurs
      */
     @SuppressWarnings("unchecked")
     private static ProjectionDef fetchFromRemote(String authName, String code, String fullCode) {
-        try {
-            String projJson = SpatialReferenceFetcher.fetchProjJson(authName, code);
-            if (projJson != null) {
-                Gson gson = new Gson();
-                Map<String, Object> json = gson.fromJson(projJson, Map.class);
-                ProjectionDef def = WktParser.parse(json);
-                def.setSrsCode(fullCode);
-                return def;
-            }
-        } catch (Exception e) {
-            // Silently fail - return null to indicate "not found"
-            // Could add logging here if needed
+        SpatialReferenceFetcher.FetchResult result = SpatialReferenceFetcher.fetchProjJson(authName, code);
+        
+        switch (result.getStatus()) {
+            case SUCCESS:
+                try {
+                    Gson gson = new Gson();
+                    Map<String, Object> json = gson.fromJson(result.getProjJson(), Map.class);
+                    ProjectionDef def = WktParser.parse(json);
+                    def.setSrsCode(fullCode);
+                    return def;
+                } catch (Exception e) {
+                    throw new CRSFetchException(fullCode, CRSFetchException.Reason.INVALID_RESPONSE,
+                        "Failed to parse CRS definition for " + fullCode + ": " + e.getMessage(), e);
+                }
+                
+            case NOT_FOUND:
+                throw new CRSFetchException(fullCode, CRSFetchException.Reason.NOT_FOUND,
+                    "CRS code not found: " + fullCode);
+                
+            case NETWORK_ERROR:
+                throw new CRSFetchException(fullCode, CRSFetchException.Reason.NETWORK_ERROR,
+                    "Failed to fetch CRS definition for " + fullCode + " after " + 
+                    result.getAttemptCount() + " attempts", result.getLastException());
+                
+            default:
+                throw new CRSFetchException(fullCode, CRSFetchException.Reason.NETWORK_ERROR,
+                    "Unknown fetch status for " + fullCode);
         }
-        return null;
     }
 
     /**
      * Check if a definition exists.
      * 
+     * <p>Authority codes are case-insensitive for the authority part.</p>
+     * 
      * @param name The name/code to check
      * @return true if the definition exists
      */
     public static boolean has(String name) {
-        return definitions.containsKey(name);
+        if (!globalsInitialized) {
+            globals();
+        }
+        return definitions.containsKey(CRSUtils.normalizeAuthorityCode(name));
     }
 
     /**
      * Remove a definition.
      * 
+     * <p>Authority codes are case-insensitive for the authority part.</p>
+     * 
      * @param name The name/code to remove
      * @return The removed definition, or null if it didn't exist
      */
     public static ProjectionDef remove(String name) {
-        return definitions.remove(name);
+        return definitions.remove(CRSUtils.normalizeAuthorityCode(name));
     }
 
     /**
      * Create an alias for an existing definition.
      * 
      * <p>The alias will point to the same ProjectionDef object as the original.</p>
+     * <p>Authority codes are case-insensitive for the authority part.</p>
      * 
      * @param alias The new alias name
      * @param existingName The existing definition name
      * @throws IllegalArgumentException if the existing definition doesn't exist
      */
     public static void alias(String alias, String existingName) {
-        ProjectionDef def = definitions.get(existingName);
+        if (!globalsInitialized) {
+            globals();
+        }
+        String normalizedExisting = CRSUtils.normalizeAuthorityCode(existingName);
+        ProjectionDef def = definitions.get(normalizedExisting);
         if (def == null) {
             throw new IllegalArgumentException("Definition not found: " + existingName);
         }
-        definitions.put(alias, def);
+        definitions.put(CRSUtils.normalizeAuthorityCode(alias), def);
     }
 
     /**
@@ -287,10 +324,11 @@ public final class Defs {
     }
 
     /**
-     * Enable or disable remote fetching of EPSG definitions.
+     * Enable or disable remote fetching of CRS definitions.
      * 
      * <p>When enabled (default), the {@link #get(String)} method will attempt
-     * to fetch unknown EPSG codes from spatialreference.org.</p>
+     * to fetch unknown authority:code patterns (EPSG, ESRI, IAU_2015, etc.) 
+     * from spatialreference.org.</p>
      * 
      * @param enabled true to enable remote fetching, false to disable
      */
