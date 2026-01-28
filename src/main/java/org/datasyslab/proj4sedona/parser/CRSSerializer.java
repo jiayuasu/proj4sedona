@@ -775,9 +775,10 @@ public final class CRSSerializer {
             return null;
         }
 
-        // Check if srsCode is already an EPSG code
-        if (params.srsCode != null && params.srsCode.startsWith("EPSG:")) {
-            return params.srsCode;
+        // Check if srsCode is already an EPSG code (case-insensitive)
+        if (params.srsCode != null && params.srsCode.length() > 5 
+                && params.srsCode.substring(0, 5).equalsIgnoreCase("EPSG:")) {
+            return params.srsCode.substring(0, 5).toUpperCase() + params.srsCode.substring(5);
         }
 
         // Initialize global definitions

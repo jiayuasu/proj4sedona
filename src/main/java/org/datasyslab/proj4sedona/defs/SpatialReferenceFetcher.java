@@ -10,6 +10,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Fetches EPSG/CRS definitions from spatialreference.org.
@@ -21,7 +22,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Usage:</p>
  * <pre>
  * // Fetch PROJJSON for EPSG:2154
- * String projJson = SpatialReferenceFetcher.fetchProjJson("epsg", "2154");
+ * FetchResult result = SpatialReferenceFetcher.fetchProjJson("epsg", "2154");
+ * if (result.isSuccess()) {
+ *     String projJson = result.getProjJson();
+ * }
  * 
  * // Configure custom base URL
  * SpatialReferenceFetcher.setBaseUrl("https://custom.server.org/");
@@ -32,20 +36,119 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class SpatialReferenceFetcher {
 
+    /**
+     * Result of a fetch operation.
+     */
+    public static final class FetchResult {
+        /**
+         * Status of the fetch operation.
+         */
+        public enum Status {
+            /** Successfully fetched the PROJJSON */
+            SUCCESS,
+            /** The CRS code was not found (HTTP 404) */
+            NOT_FOUND,
+            /** A network error occurred after exhausting retries */
+            NETWORK_ERROR
+        }
+
+        private final Status status;
+        private final String projJson;
+        private final Exception lastException;
+        private final int attemptCount;
+
+        private FetchResult(Status status, String projJson, Exception lastException, int attemptCount) {
+            this.status = status;
+            this.projJson = projJson;
+            this.lastException = lastException;
+            this.attemptCount = attemptCount;
+        }
+
+        /**
+         * Create a successful result.
+         */
+        public static FetchResult success(String projJson, int attemptCount) {
+            return new FetchResult(Status.SUCCESS, projJson, null, attemptCount);
+        }
+
+        /**
+         * Create a not-found result.
+         */
+        public static FetchResult notFound(int attemptCount) {
+            return new FetchResult(Status.NOT_FOUND, null, null, attemptCount);
+        }
+
+        /**
+         * Create a network error result.
+         */
+        public static FetchResult networkError(Exception lastException, int attemptCount) {
+            return new FetchResult(Status.NETWORK_ERROR, null, lastException, attemptCount);
+        }
+
+        /**
+         * Get the status of this result.
+         */
+        public Status getStatus() {
+            return status;
+        }
+
+        /**
+         * Check if the fetch was successful.
+         */
+        public boolean isSuccess() {
+            return status == Status.SUCCESS;
+        }
+
+        /**
+         * Check if the CRS code was not found.
+         */
+        public boolean isNotFound() {
+            return status == Status.NOT_FOUND;
+        }
+
+        /**
+         * Check if a network error occurred.
+         */
+        public boolean isNetworkError() {
+            return status == Status.NETWORK_ERROR;
+        }
+
+        /**
+         * Get the fetched PROJJSON (only valid if status is SUCCESS).
+         */
+        public String getProjJson() {
+            return projJson;
+        }
+
+        /**
+         * Get the last exception that occurred (only valid if status is NETWORK_ERROR).
+         */
+        public Exception getLastException() {
+            return lastException;
+        }
+
+        /**
+         * Get the number of attempts made before this result.
+         */
+        public int getAttemptCount() {
+            return attemptCount;
+        }
+    }
+
     /** Default spatialreference.org base URL */
     public static final String DEFAULT_BASE_URL = "https://spatialreference.org/";
 
-    /** Connection timeout in seconds */
-    private static final int CONNECT_TIMEOUT_SECONDS = 10;
+    /** Default connection timeout in seconds */
+    public static final int DEFAULT_CONNECT_TIMEOUT_SECONDS = 10;
 
-    /** Read timeout in seconds */
-    private static final int READ_TIMEOUT_SECONDS = 30;
+    /** Default read timeout in seconds */
+    public static final int DEFAULT_READ_TIMEOUT_SECONDS = 30;
 
-    /** Maximum number of retry attempts */
-    private static final int MAX_RETRIES = 3;
+    /** Default maximum number of retry attempts */
+    public static final int DEFAULT_MAX_RETRIES = 3;
 
-    /** Initial backoff delay in milliseconds */
-    private static final long INITIAL_BACKOFF_MS = 500;
+    /** Default initial backoff delay in milliseconds */
+    public static final long DEFAULT_INITIAL_BACKOFF_MS = 500;
 
     /** Backoff multiplier for exponential growth */
     private static final double BACKOFF_MULTIPLIER = 2.0;
@@ -56,11 +159,29 @@ public final class SpatialReferenceFetcher {
     /** Current base URL (can be customized) */
     private static String baseUrl = DEFAULT_BASE_URL;
 
-    /** Shared HTTP client (lazily initialized) */
+    /** Connection timeout in seconds */
+    private static int connectTimeoutSeconds = DEFAULT_CONNECT_TIMEOUT_SECONDS;
+
+    /** Read timeout in seconds */
+    private static int readTimeoutSeconds = DEFAULT_READ_TIMEOUT_SECONDS;
+
+    /** Maximum number of retry attempts */
+    private static int maxRetries = DEFAULT_MAX_RETRIES;
+
+    /** Initial backoff delay in milliseconds */
+    private static long initialBackoffMs = DEFAULT_INITIAL_BACKOFF_MS;
+
+    /** Shared HTTP client (lazily initialized, recreated when timeouts change) */
     private static volatile HttpClient httpClient;
+
+    /** Flag to track if client needs recreation due to timeout changes */
+    private static volatile boolean clientNeedsRecreation = false;
 
     /** Negative cache: track codes that don't exist to avoid repeated lookups */
     private static final Set<String> notFoundCache = ConcurrentHashMap.newKeySet();
+
+    /** Counter for tracking total fetch attempts (for testing) */
+    private static final AtomicInteger totalAttemptCounter = new AtomicInteger(0);
 
     private SpatialReferenceFetcher() {
         // Utility class - prevent instantiation
@@ -70,13 +191,14 @@ public final class SpatialReferenceFetcher {
      * Get the HTTP client, creating it lazily with double-checked locking.
      */
     private static HttpClient getHttpClient() {
-        if (httpClient == null) {
+        if (httpClient == null || clientNeedsRecreation) {
             synchronized (SpatialReferenceFetcher.class) {
-                if (httpClient == null) {
+                if (httpClient == null || clientNeedsRecreation) {
                     httpClient = HttpClient.newBuilder()
-                            .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS))
+                            .connectTimeout(Duration.ofSeconds(connectTimeoutSeconds))
                             .followRedirects(HttpClient.Redirect.NORMAL)
                             .build();
+                    clientNeedsRecreation = false;
                 }
             }
         }
@@ -91,20 +213,24 @@ public final class SpatialReferenceFetcher {
      * 
      * @param authName The authority name (e.g., "epsg", "esri")
      * @param code The CRS code (e.g., "4326", "2154")
-     * @return The PROJJSON string, or null if not found or fetch failed
+     * @return A FetchResult indicating success, not-found, or network error
      */
-    public static String fetchProjJson(String authName, String code) {
+    public static FetchResult fetchProjJson(String authName, String code) {
         String cacheKey = authName.toLowerCase() + ":" + code;
 
         // Check negative cache first to avoid repeated lookups
         if (notFoundCache.contains(cacheKey)) {
-            return null;
+            return FetchResult.notFound(0);
         }
 
         String url = buildUrl(authName, code);
         Exception lastException = null;
+        int attemptCount = 0;
 
-        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            attemptCount = attempt + 1;
+            totalAttemptCounter.incrementAndGet();
+
             if (attempt > 0) {
                 // Exponential backoff with jitter before retry
                 long backoffMs = calculateBackoff(attempt);
@@ -112,7 +238,7 @@ public final class SpatialReferenceFetcher {
                     Thread.sleep(backoffMs);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    return null;
+                    return FetchResult.networkError(e, attemptCount);
                 }
             }
 
@@ -121,18 +247,18 @@ public final class SpatialReferenceFetcher {
                 int statusCode = response.statusCode();
 
                 if (statusCode == 200) {
-                    return response.body();
+                    return FetchResult.success(response.body(), attemptCount);
                 } else if (statusCode == 404) {
                     // Not found - cache this to avoid future lookups
                     notFoundCache.add(cacheKey);
-                    return null;
+                    return FetchResult.notFound(attemptCount);
                 } else if (isRetryableStatusCode(statusCode)) {
                     // 5xx errors, 429 (rate limit), 408 (timeout) - retry
                     lastException = new IOException("HTTP " + statusCode + " from " + url);
                     continue;
                 } else {
-                    // Other 4xx errors - don't retry, they won't succeed
-                    return null;
+                    // Other 4xx errors - don't retry, treat as not found
+                    return FetchResult.notFound(attemptCount);
                 }
             } catch (ConnectException e) {
                 // Connection failed - retry
@@ -145,17 +271,16 @@ public final class SpatialReferenceFetcher {
                 if (isRetryableException(e)) {
                     lastException = e;
                 } else {
-                    return null;
+                    return FetchResult.networkError(e, attemptCount);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return null;
+                return FetchResult.networkError(e, attemptCount);
             }
         }
 
-        // All retries exhausted - log if needed (currently silent)
-        // Could add logging here: "Failed to fetch " + url + " after " + MAX_RETRIES + " attempts"
-        return null;
+        // All retries exhausted
+        return FetchResult.networkError(lastException, attemptCount);
     }
 
     /**
@@ -164,7 +289,7 @@ public final class SpatialReferenceFetcher {
     private static HttpResponse<String> executeRequest(String url) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(READ_TIMEOUT_SECONDS))
+                .timeout(Duration.ofSeconds(readTimeoutSeconds))
                 .header("Accept", "application/json")
                 .GET()
                 .build();
@@ -190,7 +315,7 @@ public final class SpatialReferenceFetcher {
      */
     private static long calculateBackoff(int attempt) {
         // Exponential backoff: 500ms, 1000ms, 2000ms, ...
-        long backoff = (long) (INITIAL_BACKOFF_MS * Math.pow(BACKOFF_MULTIPLIER, attempt - 1));
+        long backoff = (long) (initialBackoffMs * Math.pow(BACKOFF_MULTIPLIER, attempt - 1));
         backoff = Math.min(backoff, MAX_BACKOFF_MS);
         // Add jitter (0-25% of backoff) to prevent thundering herd
         backoff += (long) (backoff * Math.random() * 0.25);
@@ -253,6 +378,79 @@ public final class SpatialReferenceFetcher {
     }
 
     /**
+     * Set the connection timeout.
+     * 
+     * @param seconds Connection timeout in seconds
+     */
+    public static void setConnectTimeout(int seconds) {
+        connectTimeoutSeconds = seconds;
+        clientNeedsRecreation = true;
+    }
+
+    /**
+     * Get the current connection timeout.
+     * 
+     * @return Connection timeout in seconds
+     */
+    public static int getConnectTimeout() {
+        return connectTimeoutSeconds;
+    }
+
+    /**
+     * Set the read timeout.
+     * 
+     * @param seconds Read timeout in seconds
+     */
+    public static void setReadTimeout(int seconds) {
+        readTimeoutSeconds = seconds;
+    }
+
+    /**
+     * Get the current read timeout.
+     * 
+     * @return Read timeout in seconds
+     */
+    public static int getReadTimeout() {
+        return readTimeoutSeconds;
+    }
+
+    /**
+     * Set the maximum number of retry attempts.
+     * 
+     * @param retries Maximum retry attempts (minimum 1)
+     */
+    public static void setMaxRetries(int retries) {
+        maxRetries = Math.max(1, retries);
+    }
+
+    /**
+     * Get the current maximum retry attempts.
+     * 
+     * @return Maximum retry attempts
+     */
+    public static int getMaxRetries() {
+        return maxRetries;
+    }
+
+    /**
+     * Set the initial backoff delay for retries.
+     * 
+     * @param ms Initial backoff in milliseconds
+     */
+    public static void setInitialBackoffMs(long ms) {
+        initialBackoffMs = Math.max(0, ms);
+    }
+
+    /**
+     * Get the current initial backoff delay.
+     * 
+     * @return Initial backoff in milliseconds
+     */
+    public static long getInitialBackoffMs() {
+        return initialBackoffMs;
+    }
+
+    /**
      * Clear the negative cache (codes known not to exist).
      * 
      * <p>This is useful if you want to retry lookups for codes that
@@ -283,11 +481,33 @@ public final class SpatialReferenceFetcher {
     }
 
     /**
+     * Get the total number of fetch attempts made (for testing).
+     * 
+     * @return Total attempt count
+     */
+    public static int getTotalAttemptCount() {
+        return totalAttemptCounter.get();
+    }
+
+    /**
+     * Reset the total attempt counter (for testing).
+     */
+    public static void resetAttemptCounter() {
+        totalAttemptCounter.set(0);
+    }
+
+    /**
      * Reset all state (for testing).
-     * Clears the negative cache and resets the base URL.
+     * Clears the negative cache, resets the base URL, and resets all configuration to defaults.
      */
     public static void reset() {
         resetBaseUrl();
         clearNotFoundCache();
+        resetAttemptCounter();
+        connectTimeoutSeconds = DEFAULT_CONNECT_TIMEOUT_SECONDS;
+        readTimeoutSeconds = DEFAULT_READ_TIMEOUT_SECONDS;
+        maxRetries = DEFAULT_MAX_RETRIES;
+        initialBackoffMs = DEFAULT_INITIAL_BACKOFF_MS;
+        clientNeedsRecreation = true;
     }
 }

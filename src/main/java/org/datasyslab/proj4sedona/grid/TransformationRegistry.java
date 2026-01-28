@@ -3,6 +3,8 @@ package org.datasyslab.proj4sedona.grid;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.datasyslab.proj4sedona.util.CRSUtils;
+
 /**
  * Registry of CRS pairs to grid files for automatic grid-based datum transformations.
  * 
@@ -89,9 +91,10 @@ public final class TransformationRegistry {
 
     /**
      * Create a lookup key from two CRS codes.
+     * Authority codes are normalized to uppercase for case-insensitive matching.
      */
     private static String makeKey(String fromCrs, String toCrs) {
-        return fromCrs + "|" + toCrs;
+        return CRSUtils.normalizeAuthorityCode(fromCrs) + "|" + CRSUtils.normalizeAuthorityCode(toCrs);
     }
 
     /**
