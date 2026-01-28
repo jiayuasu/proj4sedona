@@ -11,7 +11,8 @@ public final class CRSUtils {
 
     /**
      * Normalize an authority:code string to uppercase authority.
-     * E.g., "epsg:4326" -> "EPSG:4326", "esri:102001" -> "ESRI:102001"
+     * E.g., {@code "epsg:4326"} becomes {@code "EPSG:4326"}, 
+     * {@code "esri:102001"} becomes {@code "ESRI:102001"}.
      * 
      * <p>This method is optimized to quickly reject long strings like
      * PROJ strings, PROJJSON, and WKT without overhead.</p>

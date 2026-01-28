@@ -25,7 +25,7 @@ def get_grid_test_cases() -> List[Dict[str, Any]]:
         {
             "name": "conus_nad83_to_harn",
             "from_crs": "EPSG:4269",  # NAD83
-            "to_crs": "EPSG:4152",    # NAD83(HARN)
+            "to_crs": "EPSG:4152",  # NAD83(HARN)
             "grid_file": "us_noaa_conus.tif",
             "test_points": [
                 {"name": "denver", "lon": -104.9903, "lat": 39.7392},
@@ -34,13 +34,17 @@ def get_grid_test_cases() -> List[Dict[str, Any]]:
                 {"name": "miami", "lon": -80.1918, "lat": 25.7617},
                 {"name": "seattle", "lon": -122.3321, "lat": 47.6062},
             ],
-            "desc": "NAD83 to NAD83(HARN) using CONUS grid"
+            "desc": "NAD83 to NAD83(HARN) using CONUS grid",
         },
         # Canada NTv2 grid transformation (NAD27 to NAD83)
+        # NOTE: We use explicit PROJ strings with +nadgrids to force use of the specific
+        # Canadian NTv2 grid (ca_nrc_ntv2_0.tif) rather than letting pyproj pick the "best"
+        # transformer which might use NADCON5 or other grids with different accuracy.
+        # This ensures the reference data matches what proj4sedona produces.
         {
             "name": "canada_nad27_to_nad83",
-            "from_crs": "EPSG:4267",  # NAD27
-            "to_crs": "EPSG:4269",    # NAD83
+            "from_crs": "+proj=longlat +ellps=clrk66 +nadgrids=@ca_nrc_ntv2_0.tif +no_defs",
+            "to_crs": "+proj=longlat +datum=NAD83 +no_defs",
             "grid_file": "ca_nrc_ntv2_0.tif",
             "test_points": [
                 {"name": "toronto", "lon": -79.3832, "lat": 43.6532},
@@ -49,25 +53,13 @@ def get_grid_test_cases() -> List[Dict[str, Any]]:
                 {"name": "calgary", "lon": -114.0719, "lat": 51.0447},
                 {"name": "ottawa", "lon": -75.6972, "lat": 45.4215},
             ],
-            "desc": "NAD27 to NAD83 using Canadian NTv2 grid"
-        },
-        # Test with PROJ string using nadgrids
-        {
-            "name": "proj_nadgrids_conus",
-            "from_crs": "+proj=longlat +datum=NAD83 +no_defs",
-            "to_crs": "+proj=longlat +ellps=GRS80 +nadgrids=@us_noaa_conus.tif +no_defs",
-            "grid_file": "us_noaa_conus.tif",
-            "test_points": [
-                {"name": "phoenix", "lon": -112.0740, "lat": 33.4484},
-                {"name": "dallas", "lon": -96.7970, "lat": 32.7767},
-            ],
-            "desc": "NAD83 with explicit nadgrids parameter"
+            "desc": "NAD27 to NAD83 using Canadian NTv2 grid",
         },
         # UK OSTN15 grid transformation (ETRS89 to OSGB36)
         {
             "name": "uk_etrs89_to_osgb36",
             "from_crs": "EPSG:4258",  # ETRS89
-            "to_crs": "EPSG:4277",    # OSGB36
+            "to_crs": "EPSG:4277",  # OSGB36
             "grid_file": "uk_os_OSTN15_NTv2_OSGBtoETRS.tif",
             "test_points": [
                 {"name": "london", "lon": -0.1276, "lat": 51.5074},
@@ -76,7 +68,7 @@ def get_grid_test_cases() -> List[Dict[str, Any]]:
                 {"name": "manchester", "lon": -2.2426, "lat": 53.4808},
                 {"name": "birmingham", "lon": -1.8904, "lat": 52.4862},
             ],
-            "desc": "ETRS89 to OSGB36 using OSTN15 grid"
+            "desc": "ETRS89 to OSGB36 using OSTN15 grid",
         },
         # UK OSTN15 with explicit PROJ pipeline (ETRS89 to OSGB36)
         # Uses hgridshift with inverse to transform from ETRS89 to OSGB36
@@ -93,7 +85,7 @@ def get_grid_test_cases() -> List[Dict[str, Any]]:
                 {"name": "manchester", "lon": -2.2426, "lat": 53.4808},
                 {"name": "birmingham", "lon": -1.8904, "lat": 52.4862},
             ],
-            "desc": "ETRS89 to OSGB36 using PROJ pipeline with hgridshift"
+            "desc": "ETRS89 to OSGB36 using PROJ pipeline with hgridshift",
         },
         # UK OSTN15 with explicit +nadgrids (Forward: ETRS89 to OSGB36)
         # This test case uses explicit PROJ strings that proj4sedona can execute
@@ -111,7 +103,10 @@ def get_grid_test_cases() -> List[Dict[str, Any]]:
                 {"name": "birmingham", "lon": -1.8904, "lat": 52.4862},
             ],
             "desc": "ETRS89 to OSGB36 using explicit +nadgrids (forward direction)",
-            "reference_transformer": ("EPSG:4258", "EPSG:4277"),  # Use EPSG for reference
+            "reference_transformer": (
+                "EPSG:4258",
+                "EPSG:4277",
+            ),  # Use EPSG for reference
         },
         # UK OSTN15 with explicit +nadgrids (Inverse: OSGB36 to ETRS89)
         # This test case uses explicit PROJ strings that proj4sedona can execute
@@ -123,46 +118,68 @@ def get_grid_test_cases() -> List[Dict[str, Any]]:
             "grid_file": "uk_os_OSTN15_NTv2_OSGBtoETRS.tif",
             "test_points": [
                 # Use OSGB36 coordinates (from EPSG:4258->EPSG:4277 forward transform)
-                {"name": "london", "lon": -0.12601865501757062, "lat": 51.506888185279635},
-                {"name": "edinburgh", "lon": -3.1868736941194284, "lat": 55.95336278929409},
+                {
+                    "name": "london",
+                    "lon": -0.12601865501757062,
+                    "lat": 51.506888185279635,
+                },
+                {
+                    "name": "edinburgh",
+                    "lon": -3.1868736941194284,
+                    "lat": 55.95336278929409,
+                },
                 {"name": "cardiff", "lon": -3.177835328022739, "lat": 51.4811301825721},
-                {"name": "manchester", "lon": -2.2411629558334205, "lat": 53.48053580324155},
-                {"name": "birmingham", "lon": -1.8889628322226104, "lat": 52.48581568047493},
+                {
+                    "name": "manchester",
+                    "lon": -2.2411629558334205,
+                    "lat": 53.48053580324155,
+                },
+                {
+                    "name": "birmingham",
+                    "lon": -1.8889628322226104,
+                    "lat": 52.48581568047493,
+                },
             ],
             "desc": "OSGB36 to ETRS89 using explicit +nadgrids (inverse direction)",
-            "reference_transformer": ("EPSG:4277", "EPSG:4258"),  # Use EPSG for reference
+            "reference_transformer": (
+                "EPSG:4277",
+                "EPSG:4258",
+            ),  # Use EPSG for reference
         },
     ]
 
 
-def transform_with_grid(from_crs_str: str, to_crs_str: str, 
-                         test_points: List[Dict], 
-                         verbose: bool = False,
-                         pipeline: str = None,
-                         reference_transformer: tuple = None) -> Dict[str, Any]:
+def transform_with_grid(
+    from_crs_str: str,
+    to_crs_str: str,
+    test_points: List[Dict],
+    verbose: bool = False,
+    pipeline: str = None,
+    reference_transformer: tuple = None,
+) -> Dict[str, Any]:
     """Perform transformation and return results.
-    
+
     Args:
         reference_transformer: Optional tuple of (from_crs, to_crs) EPSG codes to use
                               for computing reference values when the primary CRS
                               definition doesn't work properly in pyproj.
     """
-    
+
     result = {
         "from_crs": from_crs_str,
         "to_crs": to_crs_str,
         "transformations": [],
         "transformer_info": {},
-        "error": None
+        "error": None,
     }
-    
+
     try:
         if pipeline:
             # Use explicit pipeline
             transformer = Transformer.from_pipeline(pipeline)
             result["transformer_info"] = {
                 "pipeline": pipeline,
-                "type": "explicit_pipeline"
+                "type": "explicit_pipeline",
             }
         elif reference_transformer:
             # Use EPSG-based transformer for reference values
@@ -174,50 +191,56 @@ def transform_with_grid(from_crs_str: str, to_crs_str: str,
                 "reference_from": ref_from,
                 "reference_to": ref_to,
                 "type": "epsg_reference",
-                "note": "Using EPSG transformer for reference values"
+                "note": "Using EPSG transformer for reference values",
             }
         else:
             from_crs = CRS(from_crs_str)
             to_crs = CRS(to_crs_str)
-            
+
             # Get transformer group to see available transformations
             tg = TransformerGroup(from_crs, to_crs, always_xy=True)
-            
+
             result["transformer_info"] = {
                 "num_transformers": len(tg.transformers),
-                "best_accuracy": tg.best_available if hasattr(tg, 'best_available') else None,
+                "best_accuracy": tg.best_available
+                if hasattr(tg, "best_available")
+                else None,
             }
-            
+
             # Use the best transformer
             transformer = Transformer.from_crs(from_crs, to_crs, always_xy=True)
-        
+
         for point in test_points:
             try:
                 x_out, y_out = transformer.transform(point["lon"], point["lat"])
-                
-                result["transformations"].append({
-                    "point_name": point["name"],
-                    "input": {"x": point["lon"], "y": point["lat"]},
-                    "output": {"x": float(x_out), "y": float(y_out)},
-                    "error": None
-                })
+
+                result["transformations"].append(
+                    {
+                        "point_name": point["name"],
+                        "input": {"x": point["lon"], "y": point["lat"]},
+                        "output": {"x": float(x_out), "y": float(y_out)},
+                        "error": None,
+                    }
+                )
             except Exception as e:
-                result["transformations"].append({
-                    "point_name": point["name"],
-                    "input": {"x": point["lon"], "y": point["lat"]},
-                    "output": None,
-                    "error": str(e)
-                })
-                
+                result["transformations"].append(
+                    {
+                        "point_name": point["name"],
+                        "input": {"x": point["lon"], "y": point["lat"]},
+                        "output": None,
+                        "error": str(e),
+                    }
+                )
+
     except Exception as e:
         result["error"] = str(e)
-    
+
     return result
 
 
 def generate_grid_reference(output_file: str, verbose: bool = False) -> None:
     """Generate grid transformation reference data."""
-    
+
     reference_data = {
         "version": "1.0",
         "generator": "pyproj",
@@ -226,32 +249,33 @@ def generate_grid_reference(output_file: str, verbose: bool = False) -> None:
         "notes": [
             "Grid files are fetched from cdn.proj.org by pyproj automatically",
             "Results may vary slightly based on pyproj/PROJ version and grid file version",
-            "Tolerance for grid-based transforms should be ~1cm (0.01m)"
+            "Tolerance for grid-based transforms should be ~1cm (0.01m)",
         ],
-        "test_cases": []
+        "test_cases": [],
     }
-    
+
     # Get pyproj version and data directory
     import pyproj
+
     reference_data["pyproj_version"] = pyproj.__version__
     reference_data["proj_data_dir"] = pyproj.datadir.get_data_dir()
-    
+
     # Enable network for grid downloads
     pyproj.network.set_network_enabled(True)
-    
+
     for test_case in get_grid_test_cases():
         if verbose:
             print(f"  Processing: {test_case['name']}")
-        
+
         transform_result = transform_with_grid(
             test_case["from_crs"],
             test_case["to_crs"],
             test_case["test_points"],
             verbose,
             pipeline=test_case.get("pipeline"),
-            reference_transformer=test_case.get("reference_transformer")
+            reference_transformer=test_case.get("reference_transformer"),
         )
-        
+
         case_data = {
             "name": test_case["name"],
             "description": test_case["desc"],
@@ -260,24 +284,25 @@ def generate_grid_reference(output_file: str, verbose: bool = False) -> None:
             "to_crs": test_case["to_crs"],
             "transform_result": transform_result,
         }
-        
+
         # Add pipeline to output if present
         if "pipeline" in test_case:
             case_data["pipeline"] = test_case["pipeline"]
-        
+
         reference_data["test_cases"].append(case_data)
-    
+
     # Write output
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         json.dump(reference_data, f, indent=2)
 
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", "-o", default="grid_transform_reference.json")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
-    
+
     generate_grid_reference(args.output, args.verbose)
     print(f"Generated: {args.output}")

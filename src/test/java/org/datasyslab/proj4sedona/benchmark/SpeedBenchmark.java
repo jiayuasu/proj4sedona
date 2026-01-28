@@ -113,6 +113,33 @@ public class SpeedBenchmark {
         }
 
         setupOstn15();
+        
+        // Pre-load grid files from test resources for grid correctness tests
+        // (must be after setupOstn15 which configures the cache directory)
+        loadTestGrids();
+    }
+    
+    private void loadTestGrids() {
+        Path gridsDir = Paths.get("src/test/resources/grids");
+        String[] gridFiles = {
+            "ca_nrc_ntv2_0.tif",      // Canadian NAD27 to NAD83
+            "us_noaa_conus.tif",       // US NAD83 to HARN
+            "ca_nrc_NA83SCRS.tif"      // Additional Canadian grid
+        };
+        
+        for (String gridFile : gridFiles) {
+            Path gridPath = gridsDir.resolve(gridFile);
+            if (Files.exists(gridPath)) {
+                try {
+                    GridLoader.loadFile(gridFile, gridPath);
+                    System.out.println("   Loaded grid: " + gridFile);
+                } catch (IOException e) {
+                    System.out.println("   Failed to load grid " + gridFile + ": " + e.getMessage());
+                }
+            } else {
+                System.out.println("   Grid file not found: " + gridPath);
+            }
+        }
     }
 
     private void setupOstn15() {
