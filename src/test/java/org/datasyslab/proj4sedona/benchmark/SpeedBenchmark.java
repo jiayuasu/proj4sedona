@@ -499,7 +499,8 @@ public class SpeedBenchmark {
         if (crs.startsWith("EPSG:")) {
             try {
                 int code = Integer.parseInt(crs.substring(5));
-                return code >= 32600 || code == 3857;
+                // UTM zones (326xx, 327xx), Web Mercator (3857), UPS North/South (5041, 5042)
+                return code >= 32600 || code == 3857 || code == 5041 || code == 5042;
             } catch (NumberFormatException e) {
                 return false;
             }
