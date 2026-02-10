@@ -8,7 +8,6 @@ import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.ProjectionDef;
 import org.datasyslab.proj4sedona.transform.Converter;
 import org.datasyslab.proj4sedona.defs.SpatialReferenceFetcher;
-import org.datasyslab.proj4sedona.defs.CRSFetchException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -278,25 +277,18 @@ class DefsTest {
     void testGetCaseInsensitive_BuiltIn() {
         Defs.globals();
         
-        // Disable remote fetch to ensure we're testing built-in definitions
-        Defs.setRemoteFetchEnabled(false);
+        // These should all return the same built-in definition
+        ProjectionDef upper = Defs.get("EPSG:4326");
+        ProjectionDef lower = Defs.get("epsg:4326");
+        ProjectionDef mixed = Defs.get("Epsg:4326");
         
-        try {
-            // These should all return the same built-in definition
-            ProjectionDef upper = Defs.get("EPSG:4326");
-            ProjectionDef lower = Defs.get("epsg:4326");
-            ProjectionDef mixed = Defs.get("Epsg:4326");
-            
-            assertNotNull(upper, "EPSG:4326 should be found");
-            assertNotNull(lower, "epsg:4326 should be found (case-insensitive)");
-            assertNotNull(mixed, "Epsg:4326 should be found (case-insensitive)");
-            
-            // They should be the exact same object (from built-in registry)
-            assertSame(upper, lower, "Should return same definition regardless of case");
-            assertSame(upper, mixed, "Should return same definition regardless of case");
-        } finally {
-            Defs.setRemoteFetchEnabled(true);
-        }
+        assertNotNull(upper, "EPSG:4326 should be found");
+        assertNotNull(lower, "epsg:4326 should be found (case-insensitive)");
+        assertNotNull(mixed, "Epsg:4326 should be found (case-insensitive)");
+        
+        // They should be the exact same object (from built-in registry)
+        assertSame(upper, lower, "Should return same definition regardless of case");
+        assertSame(upper, mixed, "Should return same definition regardless of case");
     }
 
     @Test
@@ -379,9 +371,8 @@ class DefsTest {
     @Test
     void testRemoteFetch_ESRI_102001_CanadaAlbers() {
         // ESRI:102001 = Canada Albers Equal Area Conic
-        // Should be fetched from spatialreference.org
+        // Should be fetched via SpatialReferenceProvider
         Defs.globals();
-        SpatialReferenceFetcher.clearNotFoundCache();
         
         ProjectionDef def = Defs.get("ESRI:102001");
         
@@ -397,7 +388,6 @@ class DefsTest {
     void testRemoteFetch_ESRI_CaseInsensitive() {
         // Test case-insensitivity for ESRI authority codes
         Defs.globals();
-        SpatialReferenceFetcher.clearNotFoundCache();
         
         // Fetch with uppercase
         ProjectionDef upper = Defs.get("ESRI:102001");
@@ -420,7 +410,6 @@ class DefsTest {
     void testRemoteFetch_ESRI_102008_NorthAmericaAlbers() {
         // ESRI:102008 = North America Albers Equal Area Conic
         Defs.globals();
-        SpatialReferenceFetcher.clearNotFoundCache();
         
         ProjectionDef def = Defs.get("ESRI:102008");
         
@@ -435,7 +424,6 @@ class DefsTest {
     void testRemoteFetch_IAU2015_49900_Mars() {
         // IAU_2015:49900 = Mars (2015) - Sphere / Ocentric
         Defs.globals();
-        SpatialReferenceFetcher.clearNotFoundCache();
         
         ProjectionDef def = Defs.get("IAU_2015:49900");
         
@@ -447,7 +435,6 @@ class DefsTest {
     void testRemoteFetch_IAU2015_CaseInsensitive() {
         // Test case-insensitivity for IAU_2015 authority codes
         Defs.globals();
-        SpatialReferenceFetcher.clearNotFoundCache();
         
         // Fetch with uppercase
         ProjectionDef upper = Defs.get("IAU_2015:49900");
@@ -465,7 +452,6 @@ class DefsTest {
     void testRemoteFetch_Transform_ESRI_ToWGS84() {
         // Test transformation using remotely fetched ESRI definition
         Defs.globals();
-        SpatialReferenceFetcher.clearNotFoundCache();
         
         // Transform from WGS84 to ESRI:102001 (Canada Albers) and back
         Converter conv = Proj4.proj4("EPSG:4326", "ESRI:102001");
@@ -488,7 +474,6 @@ class DefsTest {
     void testRemoteFetch_Transform_LowercaseEsri() {
         // Test transformation using lowercase "esri:102001"
         Defs.globals();
-        SpatialReferenceFetcher.clearNotFoundCache();
         
         // This is the key use case: user specifies lowercase authority
         Converter conv = Proj4.proj4("epsg:4326", "esri:102001");
@@ -501,18 +486,12 @@ class DefsTest {
     }
 
     @Test
-    void testRemoteFetch_NonExistentCode_ThrowsException() {
-        // Test that non-existent codes throw CRSFetchException
+    void testRemoteFetch_NonExistentCode_ReturnsNull() {
+        // Test that non-existent codes return null (no provider can resolve)
         Defs.globals();
-        SpatialReferenceFetcher.clearNotFoundCache();
         
-        CRSFetchException ex = assertThrows(CRSFetchException.class, () -> {
-            Defs.get("ESRI:999999999");
-        });
-        
-        assertEquals("ESRI:999999999", ex.getCrsCode());
-        assertEquals(CRSFetchException.Reason.NOT_FOUND, ex.getReason());
-        assertTrue(ex.getMessage().contains("not found"));
+        ProjectionDef def = Defs.get("ESRI:999999999");
+        assertNull(def, "Non-existent ESRI code should return null");
         
         // Verify it's in the negative cache
         assertTrue(SpatialReferenceFetcher.isInNotFoundCache("esri", "999999999"),
@@ -520,31 +499,22 @@ class DefsTest {
     }
 
     @Test
-    void testRemoteFetch_NonExistentAuthority_ThrowsException() {
-        // Test that non-existent authorities throw CRSFetchException
+    void testRemoteFetch_NonExistentAuthority_ReturnsNull() {
+        // Test that non-existent authorities return null (SpatialReferenceProvider returns null for NOT_FOUND)
         Defs.globals();
-        SpatialReferenceFetcher.clearNotFoundCache();
         
-        CRSFetchException ex = assertThrows(CRSFetchException.class, () -> {
-            Defs.get("BOGUS:12345");
-        });
-        
-        assertEquals("BOGUS:12345", ex.getCrsCode());
-        assertEquals(CRSFetchException.Reason.NOT_FOUND, ex.getReason());
+        ProjectionDef def = Defs.get("BOGUS:12345");
+        assertNull(def, "Non-existent authority should return null");
     }
 
     @Test
-    void testRemoteFetchDisabled_NonBuiltIn_ReturnsNull() {
-        // When remote fetch is disabled, non-built-in codes should return null (no exception)
+    void testNoProviders_ReturnsNull() {
+        // When all providers are removed, non-cached codes should return null
         Defs.globals();
-        Defs.setRemoteFetchEnabled(false);
+        Defs.clearProviders();
         
-        try {
-            // ESRI:102001 is not a built-in, so should return null
-            ProjectionDef def = Defs.get("ESRI:102001");
-            assertNull(def, "Should return null when remote fetch is disabled");
-        } finally {
-            Defs.setRemoteFetchEnabled(true);
-        }
+        // ESRI:102001 is not cached, so should return null
+        ProjectionDef def = Defs.get("ESRI:102001");
+        assertNull(def, "Should return null when no providers are registered");
     }
 }
