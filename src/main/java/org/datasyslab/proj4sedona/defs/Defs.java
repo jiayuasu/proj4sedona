@@ -121,9 +121,25 @@ public final class Defs {
      *
      * @param name the {@link CRSProvider#getName()} of the provider to remove
      * @return {@code true} if a provider was removed
+     * @throws IllegalArgumentException if {@code name} is {@code null}
      */
     public static synchronized boolean removeProvider(String name) {
-        return providers.removeIf(e -> e.provider.getName().equals(name));
+        if (name == null) {
+            throw new IllegalArgumentException("Provider name must not be null");
+        }
+        boolean removed = false;
+        List<ProviderEntry> filtered = new ArrayList<>();
+        for (ProviderEntry entry : providers) {
+            if (entry.provider.getName().equals(name)) {
+                removed = true;
+            } else {
+                filtered.add(entry);
+            }
+        }
+        if (removed) {
+            providers = new CopyOnWriteArrayList<>(filtered);
+        }
+        return removed;
     }
 
     /**
@@ -171,7 +187,7 @@ public final class Defs {
             definitions.put(name, def);
         } else {
             throw new IllegalArgumentException(
-                "Unsupported definition format. Only PROJ strings (starting with '+') are supported.");
+                "Unsupported definition format for Defs.set(name, String). Only PROJ strings (starting with '+') are supported by this method.");
         }
     }
 
