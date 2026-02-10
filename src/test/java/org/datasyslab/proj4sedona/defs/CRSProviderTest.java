@@ -44,8 +44,10 @@ class CRSProviderTest {
 
     @Test
     void testCRSResult_Wkt() {
-        CRSResult result = CRSResult.wkt("GEOGCRS[\"WGS 84\"]");
-        assertEquals(CRSResult.Format.WKT, result.getFormat());
+        CRSResult wkt2 = CRSResult.wkt2("GEOGCRS[\"WGS 84\"]");
+        assertEquals(CRSResult.Format.WKT2, wkt2.getFormat());
+        CRSResult wkt1 = CRSResult.wkt1("GEOGCS[\"WGS 84\"]");
+        assertEquals(CRSResult.Format.WKT1, wkt1.getFormat());
     }
 
     @Test

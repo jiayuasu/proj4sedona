@@ -263,7 +263,8 @@ public final class Defs {
                     Map<String, Object> json = gson.fromJson(result.getDefinition(), Map.class);
                     def = WktParser.parse(json);
                     break;
-                case WKT:
+                case WKT1:
+                case WKT2:
                     def = WktParser.parse(result.getDefinition());
                     break;
                 default:

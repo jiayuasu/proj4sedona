@@ -8,7 +8,8 @@ package org.datasyslab.proj4sedona.defs;
  * <pre>
  * CRSResult.proj4("+proj=longlat +datum=WGS84 +units=degrees");
  * CRSResult.projJson("{\"type\":\"GeographicCRS\", ...}");
- * CRSResult.wkt("GEOGCRS[\"WGS 84\", ...]");
+ * CRSResult.wkt1("GEOGCS[\"WGS 84\", ...]");
+ * CRSResult.wkt2("GEOGCRS[\"WGS 84\", ...]");
  * </pre>
  */
 public final class CRSResult {
@@ -21,8 +22,10 @@ public final class CRSResult {
         PROJ4,
         /** PROJJSON (a JSON object following the PROJJSON schema) */
         PROJJSON,
-        /** Well-Known Text (WKT 1 or WKT 2) */
-        WKT
+        /** OGC Well-Known Text 1 (e.g. {@code GEOGCS["WGS 84", ...]}) */
+        WKT1,
+        /** ISO 19162 Well-Known Text 2 (e.g. {@code GEOGCRS["WGS 84", ...]}) */
+        WKT2
     }
 
     private final String definition;
@@ -57,13 +60,23 @@ public final class CRSResult {
     }
 
     /**
-     * Create a result containing a WKT definition string.
+     * Create a result containing a WKT1 definition string.
      *
-     * @param wkt the WKT string (WKT 1 or WKT 2)
+     * @param wkt the WKT1 string (e.g. {@code GEOGCS["WGS 84", ...]})
      * @return a new {@code CRSResult}
      */
-    public static CRSResult wkt(String wkt) {
-        return new CRSResult(wkt, Format.WKT);
+    public static CRSResult wkt1(String wkt) {
+        return new CRSResult(wkt, Format.WKT1);
+    }
+
+    /**
+     * Create a result containing a WKT2 definition string.
+     *
+     * @param wkt the WKT2 string (e.g. {@code GEOGCRS["WGS 84", ...]})
+     * @return a new {@code CRSResult}
+     */
+    public static CRSResult wkt2(String wkt) {
+        return new CRSResult(wkt, Format.WKT2);
     }
 
     /**
