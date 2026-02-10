@@ -429,6 +429,10 @@ class CRSProviderTest {
     @Test
     void testProviderChain_AllReturnNull() {
         Defs.globals();
+        // Explicitly resolve and cache EPSG:4326 before clearing providers,
+        // so the cache assertion below does not depend on globals() internals.
+        Defs.get("EPSG:4326");
+
         // Remove default providers and add one that always returns null
         Defs.clearProviders();
         CRSProvider nullProvider = new CRSProvider() {
@@ -437,9 +441,9 @@ class CRSProviderTest {
         };
         Defs.registerProvider(nullProvider, 50);
 
+        // EPSG:4326 was explicitly cached above, so it should still resolve
         ProjectionDef def = Defs.get("EPSG:4326");
-        // 4326 was cached by globals(), so it will be found in cache
-        assertNotNull(def, "EPSG:4326 should still be in cache from globals()");
+        assertNotNull(def, "EPSG:4326 should still be in cache");
 
         // But an uncached code should return null
         ProjectionDef uncached = Defs.get("EPSG:9999");

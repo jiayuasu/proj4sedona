@@ -19,11 +19,13 @@ class DefsTest {
     @BeforeEach
     void setUp() {
         Defs.reset();
+        SpatialReferenceFetcher.clearNotFoundCache();
     }
 
     @AfterEach
     void tearDown() {
         Defs.reset();
+        SpatialReferenceFetcher.clearNotFoundCache();
     }
 
     // ==================== Basic Registry Operations ====================

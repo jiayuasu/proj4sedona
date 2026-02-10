@@ -7,9 +7,9 @@ import org.datasyslab.proj4sedona.parser.WktParser;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -42,7 +42,7 @@ import org.datasyslab.proj4sedona.util.CRSUtils;
 public final class Defs {
 
     /** Cache of parsed projection definitions, keyed by normalized name */
-    private static final Map<String, ProjectionDef> definitions = new HashMap<>();
+    private static final Map<String, ProjectionDef> definitions = new ConcurrentHashMap<>();
 
     /** Shared Gson instance — thread-safe for read operations. */
     private static final Gson GSON = new Gson();
