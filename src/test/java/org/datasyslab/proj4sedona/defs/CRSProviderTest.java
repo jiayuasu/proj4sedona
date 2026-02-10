@@ -389,7 +389,7 @@ class CRSProviderTest {
     void testProviderChain_HigherPriorityWins() {
         Defs.globals();
 
-        // Register a custom provider at priority 50 that overrides EPSG:4326
+        // Register a custom provider at priority 50 that resolves EPSG:99887
         CRSProvider custom = new CRSProvider() {
             public String getName() { return "override"; }
             public CRSResult resolve(String authority, String code) {

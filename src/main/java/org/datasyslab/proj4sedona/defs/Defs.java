@@ -44,6 +44,9 @@ public final class Defs {
     /** Cache of parsed projection definitions, keyed by normalized name */
     private static final Map<String, ProjectionDef> definitions = new HashMap<>();
 
+    /** Shared Gson instance — thread-safe for read operations. */
+    private static final Gson GSON = new Gson();
+
     /** Flag indicating whether global definitions have been initialized */
     private static boolean globalsInitialized = false;
 
@@ -262,8 +265,7 @@ public final class Defs {
                     def = ProjString.parse(result.getDefinition());
                     break;
                 case PROJJSON:
-                    Gson gson = new Gson();
-                    Map<String, Object> json = gson.fromJson(result.getDefinition(), Map.class);
+                    Map<String, Object> json = GSON.fromJson(result.getDefinition(), Map.class);
                     def = WktParser.parse(json);
                     break;
                 case WKT1:
@@ -365,13 +367,13 @@ public final class Defs {
         ProjectionDef wgs84 = get("EPSG:4326");     // resolved via BuiltInCRSProvider
         ProjectionDef webMerc = get("EPSG:3857");    // resolved via BuiltInCRSProvider
         if (wgs84 != null) {
-            definitions.put("WGS84", wgs84);
+            definitions.put(CRSUtils.normalizeAuthorityCode("WGS84"), wgs84);
         }
         if (webMerc != null) {
-            definitions.put("EPSG:3785", webMerc);  // backward compat alias
-            definitions.put("GOOGLE", webMerc);
-            definitions.put("EPSG:900913", webMerc);
-            definitions.put("EPSG:102113", webMerc);
+            definitions.put(CRSUtils.normalizeAuthorityCode("EPSG:3785"), webMerc);  // backward compat alias
+            definitions.put(CRSUtils.normalizeAuthorityCode("GOOGLE"), webMerc);
+            definitions.put(CRSUtils.normalizeAuthorityCode("EPSG:900913"), webMerc);
+            definitions.put(CRSUtils.normalizeAuthorityCode("EPSG:102113"), webMerc);
         }
     }
 
