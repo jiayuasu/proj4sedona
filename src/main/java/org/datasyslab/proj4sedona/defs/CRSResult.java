@@ -33,7 +33,7 @@ public final class CRSResult {
 
     private CRSResult(String definition, Format format) {
         if (definition == null || definition.trim().isEmpty()) {
-            throw new IllegalArgumentException("CRS definition must not be null or empty");
+            throw new IllegalArgumentException("CRS definition must not be null or blank");
         }
         this.definition = definition;
         this.format = format;

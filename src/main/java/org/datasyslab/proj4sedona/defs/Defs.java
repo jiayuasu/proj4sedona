@@ -48,7 +48,7 @@ public final class Defs {
     private static final Gson GSON = new Gson();
 
     /** Flag indicating whether global definitions have been initialized */
-    private static boolean globalsInitialized = false;
+    private static volatile boolean globalsInitialized = false;
 
     /** Pattern to match authority:code (e.g., "EPSG:4326", "ESRI:102001", "IAU_2015:49900") */
     private static final Pattern AUTHORITY_CODE_PATTERN =
@@ -371,7 +371,6 @@ public final class Defs {
         if (globalsInitialized) {
             return;
         }
-        globalsInitialized = true;
 
         // Register default providers
         registerProvider(new BuiltInCRSProvider(), 100);
@@ -380,17 +379,26 @@ public final class Defs {
         // Pre-cache aliases that don't match the authority:code pattern.
         // These names (WGS84, GOOGLE) cannot be resolved by providers because
         // they lack a colon, so we eagerly resolve and cache them here.
-        ProjectionDef wgs84 = get("EPSG:4326");     // resolved via BuiltInCRSProvider
-        ProjectionDef webMerc = get("EPSG:3857");    // resolved via BuiltInCRSProvider
-        if (wgs84 != null) {
+        // Resolve directly via provider to avoid re-entering get() → globals().
+        BuiltInCRSProvider builtIn = new BuiltInCRSProvider();
+        CRSResult wgs84Result = builtIn.resolve("epsg", "4326");
+        CRSResult webMercResult = builtIn.resolve("epsg", "3857");
+        if (wgs84Result != null) {
+            ProjectionDef wgs84 = parseResult(wgs84Result, "EPSG:4326");
+            definitions.put("EPSG:4326", wgs84);
             definitions.put(CRSUtils.normalizeAuthorityCode("WGS84"), wgs84);
         }
-        if (webMerc != null) {
-            definitions.put(CRSUtils.normalizeAuthorityCode("EPSG:3785"), webMerc);  // backward compat alias
+        if (webMercResult != null) {
+            ProjectionDef webMerc = parseResult(webMercResult, "EPSG:3857");
+            definitions.put("EPSG:3857", webMerc);
+            definitions.put(CRSUtils.normalizeAuthorityCode("EPSG:3785"), webMerc);
             definitions.put(CRSUtils.normalizeAuthorityCode("GOOGLE"), webMerc);
             definitions.put(CRSUtils.normalizeAuthorityCode("EPSG:900913"), webMerc);
             definitions.put(CRSUtils.normalizeAuthorityCode("EPSG:102113"), webMerc);
         }
+
+        // Set flag last so concurrent callers of get() see a fully-initialized state
+        globalsInitialized = true;
     }
 
     /**

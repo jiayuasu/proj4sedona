@@ -56,8 +56,8 @@ public final class SpatialReferenceProvider implements CRSProvider {
                         result.getLastException());
 
             default:
-                throw new CRSFetchException(fullCode, CRSFetchException.Reason.NETWORK_ERROR,
-                        "Unknown fetch status for " + fullCode);
+                throw new IllegalStateException(
+                        "Unknown fetch status " + result.getStatus() + " for " + fullCode);
         }
     }
 }
