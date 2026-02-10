@@ -1,9 +1,8 @@
 package org.datasyslab.proj4sedona.defs;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
-
-import org.datasyslab.proj4sedona.util.CRSUtils;
 
 /**
  * CRS provider for commonly-used, hardcoded projection definitions.
@@ -52,7 +51,7 @@ public final class BuiltInCRSProvider implements CRSProvider {
     @Override
     public CRSResult resolve(String authority, String code) {
         // Reconstruct the normalized key (uppercase authority)
-        String key = authority.toUpperCase() + ":" + code;
+        String key = authority.toUpperCase(Locale.ROOT) + ":" + code;
         String proj4 = definitions.get(key);
         return proj4 != null ? CRSResult.proj4(proj4) : null;
     }

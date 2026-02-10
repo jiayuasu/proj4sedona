@@ -70,7 +70,7 @@ public final class Defs {
     }
 
     /** Priority-ordered list of registered providers (thread-safe for reads). */
-    private static final CopyOnWriteArrayList<ProviderEntry> providers = new CopyOnWriteArrayList<>();
+    private static volatile CopyOnWriteArrayList<ProviderEntry> providers = new CopyOnWriteArrayList<>();
 
     private Defs() {
         // Utility class - prevent instantiation
@@ -104,8 +104,9 @@ public final class Defs {
         List<ProviderEntry> snapshot = new ArrayList<>(providers);
         snapshot.add(new ProviderEntry(provider, priority));
         Collections.sort(snapshot);
-        providers.clear();
-        providers.addAll(snapshot);
+        // Atomic swap: avoids a window where concurrent readers see an empty list
+        CopyOnWriteArrayList<ProviderEntry> replacement = new CopyOnWriteArrayList<>(snapshot);
+        providers = replacement;
     }
 
     /**
@@ -137,7 +138,7 @@ public final class Defs {
      * <p><strong>Warning:</strong> primarily intended for testing.</p>
      */
     public static synchronized void clearProviders() {
-        providers.clear();
+        providers = new CopyOnWriteArrayList<>();
     }
 
     // ==================== Definition Cache ====================
@@ -387,7 +388,7 @@ public final class Defs {
      */
     public static synchronized void reset() {
         definitions.clear();
-        providers.clear();
+        providers = new CopyOnWriteArrayList<>();
         globalsInitialized = false;
         SpatialReferenceFetcher.reset();
     }
