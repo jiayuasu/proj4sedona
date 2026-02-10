@@ -17,7 +17,6 @@ import java.util.Map;
  *   <li>EPSG:327xx — UTM zones 1–60 South (WGS 84)</li>
  *   <li>EPSG:5041 — WGS 84 / UPS North</li>
  *   <li>EPSG:5042 — WGS 84 / UPS South</li>
- *   <li>Aliases: WGS84, GOOGLE, EPSG:3785, EPSG:900913, EPSG:102113</li>
  * </ul>
  *
  * <p>Registered by default at priority 100 via {@link Defs#globals()}.</p>
@@ -81,23 +80,9 @@ public final class BuiltInCRSProvider implements CRSProvider {
 
         // UPS South
         put("EPSG:5042", "+title=WGS 84 / UPS South (E,N) +proj=stere +lat_0=-90 +lon_0=0 +k=0.994 +x_0=2000000 +y_0=2000000 +datum=WGS84 +units=m");
-
-        // Common aliases — point to the same proj4 strings
-        putAlias("WGS84",         "EPSG:4326");
-        putAlias("EPSG:3785",     "EPSG:3857");
-        putAlias("GOOGLE",        "EPSG:3857");
-        putAlias("EPSG:900913",   "EPSG:3857");
-        putAlias("EPSG:102113",   "EPSG:3857");
     }
 
     private void put(String key, String proj4) {
         definitions.put(key, proj4);
-    }
-
-    private void putAlias(String alias, String target) {
-        String proj4 = definitions.get(target);
-        if (proj4 != null) {
-            definitions.put(alias, proj4);
-        }
     }
 }

@@ -1,5 +1,7 @@
 package org.datasyslab.proj4sedona.defs;
 
+import java.util.Locale;
+
 /**
  * CRS provider that fetches PROJJSON definitions from
  * <a href="https://spatialreference.org">spatialreference.org</a>.
@@ -35,7 +37,7 @@ public final class SpatialReferenceProvider implements CRSProvider {
      */
     @Override
     public CRSResult resolve(String authority, String code) {
-        String fullCode = authority.toUpperCase() + ":" + code;
+        String fullCode = authority.toUpperCase(Locale.ROOT) + ":" + code;
 
         SpatialReferenceFetcher.FetchResult result =
                 SpatialReferenceFetcher.fetchProjJson(authority, code);

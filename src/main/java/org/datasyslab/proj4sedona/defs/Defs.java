@@ -95,8 +95,12 @@ public final class Defs {
         if (provider == null) {
             throw new IllegalArgumentException("provider must not be null");
         }
+        String name = provider.getName();
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("provider name must not be null or blank");
+        }
         for (ProviderEntry e : providers) {
-            if (e.provider.getName().equals(provider.getName())) {
+            if (e.provider.getName().equals(name)) {
                 throw new IllegalArgumentException(
                     "Provider already registered: " + provider.getName());
             }
@@ -236,7 +240,6 @@ public final class Defs {
     /**
      * Iterate through providers in priority order, parse the first non-null result.
      */
-    @SuppressWarnings("unchecked")
     private static ProjectionDef resolveFromProviders(String authority, String code, String fullCode) {
         for (ProviderEntry entry : providers) {
             CRSResult result = entry.provider.resolve(authority, code);

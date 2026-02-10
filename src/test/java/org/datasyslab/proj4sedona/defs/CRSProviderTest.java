@@ -129,6 +129,26 @@ class CRSProviderTest {
     }
 
     @Test
+    void testRegisterProvider_NullNameThrows() {
+        CRSProvider nullName = new CRSProvider() {
+            public String getName() { return null; }
+            public CRSResult resolve(String authority, String code) { return null; }
+        };
+        assertThrows(IllegalArgumentException.class, () ->
+                Defs.registerProvider(nullName, 50));
+    }
+
+    @Test
+    void testRegisterProvider_BlankNameThrows() {
+        CRSProvider blankName = new CRSProvider() {
+            public String getName() { return "   "; }
+            public CRSResult resolve(String authority, String code) { return null; }
+        };
+        assertThrows(IllegalArgumentException.class, () ->
+                Defs.registerProvider(blankName, 50));
+    }
+
+    @Test
     void testRemoveProvider() {
         Defs.globals();
         assertEquals(2, Defs.getProviders().size());
@@ -246,6 +266,71 @@ class CRSProviderTest {
     }
 
     // ==================== Custom Provider Resolution ====================
+
+    @Test
+    void testCustomProvider_WKT1_ParsedAndCached() {
+        Defs.globals();
+
+        String wkt1 = "GEOGCS[\"WGS 84\"," +
+                "DATUM[\"WGS_1984\"," +
+                "SPHEROID[\"WGS 84\",6378137,298.257223563]]," +
+                "PRIMEM[\"Greenwich\",0]," +
+                "UNIT[\"degree\",0.0174532925199433]]";
+
+        CRSProvider wkt1Provider = new CRSProvider() {
+            public String getName() { return "wkt1-provider"; }
+            public CRSResult resolve(String authority, String code) {
+                if ("test".equals(authority) && "wkt1".equals(code)) {
+                    return CRSResult.wkt1(wkt1);
+                }
+                return null;
+            }
+        };
+        Defs.registerProvider(wkt1Provider, 50);
+
+        ProjectionDef def = Defs.get("TEST:wkt1");
+        assertNotNull(def, "WKT1 provider result should be parsed");
+        assertEquals("longlat", def.getProjName());
+        assertEquals("wgs84", def.getDatumCode());
+        assertEquals("TEST:wkt1", def.getSrsCode());
+
+        // Verify caching — second call should return cached value
+        ProjectionDef cached = Defs.get("TEST:wkt1");
+        assertSame(def, cached, "Result should be cached");
+    }
+
+    @Test
+    void testCustomProvider_WKT2_ParsedAndCached() {
+        Defs.globals();
+
+        String wkt2 = "GEOGCRS[\"WGS 84\"," +
+                "DATUM[\"World Geodetic System 1984\"," +
+                "ELLIPSOID[\"WGS 84\",6378137,298.257223563]]," +
+                "CS[ellipsoidal,2]," +
+                "AXIS[\"geodetic latitude (Lat)\",north]," +
+                "AXIS[\"geodetic longitude (Lon)\",east]," +
+                "UNIT[\"degree\",0.0174532925199433]]";
+
+        CRSProvider wkt2Provider = new CRSProvider() {
+            public String getName() { return "wkt2-provider"; }
+            public CRSResult resolve(String authority, String code) {
+                if ("test".equals(authority) && "wkt2".equals(code)) {
+                    return CRSResult.wkt2(wkt2);
+                }
+                return null;
+            }
+        };
+        Defs.registerProvider(wkt2Provider, 50);
+
+        ProjectionDef def = Defs.get("TEST:wkt2");
+        assertNotNull(def, "WKT2 provider result should be parsed");
+        assertEquals("longlat", def.getProjName());
+        assertEquals("TEST:wkt2", def.getSrsCode());
+
+        // Verify caching
+        ProjectionDef cached = Defs.get("TEST:wkt2");
+        assertSame(def, cached, "Result should be cached");
+    }
 
     @Test
     void testCustomProvider_ResolvesCustomCode() {
