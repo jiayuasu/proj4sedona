@@ -257,6 +257,28 @@ public final class Defs {
     }
 
     /**
+     * Get a projection definition by name, throwing if not found.
+     *
+     * <p>Behaves identically to {@link #get(String)} but throws a
+     * {@link CRSFetchException} with {@link CRSFetchException.Reason#NOT_FOUND}
+     * instead of returning {@code null}.</p>
+     *
+     * @param name The name/code to look up (e.g., "EPSG:4326", "WGS84")
+     * @return The ProjectionDef (never null)
+     * @throws CRSFetchException with {@link CRSFetchException.Reason#NOT_FOUND} if no
+     *         provider can resolve the code
+     * @throws CRSFetchException if a provider encounters a hard error (network failure, etc.)
+     */
+    public static ProjectionDef getOrThrow(String name) {
+        ProjectionDef def = get(name);
+        if (def == null) {
+            throw new CRSFetchException(name, CRSFetchException.Reason.NOT_FOUND,
+                    "CRS definition not found: " + name);
+        }
+        return def;
+    }
+
+    /**
      * Iterate through providers in priority order, parse the first non-null result.
      */
     private static ProjectionDef resolveFromProviders(String authority, String code, String fullCode) {

@@ -420,7 +420,7 @@ class CRSProviderTest {
         };
         Defs.registerProvider(nullProvider, 50);
 
-        // EPSG:4326 should still resolve via the BuiltInCRSProvider at priority 100
+        // EPSG:4269 should still resolve via the BuiltInCRSProvider at priority 100
         ProjectionDef def = Defs.get("EPSG:4269");
         assertNotNull(def, "Should fall through to BuiltInCRSProvider");
         assertEquals("longlat", def.getProjName());
@@ -469,6 +469,25 @@ class CRSProviderTest {
         CRSFetchException ex = assertThrows(CRSFetchException.class, () ->
                 Defs.get("CUSTOM:999"));
         assertEquals(CRSFetchException.Reason.NETWORK_ERROR, ex.getReason());
+    }
+
+    // ==================== getOrThrow ====================
+
+    @Test
+    void testGetOrThrow_ReturnsDefOnHit() {
+        Defs.globals();
+        ProjectionDef def = Defs.getOrThrow("EPSG:4326");
+        assertNotNull(def);
+        assertEquals("longlat", def.getProjName());
+    }
+
+    @Test
+    void testGetOrThrow_ThrowsNotFoundOnMiss() {
+        Defs.globals();
+        CRSFetchException ex = assertThrows(CRSFetchException.class, () ->
+                Defs.getOrThrow("EPSG:999999"));
+        assertEquals(CRSFetchException.Reason.NOT_FOUND, ex.getReason());
+        assertTrue(ex.getMessage().contains("EPSG:999999"));
     }
 
     // ==================== Cache Interaction ====================
