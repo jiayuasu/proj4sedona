@@ -373,14 +373,14 @@ public final class Defs {
         }
 
         // Register default providers
-        registerProvider(new BuiltInCRSProvider(), 100);
+        BuiltInCRSProvider builtIn = new BuiltInCRSProvider();
+        registerProvider(builtIn, 100);
         registerProvider(new SpatialReferenceProvider(), 101);
 
         // Pre-cache aliases that don't match the authority:code pattern.
         // These names (WGS84, GOOGLE) cannot be resolved by providers because
         // they lack a colon, so we eagerly resolve and cache them here.
         // Resolve directly via provider to avoid re-entering get() → globals().
-        BuiltInCRSProvider builtIn = new BuiltInCRSProvider();
         CRSResult wgs84Result = builtIn.resolve("epsg", "4326");
         CRSResult webMercResult = builtIn.resolve("epsg", "3857");
         if (wgs84Result != null) {
