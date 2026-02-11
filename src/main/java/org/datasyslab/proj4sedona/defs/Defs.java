@@ -5,64 +5,173 @@ import org.datasyslab.proj4sedona.core.ProjectionDef;
 import org.datasyslab.proj4sedona.parser.ProjString;
 import org.datasyslab.proj4sedona.parser.WktParser;
 
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.datasyslab.proj4sedona.util.CRSUtils;
 
 /**
- * Global registry of named projection definitions.
- * Mirrors: lib/defs.js
- * 
- * <p>This class maintains a global registry of projection definitions that can be
- * looked up by name. Definitions are typically registered using EPSG/ESRI/IAU codes
- * (e.g., "EPSG:4326", "EPSG:3857") or common aliases (e.g., "WGS84", "GOOGLE").</p>
- * 
- * <p>Usage:</p>
+ * Global registry of named projection definitions and CRS providers.
+ *
+ * <p>This class maintains a cache of parsed {@link ProjectionDef} objects and a
+ * priority-ordered chain of {@link CRSProvider} instances that are consulted on cache
+ * miss. Providers are tried in ascending priority order (lower value = tried first);
+ * the first non-null {@link CRSResult} is parsed and cached.</p>
+ *
+ * <p>By default, {@link #globals()} registers two providers:</p>
+ * <ul>
+ *   <li>{@link BuiltInCRSProvider} at priority <b>100</b> — instant map lookup, no network</li>
+ *   <li>{@link SpatialReferenceProvider} at priority <b>101</b> — fetches from spatialreference.org</li>
+ * </ul>
+ *
+ * <p>Users can register custom providers at a lower priority to override defaults,
+ * or at a higher priority to act as fallback:</p>
  * <pre>
- * // Initialize the registry with default definitions
- * Defs.globals();
- * 
- * // Get a projection definition by code
- * ProjectionDef wgs84 = Defs.get("EPSG:4326");
- * 
- * // Register a custom definition
- * Defs.set("MyProj", "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m");
- * 
- * // Or register a ProjectionDef object directly
- * Defs.set("MyProj2", myProjectionDef);
+ * Defs.registerProvider(new MyCRSProvider(), 50);  // tried before built-in
  * </pre>
- * 
- * <p>The registry automatically parses PROJ strings (starting with "+") into
- * ProjectionDef objects when registering.</p>
+ *
+ * <p>Manual overrides via {@link #set(String, String)} and {@link #set(String, ProjectionDef)}
+ * go directly into the cache and always take precedence over providers.</p>
  */
 public final class Defs {
 
-    /** Storage for projection definitions, keyed by name (authority codes normalized to uppercase) */
-    private static final Map<String, ProjectionDef> definitions = new HashMap<>();
-    
-    /** Flag indicating whether global definitions have been initialized */
-    private static boolean globalsInitialized = false;
+    /** Cache of parsed projection definitions, keyed by normalized name */
+    private static final Map<String, ProjectionDef> definitions = new ConcurrentHashMap<>();
 
-    /** Whether remote CRS lookup is enabled (default: true) */
-    private static boolean remoteFetchEnabled = true;
+    /** Shared Gson instance — thread-safe for read operations. */
+    private static final Gson GSON = new Gson();
+
+    /** Flag indicating whether global definitions have been initialized */
+    private static volatile boolean globalsInitialized = false;
 
     /** Pattern to match authority:code (e.g., "EPSG:4326", "ESRI:102001", "IAU_2015:49900") */
-    private static final Pattern AUTHORITY_CODE_PATTERN = 
+    private static final Pattern AUTHORITY_CODE_PATTERN =
         Pattern.compile("^([A-Za-z][A-Za-z0-9_]*):(\\S+)$");
+
+    // ==================== Provider Chain ====================
+
+    /** A provider paired with its priority for ordering. */
+    private static final class ProviderEntry implements Comparable<ProviderEntry> {
+        final CRSProvider provider;
+        final int priority;
+
+        ProviderEntry(CRSProvider provider, int priority) {
+            this.provider = provider;
+            this.priority = priority;
+        }
+
+        @Override
+        public int compareTo(ProviderEntry o) {
+            return Integer.compare(this.priority, o.priority);
+        }
+    }
+
+    /** Priority-ordered list of registered providers (thread-safe for reads). */
+    private static volatile CopyOnWriteArrayList<ProviderEntry> providers = new CopyOnWriteArrayList<>();
 
     private Defs() {
         // Utility class - prevent instantiation
     }
 
+    // ==================== Provider Registration ====================
+
+    /**
+     * Register a CRS provider at the given priority.
+     *
+     * <p>Lower priority values are tried first. The default providers use
+     * priorities 100 ({@link BuiltInCRSProvider}) and 101
+     * ({@link SpatialReferenceProvider}), so registering at &lt; 100 will
+     * override them.</p>
+     *
+     * @param provider the provider to register (must have a unique
+     *                 {@link CRSProvider#getName() name})
+     * @param priority ordering priority (lower = tried first)
+     * @throws IllegalArgumentException if a provider with the same name is already registered
+     */
+    public static synchronized void registerProvider(CRSProvider provider, int priority) {
+        if (provider == null) {
+            throw new IllegalArgumentException("provider must not be null");
+        }
+        String name = provider.getName();
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("provider name must not be null or blank");
+        }
+        for (ProviderEntry e : providers) {
+            if (e.provider.getName().equals(name)) {
+                throw new IllegalArgumentException(
+                    "Provider already registered: " + provider.getName());
+            }
+        }
+        List<ProviderEntry> snapshot = new ArrayList<>(providers);
+        snapshot.add(new ProviderEntry(provider, priority));
+        Collections.sort(snapshot);
+        // Atomic swap: avoids a window where concurrent readers see an empty list
+        CopyOnWriteArrayList<ProviderEntry> replacement = new CopyOnWriteArrayList<>(snapshot);
+        providers = replacement;
+    }
+
+    /**
+     * Remove a registered provider by name.
+     *
+     * @param name the {@link CRSProvider#getName()} of the provider to remove
+     * @return {@code true} if a provider was removed
+     * @throws IllegalArgumentException if {@code name} is {@code null}
+     */
+    public static synchronized boolean removeProvider(String name) {
+        if (name == null) {
+            throw new IllegalArgumentException("Provider name must not be null");
+        }
+        boolean removed = false;
+        List<ProviderEntry> filtered = new ArrayList<>();
+        for (ProviderEntry entry : providers) {
+            if (entry.provider.getName().equals(name)) {
+                removed = true;
+            } else {
+                filtered.add(entry);
+            }
+        }
+        if (removed) {
+            providers = new CopyOnWriteArrayList<>(filtered);
+        }
+        return removed;
+    }
+
+    /**
+     * Get an unmodifiable, priority-ordered list of the currently registered providers.
+     *
+     * @return list of providers (lowest priority first)
+     */
+    public static List<CRSProvider> getProviders() {
+        List<CRSProvider> result = new ArrayList<>();
+        for (ProviderEntry e : providers) {
+            result.add(e.provider);
+        }
+        return Collections.unmodifiableList(result);
+    }
+
+    /**
+     * Remove all registered providers.
+     *
+     * <p><strong>Warning:</strong> primarily intended for testing.</p>
+     */
+    public static synchronized void clearProviders() {
+        providers = new CopyOnWriteArrayList<>();
+    }
+
+    // ==================== Definition Cache ====================
+
     /**
      * Set (register) a projection definition by name.
-     * 
+     *
      * <p>If the definition is a PROJ string (starting with "+"), it will be
      * automatically parsed into a ProjectionDef object.</p>
-     * 
+     *
      * @param name The name/code to register the definition under (e.g., "EPSG:4326")
      * @param projString The PROJ string definition (must start with "+")
      */
@@ -71,22 +180,20 @@ public final class Defs {
             definitions.remove(name);
             return;
         }
-        
+
         if (projString.charAt(0) == '+') {
             ProjectionDef def = ProjString.parse(projString);
             def.setSrsCode(name);
             definitions.put(name, def);
         } else {
-            // For now, we only support PROJ strings
-            // WKT support can be added in Phase 13
             throw new IllegalArgumentException(
-                "Unsupported definition format. Only PROJ strings (starting with '+') are supported.");
+                "Unsupported definition format for Defs.set(name, String). Only PROJ strings (starting with '+') are supported by this method.");
         }
     }
 
     /**
      * Set (register) a projection definition by name.
-     * 
+     *
      * @param name The name/code to register the definition under
      * @param def The ProjectionDef object
      */
@@ -101,19 +208,23 @@ public final class Defs {
         }
     }
 
+    // ==================== Lookup ====================
+
     /**
      * Get a projection definition by name.
-     * 
-     * <p>This method first checks the local registry. If not found and remote
-     * fetching is enabled, it will attempt to fetch the definition from
-     * spatialreference.org for authority:code patterns (EPSG, ESRI, IAU_2015, etc.).</p>
-     * 
+     *
+     * <p>Resolution order:</p>
+     * <ol>
+     *   <li>Local cache (populated by {@link #set} and previous lookups)</li>
+     *   <li>Registered {@link CRSProvider}s in priority order</li>
+     * </ol>
+     *
      * <p>Authority codes are case-insensitive for the authority part (e.g., "epsg:4326"
      * and "EPSG:4326" are equivalent).</p>
-     * 
+     *
      * @param name The name/code to look up (e.g., "EPSG:4326", "WGS84", "ESRI:102001")
-     * @return The ProjectionDef, or null if not found in local registry and remote fetch is disabled
-     * @throws CRSFetchException if remote fetch is enabled and the CRS code is not found or a network error occurs
+     * @return The ProjectionDef, or null if no provider can resolve the code
+     * @throws CRSFetchException if a provider encounters a hard error (network failure, etc.)
      */
     public static ProjectionDef get(String name) {
         // Auto-initialize globals if not yet done
@@ -124,20 +235,19 @@ public final class Defs {
         // Normalize authority codes for case-insensitive lookup
         String normalizedName = CRSUtils.normalizeAuthorityCode(name);
 
-        // Check local registry first
+        // Check local cache first
         ProjectionDef def = definitions.get(normalizedName);
         if (def != null) {
             return def;
         }
 
-        // Try remote fetch if enabled and code matches authority:code pattern
-        if (remoteFetchEnabled) {
-            Matcher matcher = AUTHORITY_CODE_PATTERN.matcher(normalizedName);
-            if (matcher.matches()) {
-                String authority = matcher.group(1).toLowerCase();  // spatialreference.org uses lowercase paths
-                String code = matcher.group(2);
-                def = fetchFromRemote(authority, code, normalizedName);
-                // If we get here without throwing, def is valid
+        // Try providers if code matches authority:code pattern
+        Matcher matcher = AUTHORITY_CODE_PATTERN.matcher(normalizedName);
+        if (matcher.matches()) {
+            String authority = matcher.group(1).toLowerCase();
+            String code = matcher.group(2);
+            def = resolveFromProviders(authority, code, normalizedName);
+            if (def != null) {
                 definitions.put(normalizedName, def);
                 return def;
             }
@@ -147,53 +257,81 @@ public final class Defs {
     }
 
     /**
-     * Fetch a projection definition from spatialreference.org.
-     * 
-     * @param authName The authority name (e.g., "epsg")
-     * @param code The CRS code (e.g., "2154")
-     * @param fullCode The full code string (e.g., "EPSG:2154")
+     * Get a projection definition by name, throwing if not found.
+     *
+     * <p>Behaves identically to {@link #get(String)} but throws a
+     * {@link CRSFetchException} with {@link CRSFetchException.Reason#NOT_FOUND}
+     * instead of returning {@code null}.</p>
+     *
+     * @param name The name/code to look up (e.g., "EPSG:4326", "WGS84")
      * @return The ProjectionDef (never null)
-     * @throws CRSFetchException if the CRS code is not found or a network error occurs
+     * @throws CRSFetchException with {@link CRSFetchException.Reason#NOT_FOUND} if no
+     *         provider can resolve the code
+     * @throws CRSFetchException if a provider encounters a hard error (network failure, etc.)
      */
-    @SuppressWarnings("unchecked")
-    private static ProjectionDef fetchFromRemote(String authName, String code, String fullCode) {
-        SpatialReferenceFetcher.FetchResult result = SpatialReferenceFetcher.fetchProjJson(authName, code);
-        
-        switch (result.getStatus()) {
-            case SUCCESS:
-                try {
-                    Gson gson = new Gson();
-                    Map<String, Object> json = gson.fromJson(result.getProjJson(), Map.class);
-                    ProjectionDef def = WktParser.parse(json);
-                    def.setSrsCode(fullCode);
-                    return def;
-                } catch (Exception e) {
-                    throw new CRSFetchException(fullCode, CRSFetchException.Reason.INVALID_RESPONSE,
-                        "Failed to parse CRS definition for " + fullCode + ": " + e.getMessage(), e);
-                }
-                
-            case NOT_FOUND:
-                throw new CRSFetchException(fullCode, CRSFetchException.Reason.NOT_FOUND,
-                    "CRS code not found: " + fullCode);
-                
-            case NETWORK_ERROR:
-                throw new CRSFetchException(fullCode, CRSFetchException.Reason.NETWORK_ERROR,
-                    "Failed to fetch CRS definition for " + fullCode + " after " + 
-                    result.getAttemptCount() + " attempts", result.getLastException());
-                
-            default:
-                throw new CRSFetchException(fullCode, CRSFetchException.Reason.NETWORK_ERROR,
-                    "Unknown fetch status for " + fullCode);
+    public static ProjectionDef getOrThrow(String name) {
+        ProjectionDef def = get(name);
+        if (def == null) {
+            throw new CRSFetchException(name, CRSFetchException.Reason.NOT_FOUND,
+                    "CRS definition not found: " + name);
         }
+        return def;
     }
 
     /**
-     * Check if a definition exists.
-     * 
+     * Iterate through providers in priority order, parse the first non-null result.
+     */
+    private static ProjectionDef resolveFromProviders(String authority, String code, String fullCode) {
+        for (ProviderEntry entry : providers) {
+            CRSResult result = entry.provider.resolve(authority, code);
+            if (result != null) {
+                return parseResult(result, fullCode);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Parse a {@link CRSResult} into a {@link ProjectionDef} based on its format.
+     */
+    @SuppressWarnings("unchecked")
+    private static ProjectionDef parseResult(CRSResult result, String fullCode) {
+        try {
+            ProjectionDef def;
+            switch (result.getFormat()) {
+                case PROJ4:
+                    def = ProjString.parse(result.getDefinition());
+                    break;
+                case PROJJSON:
+                    Map<String, Object> json = GSON.fromJson(result.getDefinition(), Map.class);
+                    def = WktParser.parse(json);
+                    break;
+                case WKT1:
+                case WKT2:
+                    def = WktParser.parse(result.getDefinition());
+                    break;
+                default:
+                    throw new IllegalArgumentException("Unknown CRSResult format: " + result.getFormat());
+            }
+            def.setSrsCode(fullCode);
+            return def;
+        } catch (CRSFetchException e) {
+            throw e; // re-throw provider exceptions as-is
+        } catch (Exception e) {
+            throw new CRSFetchException(fullCode, CRSFetchException.Reason.INVALID_RESPONSE,
+                "Failed to parse CRS definition for " + fullCode + ": " + e.getMessage(), e);
+        }
+    }
+
+    // ==================== Cache Inspection ====================
+
+    /**
+     * Check if a definition exists in the local cache.
+     *
      * <p>Authority codes are case-insensitive for the authority part.</p>
-     * 
+     *
      * @param name The name/code to check
-     * @return true if the definition exists
+     * @return true if the definition exists in cache
      */
     public static boolean has(String name) {
         if (!globalsInitialized) {
@@ -203,10 +341,10 @@ public final class Defs {
     }
 
     /**
-     * Remove a definition.
-     * 
+     * Remove a definition from the local cache.
+     *
      * <p>Authority codes are case-insensitive for the authority part.</p>
-     * 
+     *
      * @param name The name/code to remove
      * @return The removed definition, or null if it didn't exist
      */
@@ -215,11 +353,11 @@ public final class Defs {
     }
 
     /**
-     * Create an alias for an existing definition.
-     * 
+     * Create an alias for an existing cached definition.
+     *
      * <p>The alias will point to the same ProjectionDef object as the original.</p>
      * <p>Authority codes are case-insensitive for the authority part.</p>
-     * 
+     *
      * @param alias The new alias name
      * @param existingName The existing definition name
      * @throws IllegalArgumentException if the existing definition doesn't exist
@@ -236,112 +374,83 @@ public final class Defs {
         definitions.put(CRSUtils.normalizeAuthorityCode(alias), def);
     }
 
+    // ==================== Initialization ====================
+
     /**
-     * Initialize the registry with common global definitions.
-     * Mirrors: lib/global.js
-     * 
-     * <p>This method is idempotent - calling it multiple times has no effect
-     * after the first call.</p>
-     * 
-     * <p>Registered definitions include:</p>
+     * Initialize the registry with default providers.
+     *
+     * <p>This method is idempotent — calling it multiple times has no effect
+     * after the first call. It registers:</p>
      * <ul>
-     *   <li>EPSG:4326 - WGS 84 (long/lat)</li>
-     *   <li>EPSG:4269 - NAD83 (long/lat)</li>
-     *   <li>EPSG:3857 - WGS 84 / Pseudo-Mercator (Web Mercator)</li>
-     *   <li>EPSG:326xx - UTM zones 1-60 North (WGS84)</li>
-     *   <li>EPSG:327xx - UTM zones 1-60 South (WGS84)</li>
-     *   <li>EPSG:5041 - WGS 84 / UPS North</li>
-     *   <li>EPSG:5042 - WGS 84 / UPS South</li>
-     *   <li>Common aliases: WGS84, GOOGLE, EPSG:3785, EPSG:900913, EPSG:102113</li>
+     *   <li>{@link BuiltInCRSProvider} at priority 100</li>
+     *   <li>{@link SpatialReferenceProvider} at priority 101</li>
      * </ul>
+     *
+     * <p>It also pre-populates the cache with common aliases that are not in
+     * authority:code format (e.g., {@code WGS84}, {@code GOOGLE}).</p>
      */
     public static synchronized void globals() {
         if (globalsInitialized) {
             return;
         }
-        globalsInitialized = true;
 
-        // WGS84 - Geographic CRS
-        set("EPSG:4326", "+title=WGS 84 (long/lat) +proj=longlat +ellps=WGS84 +datum=WGS84 +units=degrees");
-        
-        // NAD83 - North American Datum 1983
-        set("EPSG:4269", "+title=NAD83 (long/lat) +proj=longlat +a=6378137.0 +b=6356752.31414036 +ellps=GRS80 +datum=NAD83 +units=degrees");
-        
-        // Web Mercator (Pseudo-Mercator)
-        set("EPSG:3857", "+title=WGS 84 / Pseudo-Mercator +proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs");
-        
-        // UTM zones WGS84 (1-60, North and South)
-        for (int zone = 1; zone <= 60; zone++) {
-            // Northern hemisphere
-            set("EPSG:" + (32600 + zone), "+proj=utm +zone=" + zone + " +datum=WGS84 +units=m");
-            // Southern hemisphere
-            set("EPSG:" + (32700 + zone), "+proj=utm +zone=" + zone + " +south +datum=WGS84 +units=m");
+        // Register default providers
+        BuiltInCRSProvider builtIn = new BuiltInCRSProvider();
+        registerProvider(builtIn, 100);
+        registerProvider(new SpatialReferenceProvider(), 101);
+
+        // Pre-cache aliases that don't match the authority:code pattern.
+        // These names (WGS84, GOOGLE) cannot be resolved by providers because
+        // they lack a colon, so we eagerly resolve and cache them here.
+        // Resolve directly via provider to avoid re-entering get() → globals().
+        CRSResult wgs84Result = builtIn.resolve("epsg", "4326");
+        CRSResult webMercResult = builtIn.resolve("epsg", "3857");
+        if (wgs84Result != null) {
+            ProjectionDef wgs84 = parseResult(wgs84Result, "EPSG:4326");
+            definitions.put("EPSG:4326", wgs84);
+            definitions.put(CRSUtils.normalizeAuthorityCode("WGS84"), wgs84);
         }
-        
-        // UPS North
-        set("EPSG:5041", "+title=WGS 84 / UPS North (E,N) +proj=stere +lat_0=90 +lon_0=0 +k=0.994 +x_0=2000000 +y_0=2000000 +datum=WGS84 +units=m");
-        
-        // UPS South
-        set("EPSG:5042", "+title=WGS 84 / UPS South (E,N) +proj=stere +lat_0=-90 +lon_0=0 +k=0.994 +x_0=2000000 +y_0=2000000 +datum=WGS84 +units=m");
-        
-        // Common aliases
-        alias("WGS84", "EPSG:4326");
-        alias("EPSG:3785", "EPSG:3857");   // backward compat
-        alias("GOOGLE", "EPSG:3857");
-        alias("EPSG:900913", "EPSG:3857");
-        alias("EPSG:102113", "EPSG:3857");
+        if (webMercResult != null) {
+            ProjectionDef webMerc = parseResult(webMercResult, "EPSG:3857");
+            definitions.put("EPSG:3857", webMerc);
+            definitions.put(CRSUtils.normalizeAuthorityCode("EPSG:3785"), webMerc);
+            definitions.put(CRSUtils.normalizeAuthorityCode("GOOGLE"), webMerc);
+            definitions.put(CRSUtils.normalizeAuthorityCode("EPSG:900913"), webMerc);
+            definitions.put(CRSUtils.normalizeAuthorityCode("EPSG:102113"), webMerc);
+        }
+
+        // Set flag last so concurrent callers of get() see a fully-initialized state
+        globalsInitialized = true;
     }
 
     /**
-     * Get the number of registered definitions.
-     * 
-     * @return The count of definitions
+     * Get the number of cached definitions.
+     *
+     * @return The count of definitions in cache
      */
     public static int size() {
         return definitions.size();
     }
 
     /**
-     * Clear all definitions and reset all flags.
-     * 
+     * Clear all definitions, providers, and reset all flags.
+     *
      * <p><strong>Warning:</strong> This is primarily intended for testing.
      * Do not call in production code.</p>
      */
     public static synchronized void reset() {
         definitions.clear();
+        providers = new CopyOnWriteArrayList<>();
         globalsInitialized = false;
-        remoteFetchEnabled = true;
         SpatialReferenceFetcher.reset();
     }
 
     /**
      * Check if globals have been initialized.
-     * 
+     *
      * @return true if {@link #globals()} has been called
      */
     public static boolean isGlobalsInitialized() {
         return globalsInitialized;
-    }
-
-    /**
-     * Enable or disable remote fetching of CRS definitions.
-     * 
-     * <p>When enabled (default), the {@link #get(String)} method will attempt
-     * to fetch unknown authority:code patterns (EPSG, ESRI, IAU_2015, etc.) 
-     * from spatialreference.org.</p>
-     * 
-     * @param enabled true to enable remote fetching, false to disable
-     */
-    public static void setRemoteFetchEnabled(boolean enabled) {
-        remoteFetchEnabled = enabled;
-    }
-
-    /**
-     * Check if remote fetching is enabled.
-     * 
-     * @return true if remote fetching is enabled
-     */
-    public static boolean isRemoteFetchEnabled() {
-        return remoteFetchEnabled;
     }
 }

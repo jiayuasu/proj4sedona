@@ -277,18 +277,14 @@ class SpatialReferenceFetcherTest {
     }
 
     @Test
-    void testDefsGet_DisableRemoteFetch_ReturnsNull() {
-        // Disable remote fetching
-        Defs.setRemoteFetchEnabled(false);
-        assertFalse(Defs.isRemoteFetchEnabled());
+    void testDefsGet_NoProviders_ReturnsNull() {
+        // Remove all providers
+        Defs.globals();
+        Defs.clearProviders();
         
-        // Should return null for unknown code (no remote fetch, no exception)
+        // Should return null for unknown code (no providers, no exception)
         ProjectionDef def = Defs.get("EPSG:2154");
-        assertNull(def, "Should return null when remote fetch is disabled");
-        
-        // Re-enable
-        Defs.setRemoteFetchEnabled(true);
-        assertTrue(Defs.isRemoteFetchEnabled());
+        assertNull(def, "Should return null when no providers are registered");
     }
 
     @Test
@@ -299,15 +295,11 @@ class SpatialReferenceFetcherTest {
     }
 
     @Test
-    void testDefsGet_ThrowsOnNotFound() {
-        // Invalid EPSG code should throw CRSFetchException with NOT_FOUND reason
-        CRSFetchException ex = assertThrows(CRSFetchException.class, () -> {
-            Defs.get("EPSG:999999999");
-        });
-        
-        assertEquals("EPSG:999999999", ex.getCrsCode());
-        assertEquals(CRSFetchException.Reason.NOT_FOUND, ex.getReason());
-        assertTrue(ex.getMessage().contains("not found"));
+    void testDefsGet_ReturnsNullOnNotFound() {
+        // Invalid EPSG code — SpatialReferenceProvider returns null for NOT_FOUND,
+        // so the chain returns null rather than throwing.
+        ProjectionDef def = Defs.get("EPSG:999999999");
+        assertNull(def, "Should return null for non-existent EPSG code");
     }
 
     @Test
@@ -333,19 +325,24 @@ class SpatialReferenceFetcherTest {
 
     @Test
     void testCRSFetchException_ContainsAllDetails() {
+        // Configure unreachable server to force NETWORK_ERROR
+        SpatialReferenceFetcher.setBaseUrl("http://localhost:59993/");
+        SpatialReferenceFetcher.setConnectTimeout(1);
+        SpatialReferenceFetcher.setReadTimeout(1);
+        SpatialReferenceFetcher.setMaxRetries(1);
+        SpatialReferenceFetcher.setInitialBackoffMs(10);
+
         CRSFetchException ex = assertThrows(CRSFetchException.class, () -> {
-            Defs.get("EPSG:999999999");
+            Defs.get("ESRI:102001");
         });
         
-        // Verify all details are accessible
         assertNotNull(ex.getCrsCode());
         assertNotNull(ex.getReason());
         assertNotNull(ex.getMessage());
         
-        // toString should include all info
         String str = ex.toString();
-        assertTrue(str.contains("EPSG:999999999"));
-        assertTrue(str.contains("NOT_FOUND"));
+        assertTrue(str.contains("ESRI:102001"));
+        assertTrue(str.contains("NETWORK_ERROR"));
     }
 
     // ==================== Integration Tests ====================
@@ -401,13 +398,12 @@ class SpatialReferenceFetcherTest {
 
     @Test
     void testTransformationThrowsWhenCRSNotFound() {
-        // Verify that creating a transformation with a non-existent CRS throws
-        CRSFetchException ex = assertThrows(CRSFetchException.class, () -> {
+        // Verify that creating a transformation with a non-existent CRS throws.
+        // SpatialReferenceProvider returns null for NOT_FOUND, so Defs.get() returns null,
+        // which causes Proj to throw IllegalArgumentException.
+        assertThrows(IllegalArgumentException.class, () -> {
             Proj4.proj4("EPSG:4326", "ESRI:999999999");
         });
-        
-        assertEquals("ESRI:999999999", ex.getCrsCode());
-        assertEquals(CRSFetchException.Reason.NOT_FOUND, ex.getReason());
     }
 
     @Test
