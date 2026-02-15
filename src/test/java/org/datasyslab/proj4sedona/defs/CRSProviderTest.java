@@ -179,7 +179,7 @@ class CRSProviderTest {
         Defs.globals();
         List<CRSProvider> providers = Defs.getProviders();
         assertThrows(UnsupportedOperationException.class, () ->
-                providers.add(new SpatialReferenceProvider()));
+                providers.add(UrlCRSProvider.spatialReference()));
     }
 
     // ==================== BuiltInCRSProvider ====================
@@ -237,30 +237,29 @@ class CRSProviderTest {
         assertEquals("built-in", new BuiltInCRSProvider().getName());
     }
 
-    // ==================== SpatialReferenceProvider ====================
+    // ==================== spatialreference.org Provider ====================
 
     @Test
     void testSpatialReferenceProvider_Name() {
-        assertEquals("spatialreference.org", new SpatialReferenceProvider().getName());
+        assertEquals("spatialreference.org", UrlCRSProvider.spatialReference().getName());
     }
 
     @Test
     void testSpatialReferenceProvider_ReturnsNullForNotFound() {
-        SpatialReferenceProvider provider = new SpatialReferenceProvider();
+        UrlCRSProvider provider = UrlCRSProvider.spatialReference();
         CRSResult result = provider.resolve("epsg", "999999999");
         assertNull(result, "Should return null for non-existent code");
     }
 
     @Test
     void testSpatialReferenceProvider_ThrowsOnNetworkError() {
-        // Point to unreachable server
-        SpatialReferenceFetcher.setBaseUrl("http://localhost:59990/");
-        SpatialReferenceFetcher.setConnectTimeout(1);
-        SpatialReferenceFetcher.setReadTimeout(1);
-        SpatialReferenceFetcher.setMaxRetries(1);
-        SpatialReferenceFetcher.setInitialBackoffMs(10);
+        // Create provider pointed to unreachable server
+        UrlCRSProvider provider = UrlCRSProvider.builder(UrlCRSProvider.SPATIAL_REFERENCE_NAME)
+                .baseUrl("http://localhost:59990")
+                .pathTemplate(UrlCRSProvider.SPATIAL_REFERENCE_PATH)
+                .connectTimeout(1).readTimeout(1).maxRetries(1).initialBackoffMs(10)
+                .build();
 
-        SpatialReferenceProvider provider = new SpatialReferenceProvider();
         assertThrows(CRSFetchException.class, () ->
                 provider.resolve("epsg", "4326"));
     }

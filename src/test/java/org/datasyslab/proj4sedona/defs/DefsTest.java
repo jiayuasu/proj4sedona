@@ -7,7 +7,6 @@ import org.datasyslab.proj4sedona.Proj4;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.ProjectionDef;
 import org.datasyslab.proj4sedona.transform.Converter;
-import org.datasyslab.proj4sedona.defs.SpatialReferenceFetcher;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -19,13 +18,11 @@ class DefsTest {
     @BeforeEach
     void setUp() {
         Defs.reset();
-        SpatialReferenceFetcher.clearNotFoundCache();
     }
 
     @AfterEach
     void tearDown() {
         Defs.reset();
-        SpatialReferenceFetcher.clearNotFoundCache();
     }
 
     // ==================== Basic Registry Operations ====================
@@ -373,7 +370,7 @@ class DefsTest {
     @Test
     void testRemoteFetch_ESRI_102001_CanadaAlbers() {
         // ESRI:102001 = Canada Albers Equal Area Conic
-        // Should be fetched via SpatialReferenceProvider
+        // Should be fetched via UrlCRSProvider.spatialReference()
         Defs.globals();
         
         ProjectionDef def = Defs.get("ESRI:102001");
@@ -494,15 +491,11 @@ class DefsTest {
         
         ProjectionDef def = Defs.get("ESRI:999999999");
         assertNull(def, "Non-existent ESRI code should return null");
-        
-        // Verify it's in the negative cache
-        assertTrue(SpatialReferenceFetcher.isInNotFoundCache("esri", "999999999"),
-            "Non-existent code should be in negative cache");
     }
 
     @Test
     void testRemoteFetch_NonExistentAuthority_ReturnsNull() {
-        // Test that non-existent authorities return null (SpatialReferenceProvider returns null for NOT_FOUND)
+        // Test that non-existent authorities return null (spatialReference() provider returns null for NOT_FOUND)
         Defs.globals();
         
         ProjectionDef def = Defs.get("BOGUS:12345");

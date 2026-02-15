@@ -27,7 +27,7 @@ import org.datasyslab.proj4sedona.util.CRSUtils;
  * <p>By default, {@link #globals()} registers two providers:</p>
  * <ul>
  *   <li>{@link BuiltInCRSProvider} at priority <b>100</b> — instant map lookup, no network</li>
- *   <li>{@link SpatialReferenceProvider} at priority <b>101</b> — fetches from spatialreference.org</li>
+ *   <li>{@link UrlCRSProvider#spatialReference()} at priority <b>101</b> — fetches from spatialreference.org</li>
  * </ul>
  *
  * <p>Users can register custom providers at a lower priority to override defaults,
@@ -86,7 +86,7 @@ public final class Defs {
      *
      * <p>Lower priority values are tried first. The default providers use
      * priorities 100 ({@link BuiltInCRSProvider}) and 101
-     * ({@link SpatialReferenceProvider}), so registering at &lt; 100 will
+     * ({@link UrlCRSProvider#spatialReference()}), so registering at &lt; 100 will
      * override them.</p>
      *
      * @param provider the provider to register (must have a unique
@@ -383,7 +383,7 @@ public final class Defs {
      * after the first call. It registers:</p>
      * <ul>
      *   <li>{@link BuiltInCRSProvider} at priority 100</li>
-     *   <li>{@link SpatialReferenceProvider} at priority 101</li>
+     *   <li>{@link UrlCRSProvider#spatialReference()} at priority 101</li>
      * </ul>
      *
      * <p>It also pre-populates the cache with common aliases that are not in
@@ -397,7 +397,7 @@ public final class Defs {
         // Register default providers
         BuiltInCRSProvider builtIn = new BuiltInCRSProvider();
         registerProvider(builtIn, 100);
-        registerProvider(new SpatialReferenceProvider(), 101);
+        registerProvider(UrlCRSProvider.spatialReference(), 101);
 
         // Pre-cache aliases that don't match the authority:code pattern.
         // These names (WGS84, GOOGLE) cannot be resolved by providers because
@@ -442,7 +442,6 @@ public final class Defs {
         definitions.clear();
         providers = new CopyOnWriteArrayList<>();
         globalsInitialized = false;
-        SpatialReferenceFetcher.reset();
     }
 
     /**
