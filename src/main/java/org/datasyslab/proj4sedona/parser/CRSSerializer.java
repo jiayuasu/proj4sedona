@@ -1081,7 +1081,7 @@ public final class CRSSerializer {
                         || "none".equalsIgnoreCase(params.datumCode)) {
                     return false;
                 }
-                if (!params.datumCode.equalsIgnoreCase(refParams.datumCode)) {
+                if (!datumCodesMatch(params.datumCode, refParams.datumCode)) {
                     return false;
                 }
             }
@@ -1132,6 +1132,85 @@ public final class CRSSerializer {
         if (a == null && b == null) return true;
         if (a == null || b == null) return false;
         return Math.abs(a - b) < tolerance;
+    }
+
+    /**
+     * Compare two datum codes that may use different representations.
+     * Handles PROJ datum codes ("wgs84"), PROJJSON datum names ("World Geodetic System 1984"),
+     * base_crs id strings ("EPSG_4326"), and short aliases ("WGS 84", "NAD83").
+     *
+     * <p>If both datum codes resolve to known EPSG geographic CRS codes, the comparison is
+     * authoritative. If one or both cannot be resolved, this returns {@code true} (inconclusive)
+     * so the caller can fall through to ellipsoid and parameter checks instead.</p>
+     */
+    private static boolean datumCodesMatch(String dc1, String dc2) {
+        // Fast path: direct string match
+        if (dc1.equalsIgnoreCase(dc2)) {
+            return true;
+        }
+
+        // Normalize both to EPSG geographic CRS codes
+        String epsg1 = normalizeDatumToEpsg(dc1);
+        String epsg2 = normalizeDatumToEpsg(dc2);
+
+        if (epsg1 != null && epsg2 != null) {
+            // Both resolved to known datums — authoritative comparison
+            return epsg1.equals(epsg2);
+        }
+
+        // At least one datum code is unknown — inconclusive.
+        // Return true so the caller falls through to ellipsoid/parameter checks.
+        return true;
+    }
+
+    /**
+     * Normalize a datum code/name to an EPSG geographic CRS code for comparison.
+     * Tries DATUM_NAME_TO_EPSG directly, then the Datum registry, then the EPSG_ prefix pattern.
+     *
+     * @return An EPSG code like "EPSG:4326", or null if the datum cannot be resolved
+     */
+    private static String normalizeDatumToEpsg(String datumCode) {
+        if (datumCode == null || datumCode.isEmpty()) {
+            return null;
+        }
+        String lower = datumCode.toLowerCase().trim();
+
+        // Try DATUM_NAME_TO_EPSG directly
+        String epsg = DATUM_NAME_TO_EPSG.get(lower);
+        if (epsg != null) {
+            return epsg;
+        }
+        // Try with underscores → spaces
+        epsg = DATUM_NAME_TO_EPSG.get(lower.replace('_', ' '));
+        if (epsg != null) {
+            return epsg;
+        }
+
+        // Try Datum registry: look up the datum object, then its name/code in DATUM_NAME_TO_EPSG
+        Datum d = Datum.get(datumCode);
+        if (d != null) {
+            if (d.getDatumName() != null) {
+                epsg = DATUM_NAME_TO_EPSG.get(d.getDatumName().toLowerCase());
+                if (epsg != null) {
+                    return epsg;
+                }
+                epsg = DATUM_NAME_TO_EPSG.get(d.getDatumName().toLowerCase().replace('_', ' '));
+                if (epsg != null) {
+                    return epsg;
+                }
+            }
+            epsg = DATUM_NAME_TO_EPSG.get(d.getCode().toLowerCase());
+            if (epsg != null) {
+                return epsg;
+            }
+        }
+
+        // Handle "EPSG_XXXX" format from base_crs id
+        if (lower.startsWith("epsg_")) {
+            return "EPSG:" + datumCode.substring(5);
+        }
+
+        return null;
     }
 
     // ==================== Helper Methods ====================

@@ -367,7 +367,7 @@ class CRSSerializerTest {
     }
 
     @Test
-    @DisplayName("toEpsgCode: No id field with GRS 1980 ellipsoid returns null (not 4326)")
+    @DisplayName("toEpsgCode: No id field with GRS 1980 ellipsoid does not match 4326")
     void testToEpsgCodeNoIdGrs80() {
         String noId = "{\"type\":\"GeographicCRS\",\"name\":\"Unknown CRS\","
             + "\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"Unknown datum\","
@@ -375,8 +375,12 @@ class CRSSerializerTest {
             + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":[{\"name\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
             + "{\"name\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"}]}}";
         Proj proj = new Proj(noId);
-        // GRS 1980 != WGS 84, and unknown datum name -> should NOT match EPSG:4326
-        assertNull(proj.toEpsgCode());
+        // GRS 1980 rf (298.257222101) != WGS 84 rf (298.257223563), so must NOT match EPSG:4326.
+        // However, "Unknown datum" cannot be resolved, so parameter matching falls through to
+        // ellipsoid checks, which match NAD83 (EPSG:4269) since it uses the GRS 1980 ellipsoid.
+        String result = proj.toEpsgCode();
+        assertNotEquals("EPSG:4326", result, "GRS 1980 should not match WGS 84");
+        assertEquals("EPSG:4269", result, "GRS 1980 longlat matches NAD83 by parameters");
     }
 
     @Test
@@ -468,7 +472,7 @@ class CRSSerializerTest {
     }
 
     @Test
-    @DisplayName("toAuthority: No id, unknown datum returns null")
+    @DisplayName("toAuthority: No id, unknown datum matches NAD83 by parameters")
     void testToAuthorityNoIdUnknownDatum() {
         String noId = "{\"type\":\"GeographicCRS\",\"name\":\"Unknown CRS\","
             + "\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"Unknown datum\","
@@ -476,7 +480,11 @@ class CRSSerializerTest {
             + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":[{\"name\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
             + "{\"name\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"}]}}";
         Proj proj = new Proj(noId);
-        assertNull(proj.toAuthority());
+        // "Unknown datum" cannot be resolved, so datum comparison is inconclusive.
+        // Parameter matching falls through to ellipsoid checks; GRS 1980 matches NAD83.
+        String[] auth = proj.toAuthority();
+        assertNotNull(auth);
+        assertArrayEquals(new String[]{"EPSG", "4269"}, auth);
     }
 
     // ==================== Datum Name Lookup Tests ====================
@@ -492,16 +500,11 @@ class CRSSerializerTest {
             + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":[{\"name\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
             + "{\"name\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"}]}}";
         Proj proj = new Proj(nad83NoId);
-        // Datum name lookup should identify this
-        // Note: this depends on the datum name being propagated to datumCode
-        // If datumCode is not set from standalone GeographicCRS (no base_crs),
-        // this may still be null — which is acceptable for now.
         String result = proj.toEpsgCode();
-        // The datum name "NAD83 (National Spatial Reference System 2011)" should be in our lookup table
-        // BUT NOTE: for GeographicCRS without base_crs, datumCode may not be set.
-        // This is a known limitation compared to pyproj. We accept either 6318 or null here.
-        assertTrue(result == null || "EPSG:6318".equals(result),
-            "Expected EPSG:6318 or null, got: " + result);
+        // The datum name "NAD83 (National Spatial Reference System 2011)" should be in our
+        // lookup table and should deterministically resolve to EPSG:6318.
+        assertEquals("EPSG:6318", result,
+            "Expected EPSG:6318, got: " + result);
     }
 
     // ==================== Round-trip Tests ====================
