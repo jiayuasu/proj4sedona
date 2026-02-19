@@ -1158,9 +1158,10 @@ public final class CRSSerializer {
             return epsg1.equals(epsg2);
         }
 
-        // At least one datum code is unknown — inconclusive.
-        // Return true so the caller falls through to ellipsoid/parameter checks.
-        return true;
+        // At least one datum code is unknown — reject the match.
+        // This matches pyproj behavior: unknown datum names drop confidence
+        // below the identification threshold (60% < 70%), so to_epsg() returns None.
+        return false;
     }
 
     /**
