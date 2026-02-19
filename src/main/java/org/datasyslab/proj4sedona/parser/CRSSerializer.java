@@ -75,7 +75,6 @@ public final class CRSSerializer {
     // Reverse mapping: WKT/PROJJSON method name -> PROJ short name
     // (for projName normalization when parsing PROJJSON)
     // Source: EPSG canonical method names from pyproj's PROJJSON output
-    // verified via scripts/verify_proj_to_wkt.py and scripts/list_projjson_methods.py
     private static final Map<String, String> WKT_TO_PROJ_METHOD = new LinkedHashMap<>();
 
     static {
@@ -122,7 +121,7 @@ public final class CRSSerializer {
     }
 
     // Well-known datum names mapped to EPSG geographic 2D CRS codes.
-    // Source: PROJ database (EPSG registry) via scripts/gen_datum_map.py
+    // Source: PROJ database (EPSG registry)
     // Used for datum-name-based identification when no id field is present (like pyproj).
     // Keys are lowercase. Lookup also normalizes underscores to spaces, so underscore
     // variants are not needed here.
@@ -1140,8 +1139,9 @@ public final class CRSSerializer {
      * base_crs id strings ("EPSG_4326"), and short aliases ("WGS 84", "NAD83").
      *
      * <p>If both datum codes resolve to known EPSG geographic CRS codes, the comparison is
-     * authoritative. If one or both cannot be resolved, this returns {@code true} (inconclusive)
-     * so the caller can fall through to ellipsoid and parameter checks instead.</p>
+     * authoritative. If one or both cannot be resolved, this returns {@code false} to reject
+     * the match, consistent with pyproj's behavior (unknown datum drops confidence below
+     * the identification threshold).</p>
      */
     private static boolean datumCodesMatch(String dc1, String dc2) {
         // Fast path: direct string match
