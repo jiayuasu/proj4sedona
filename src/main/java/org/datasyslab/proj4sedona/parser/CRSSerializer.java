@@ -38,7 +38,7 @@ public final class CRSSerializer {
     private static final double RAD_TO_DEG = 180.0 / Math.PI;
     private static final double DEG_TO_RAD = Math.PI / 180.0;
 
-    // Projection name mappings: PROJ -> WKT method names
+    // Projection name mappings: PROJ -> WKT method names (short/generic names)
     private static final Map<String, String> PROJ_TO_WKT_METHOD = new LinkedHashMap<>();
     
     static {
@@ -68,22 +68,57 @@ public final class CRSSerializer {
         PROJ_TO_WKT_METHOD.put("ortho", "Orthographic");
         PROJ_TO_WKT_METHOD.put("vandg", "Van der Grinten");
         PROJ_TO_WKT_METHOD.put("robin", "Robinson");
-        PROJ_TO_WKT_METHOD.put("etmerc", "Extended Transverse Mercator");
-        PROJ_TO_WKT_METHOD.put("gstmerc", "Gauss-Schreiber Transverse Mercator");
+        PROJ_TO_WKT_METHOD.put("etmerc", "Transverse Mercator");
+        PROJ_TO_WKT_METHOD.put("gstmerc", "Gauss Schreiber Transverse Mercator");
     }
 
-    // Reverse mapping: WKT method name -> PROJ name (for projName normalization)
+    // Reverse mapping: WKT/PROJJSON method name -> PROJ short name
+    // (for projName normalization when parsing PROJJSON)
+    // Source: EPSG canonical method names from pyproj's PROJJSON output
+    // verified via scripts/verify_proj_to_wkt.py and scripts/list_projjson_methods.py
     private static final Map<String, String> WKT_TO_PROJ_METHOD = new LinkedHashMap<>();
 
     static {
+        // Build reverse mapping from PROJ_TO_WKT_METHOD
         for (Map.Entry<String, String> entry : PROJ_TO_WKT_METHOD.entrySet()) {
-            // Store reverse mapping (lowercase WKT name -> PROJ name)
-            // Don't overwrite if already set (first PROJ name wins, e.g., tmerc before utm)
             String wktLower = entry.getValue().toLowerCase();
             if (!WKT_TO_PROJ_METHOD.containsKey(wktLower)) {
                 WKT_TO_PROJ_METHOD.put(wktLower, entry.getKey());
             }
         }
+        // EPSG canonical PROJJSON method names (from pyproj output) that differ
+        // from the short generic names above. These are the names that appear in
+        // conversion.method.name in PROJJSON emitted by pyproj/PROJ.
+        WKT_TO_PROJ_METHOD.put("mercator (variant a)", "merc");
+        WKT_TO_PROJ_METHOD.put("mercator (variant b)", "merc");
+        WKT_TO_PROJ_METHOD.put("popular visualisation pseudo mercator", "merc");
+        WKT_TO_PROJ_METHOD.put("lambert conic conformal (1sp)", "lcc");
+        WKT_TO_PROJ_METHOD.put("lambert conic conformal (2sp)", "lcc");
+        WKT_TO_PROJ_METHOD.put("lambert conic conformal (1sp variant b)", "lcc");
+        WKT_TO_PROJ_METHOD.put("lambert conic conformal (2sp belgium)", "lcc");
+        WKT_TO_PROJ_METHOD.put("lambert conic conformal (2sp michigan)", "lcc");
+        WKT_TO_PROJ_METHOD.put("lambert conic conformal (west orientated)", "lcc");
+        WKT_TO_PROJ_METHOD.put("lambert conic near-conformal", "lcc");
+        WKT_TO_PROJ_METHOD.put("polar stereographic (variant a)", "stere");
+        WKT_TO_PROJ_METHOD.put("polar stereographic (variant b)", "stere");
+        WKT_TO_PROJ_METHOD.put("polar stereographic (variant c)", "stere");
+        WKT_TO_PROJ_METHOD.put("hotine oblique mercator (variant a)", "omerc");
+        WKT_TO_PROJ_METHOD.put("hotine oblique mercator (variant b)", "omerc");
+        WKT_TO_PROJ_METHOD.put("laborde oblique mercator", "omerc");
+        WKT_TO_PROJ_METHOD.put("krovak (north orientated)", "krovak");
+        WKT_TO_PROJ_METHOD.put("krovak modified", "krovak");
+        WKT_TO_PROJ_METHOD.put("krovak modified (north orientated)", "krovak");
+        WKT_TO_PROJ_METHOD.put("american polyconic", "poly");
+        WKT_TO_PROJ_METHOD.put("equidistant cylindrical", "eqc");
+        WKT_TO_PROJ_METHOD.put("lambert cylindrical equal area", "cea");
+        WKT_TO_PROJ_METHOD.put("lambert cylindrical equal area (spherical)", "cea");
+        WKT_TO_PROJ_METHOD.put("lambert azimuthal equal area (spherical)", "laea");
+        WKT_TO_PROJ_METHOD.put("modified azimuthal equidistant", "aeqd");
+        WKT_TO_PROJ_METHOD.put("transverse mercator (south orientated)", "tmerc");
+        WKT_TO_PROJ_METHOD.put("transverse mercator zoned grid system", "tmerc");
+        WKT_TO_PROJ_METHOD.put("hyperbolic cassini-soldner", "cass");
+        WKT_TO_PROJ_METHOD.put("gauss schreiber transverse mercator", "gstmerc");
+        WKT_TO_PROJ_METHOD.put("gauss-schreiber transverse mercator", "gstmerc");
     }
 
     // Well-known datum names mapped to EPSG geographic 2D CRS codes.
