@@ -44,6 +44,15 @@ public class Proj {
             throw new IllegalArgumentException("Could not parse SRS code: " + srsCode);
         }
 
+        // Preserve the original authority:code in srsCode if input looks like one
+        // (e.g., "EPSG:3857", "IAU:49900") and parsing didn't already set it
+        if (def.getSrsCode() == null && srsCode != null) {
+            String trimmed = srsCode.trim();
+            if (trimmed.matches("(?i)[A-Z]+:\\d+")) {
+                def.setSrsCode(trimmed.toUpperCase());
+            }
+        }
+
         // Get the projection implementation
         projection = ProjectionRegistry.get(def.getProjName());
         if (projection == null) {
@@ -396,10 +405,34 @@ public class Proj {
     /**
      * Attempt to identify the EPSG code for this CRS.
      * 
-     * @return EPSG code (e.g., "EPSG:4326") or null if not found
+     * <p>Returns "EPSG:code" only when the authority is EPSG. For non-EPSG authorities
+     * (e.g., IAU), returns null. Use {@link #toAuthority()} for general authority lookup.</p>
+     * 
+     * @return EPSG code (e.g., "EPSG:4326") or null if not found or non-EPSG authority
      */
     public String toEpsgCode() {
         return CRSSerializer.toEpsgCode(this);
+    }
+
+    /**
+     * Attempt to identify the authority and code for this CRS.
+     * 
+     * <p>Returns a String array {"authority", "code"} for any recognized authority
+     * (e.g., {"EPSG", "4326"} or {"IAU", "49900"}). Returns null if not found.</p>
+     * 
+     * <p>Identification strategy:</p>
+     * <ol>
+     *   <li>Check if the input already declared an authority:code (e.g., from PROJJSON id field)</li>
+     *   <li>Try datum name lookup against well-known datum names</li>
+     *   <li>Fall back to parameter matching against known EPSG definitions</li>
+     * </ol>
+     * 
+     * <p>Similar to pyproj's {@code CRS.to_authority()} method.</p>
+     * 
+     * @return String array {"authority", "code"} or null if not found
+     */
+    public String[] toAuthority() {
+        return CRSSerializer.toAuthority(this);
     }
 
     @Override

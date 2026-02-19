@@ -105,6 +105,14 @@ public final class ProjJsonTransformer {
             case "datum_ensemble":
                 if (value instanceof Map) {
                     processDatum((Map<String, Object>) value, def);
+                    // Store datum name in datumCode for geographic CRS identification
+                    // (e.g., "NAD83 (National Spatial Reference System 2011)" -> EPSG:6318)
+                    if (def.getDatumCode() == null) {
+                        Object datumName = ((Map<String, Object>) value).get("name");
+                        if (datumName != null) {
+                            def.setDatumCode(datumName.toString());
+                        }
+                    }
                 }
                 break;
 
@@ -135,7 +143,10 @@ public final class ProjJsonTransformer {
                     Object authority = id.get("authority");
                     Object code = id.get("code");
                     if (authority != null && code != null) {
-                        def.setTitle(authority.toString() + ":" + code.toString());
+                        String authorityCode = authority.toString() + ":" + toIntString(code);
+                        def.setTitle(authorityCode);
+                        // Store authority:code in srsCode for toEpsgCode()/toAuthority() lookup
+                        def.setSrsCode(authorityCode);
                     }
                 }
                 break;
@@ -497,6 +508,24 @@ public final class ProjJsonTransformer {
         if (def.getLat1() == null && def.getLat0() != null) {
             def.setLat1(def.getLat0());
         }
+    }
+
+    /**
+     * Convert a value to an integer string representation.
+     * Handles the case where GSON parses JSON integer codes (e.g., 6318) as Double (6318.0).
+     */
+    private static String toIntString(Object value) {
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof Number) {
+            double d = ((Number) value).doubleValue();
+            if (d == Math.floor(d) && !Double.isInfinite(d)) {
+                return String.valueOf((long) d);
+            }
+            return value.toString();
+        }
+        return value.toString();
     }
 
     /**

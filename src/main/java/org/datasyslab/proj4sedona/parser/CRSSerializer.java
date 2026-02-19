@@ -72,6 +72,53 @@ public final class CRSSerializer {
         PROJ_TO_WKT_METHOD.put("gstmerc", "Gauss-Schreiber Transverse Mercator");
     }
 
+    // Reverse mapping: WKT method name -> PROJ name (for projName normalization)
+    private static final Map<String, String> WKT_TO_PROJ_METHOD = new LinkedHashMap<>();
+
+    static {
+        for (Map.Entry<String, String> entry : PROJ_TO_WKT_METHOD.entrySet()) {
+            // Store reverse mapping (lowercase WKT name -> PROJ name)
+            // Don't overwrite if already set (first PROJ name wins, e.g., tmerc before utm)
+            String wktLower = entry.getValue().toLowerCase();
+            if (!WKT_TO_PROJ_METHOD.containsKey(wktLower)) {
+                WKT_TO_PROJ_METHOD.put(wktLower, entry.getKey());
+            }
+        }
+    }
+
+    // Well-known datum names mapped to EPSG geographic CRS codes.
+    // Used for datum-name-based identification when no id field is present (like pyproj).
+    private static final Map<String, String> DATUM_NAME_TO_EPSG = new LinkedHashMap<>();
+
+    static {
+        DATUM_NAME_TO_EPSG.put("world geodetic system 1984", "EPSG:4326");
+        DATUM_NAME_TO_EPSG.put("wgs 1984", "EPSG:4326");
+        DATUM_NAME_TO_EPSG.put("wgs84", "EPSG:4326");
+        DATUM_NAME_TO_EPSG.put("wgs_1984", "EPSG:4326");
+        DATUM_NAME_TO_EPSG.put("north american datum 1983", "EPSG:4269");
+        DATUM_NAME_TO_EPSG.put("north_american_datum_1983", "EPSG:4269");
+        DATUM_NAME_TO_EPSG.put("nad83", "EPSG:4269");
+        DATUM_NAME_TO_EPSG.put("nad83 (national spatial reference system 2011)", "EPSG:6318");
+        DATUM_NAME_TO_EPSG.put("nad83 (national spatial reference system 2007)", "EPSG:4759");
+        DATUM_NAME_TO_EPSG.put("nad83 (cors96)", "EPSG:6783");
+        DATUM_NAME_TO_EPSG.put("nad83 (high accuracy reference network)", "EPSG:4957");
+        DATUM_NAME_TO_EPSG.put("nad83 (high accuracy reference network - cors96)", "EPSG:4893");
+        DATUM_NAME_TO_EPSG.put("north american datum 1927", "EPSG:4267");
+        DATUM_NAME_TO_EPSG.put("north_american_datum_1927", "EPSG:4267");
+        DATUM_NAME_TO_EPSG.put("nad27", "EPSG:4267");
+        DATUM_NAME_TO_EPSG.put("european terrestrial reference system 1989", "EPSG:4258");
+        DATUM_NAME_TO_EPSG.put("etrs89", "EPSG:4258");
+        DATUM_NAME_TO_EPSG.put("geodetic reference system 1980", "EPSG:4019");
+        DATUM_NAME_TO_EPSG.put("reseau geodesique francais 1993", "EPSG:4171");
+        DATUM_NAME_TO_EPSG.put("geocentric datum of australia 1994", "EPSG:4283");
+        DATUM_NAME_TO_EPSG.put("geocentric datum of australia 2020", "EPSG:7844");
+        DATUM_NAME_TO_EPSG.put("japan geodetic datum 2011", "EPSG:6668");
+        DATUM_NAME_TO_EPSG.put("china geodetic coordinate system 2000", "EPSG:4490");
+        DATUM_NAME_TO_EPSG.put("indian 1975", "EPSG:4240");
+        DATUM_NAME_TO_EPSG.put("ordnance survey of great britain 1936", "EPSG:4277");
+        DATUM_NAME_TO_EPSG.put("osgb 1936", "EPSG:4277");
+    }
+
     private CRSSerializer() {
         // Utility class
     }
@@ -749,16 +796,81 @@ public final class CRSSerializer {
         return axis;
     }
 
-    // ==================== EPSG Code Lookup ====================
+    // ==================== Authority / EPSG Code Lookup ====================
+
+    /**
+     * Attempt to identify the authority and code for a CRS.
+     *
+     * <p>Identification strategy (in order):</p>
+     * <ol>
+     *   <li>If srsCode already contains "AUTHORITY:code" (e.g., from PROJJSON id field
+     *       or direct "EPSG:4326" input), return it directly.</li>
+     *   <li>If a well-known datum name is present, look it up in the datum name table.</li>
+     *   <li>Fall back to parameter matching against known EPSG definitions.</li>
+     * </ol>
+     *
+     * <p>Similar to pyproj's {@code CRS.to_authority()} method.</p>
+     *
+     * @param proj The projection to identify
+     * @return String array {@code {"authority", "code"}} (e.g., {"EPSG", "4326"}), or null if not found
+     */
+    public static String[] toAuthority(Proj proj) {
+        if (proj == null) {
+            return null;
+        }
+        return toAuthority(proj.getParams());
+    }
+
+    /**
+     * Attempt to identify the authority and code for projection parameters.
+     *
+     * @param params The projection parameters
+     * @return String array {@code {"authority", "code"}}, or null if not found
+     */
+    public static String[] toAuthority(ProjectionParams params) {
+        if (params == null) {
+            return null;
+        }
+
+        // Phase 1: Check if srsCode already contains authority:code
+        if (params.srsCode != null) {
+            String[] parsed = parseAuthorityCode(params.srsCode);
+            if (parsed != null) {
+                return parsed;
+            }
+        }
+
+        // Phase 2: Try datum name lookup (like pyproj)
+        String datumEpsg = lookupByDatumName(params);
+        if (datumEpsg != null) {
+            String[] parsed = parseAuthorityCode(datumEpsg);
+            if (parsed != null) {
+                return parsed;
+            }
+        }
+
+        // Phase 3: Fall back to parameter matching (EPSG only)
+        String epsg = matchByParameters(params);
+        if (epsg != null) {
+            String[] parsed = parseAuthorityCode(epsg);
+            if (parsed != null) {
+                return parsed;
+            }
+        }
+
+        return null;
+    }
 
     /**
      * Attempt to identify the EPSG code for a CRS.
-     * 
-     * <p>This method compares the projection parameters against known EPSG definitions
-     * to find a match. Returns null if no matching EPSG code is found.</p>
-     * 
+     *
+     * <p>This is a convenience method that delegates to {@link #toAuthority(Proj)}
+     * and returns "EPSG:code" only when the authority is EPSG.</p>
+     *
+     * <p>Similar to pyproj's {@code CRS.to_epsg()} method.</p>
+     *
      * @param proj The projection to identify
-     * @return EPSG code (e.g., "EPSG:4326") or null if not found
+     * @return EPSG code (e.g., "EPSG:4326") or null if not found or non-EPSG authority
      */
     public static String toEpsgCode(Proj proj) {
         if (proj == null) {
@@ -769,18 +881,73 @@ public final class CRSSerializer {
 
     /**
      * Attempt to identify the EPSG code for projection parameters.
+     *
+     * @param params The projection parameters
+     * @return EPSG code (e.g., "EPSG:4326") or null if not found or non-EPSG authority
      */
     public static String toEpsgCode(ProjectionParams params) {
-        if (params == null) {
+        String[] authority = toAuthority(params);
+        if (authority != null && "EPSG".equalsIgnoreCase(authority[0])) {
+            return "EPSG:" + authority[1];
+        }
+        return null;
+    }
+
+    /**
+     * Parse an "authority:code" string into a String array.
+     *
+     * @param authorityCode String like "EPSG:4326" or "IAU:49900"
+     * @return String array {"authority", "code"} or null if not parseable
+     */
+    private static String[] parseAuthorityCode(String authorityCode) {
+        if (authorityCode == null) {
+            return null;
+        }
+        int colonIdx = authorityCode.indexOf(':');
+        if (colonIdx > 0 && colonIdx < authorityCode.length() - 1) {
+            String authority = authorityCode.substring(0, colonIdx).trim();
+            String code = authorityCode.substring(colonIdx + 1).trim();
+            if (!authority.isEmpty() && !code.isEmpty()) {
+                return new String[]{authority.toUpperCase(), code};
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Try to identify a geographic CRS EPSG code from the datum name.
+     * Mirrors pyproj's behavior of matching well-known datum names.
+     */
+    private static String lookupByDatumName(ProjectionParams params) {
+        // Only apply datum name lookup for geographic CRS.
+        // Projected CRS (e.g., UTM) also have a datum but their EPSG code
+        // depends on projection parameters, not just datum.
+        String normalizedProj = normalizeProjName(params.projName);
+        if (normalizedProj != null && !"longlat".equals(normalizedProj)) {
             return null;
         }
 
-        // Check if srsCode is already an EPSG code (case-insensitive)
-        if (params.srsCode != null && params.srsCode.length() > 5 
-                && params.srsCode.substring(0, 5).equalsIgnoreCase("EPSG:")) {
-            return params.srsCode.substring(0, 5).toUpperCase() + params.srsCode.substring(5);
+        // Try datumCode (set from PROJJSON datum.name or PROJ +datum flag)
+        if (params.datumCode != null) {
+            String normalized = params.datumCode.toLowerCase().trim();
+            String epsg = DATUM_NAME_TO_EPSG.get(normalized);
+            if (epsg != null) {
+                return epsg;
+            }
+            // Also try with underscores replaced by spaces
+            epsg = DATUM_NAME_TO_EPSG.get(normalized.replace('_', ' '));
+            if (epsg != null) {
+                return epsg;
+            }
         }
+        return null;
+    }
 
+    /**
+     * Match CRS parameters against known EPSG definitions.
+     * This is the existing parameter-matching approach, used as a fallback.
+     */
+    private static String matchByParameters(ProjectionParams params) {
         // Initialize global definitions
         Defs.globals();
 
@@ -788,7 +955,7 @@ public final class CRSSerializer {
         String[] commonCodes = {
             "EPSG:4326", "EPSG:4269", "EPSG:3857"
         };
-        
+
         for (String code : commonCodes) {
             if (matchesDefinition(params, code)) {
                 return code;
@@ -796,22 +963,23 @@ public final class CRSSerializer {
         }
 
         // Check UTM zones
-        if ("tmerc".equals(params.projName) || "utm".equals(params.projName)) {
+        String normalizedProj = normalizeProjName(params.projName);
+        if ("tmerc".equals(normalizedProj) || "utm".equals(normalizedProj)) {
             Integer zone = params.zone;
             if (zone == null && params.long0 != null) {
                 // Calculate zone from central meridian
                 double lon = params.long0 * RAD_TO_DEG;
                 zone = (int) Math.floor((lon + 180) / 6) + 1;
             }
-            
+
             if (zone != null && zone >= 1 && zone <= 60) {
-                boolean isSouth = Boolean.TRUE.equals(params.utmSouth) || 
+                boolean isSouth = Boolean.TRUE.equals(params.utmSouth) ||
                     params.y0 > 5000000;
-                
-                String epsgCode = isSouth 
+
+                String epsgCode = isSouth
                     ? "EPSG:" + (32700 + zone)
                     : "EPSG:" + (32600 + zone);
-                    
+
                 if (matchesDefinition(params, epsgCode)) {
                     return epsgCode;
                 }
@@ -821,21 +989,74 @@ public final class CRSSerializer {
         return null;
     }
 
+    /**
+     * Normalize a projection name to its canonical PROJ short form.
+     * E.g., "Transverse Mercator" -> "tmerc", "longlat" -> "longlat"
+     */
+    private static String normalizeProjName(String projName) {
+        if (projName == null) {
+            return null;
+        }
+        String lower = projName.toLowerCase().trim();
+        // Already a PROJ short name?
+        if (PROJ_TO_WKT_METHOD.containsKey(lower)) {
+            return lower;
+        }
+        // Try reverse lookup: WKT name -> PROJ name
+        String projShort = WKT_TO_PROJ_METHOD.get(lower);
+        if (projShort != null) {
+            return projShort;
+        }
+        // Try with underscores -> spaces
+        projShort = WKT_TO_PROJ_METHOD.get(lower.replace('_', ' '));
+        if (projShort != null) {
+            return projShort;
+        }
+        return lower;
+    }
+
     private static boolean matchesDefinition(ProjectionParams params, String code) {
         try {
             Proj ref = new Proj(code);
             ProjectionParams refParams = ref.getParams();
-            
-            // Compare key parameters
-            if (!Objects.equals(params.projName, refParams.projName)) {
+
+            // Compare projection names (normalized to handle aliases)
+            String normalizedInput = normalizeProjName(params.projName);
+            String normalizedRef = normalizeProjName(refParams.projName);
+            if (!Objects.equals(normalizedInput, normalizedRef)) {
                 return false;
             }
-            
-            // Check ellipsoid
+
+            // Check datum compatibility.
+            // If the reference has a datumCode, the input must have a matching one.
+            // This prevents e.g. GRS 1980 + "Unknown datum" from matching NAD83.
+            // "none" means no datum was specified (common for sphere-based CRS like EPSG:3857).
+            if (refParams.datumCode != null && !refParams.datumCode.isEmpty()
+                    && !"none".equalsIgnoreCase(refParams.datumCode)) {
+                if (params.datumCode == null || params.datumCode.isEmpty()
+                        || "none".equalsIgnoreCase(params.datumCode)) {
+                    return false;
+                }
+                if (!params.datumCode.equalsIgnoreCase(refParams.datumCode)) {
+                    return false;
+                }
+            }
+
+            // Check semi-major axis
             if (Math.abs(params.a - refParams.a) > 0.1) {
                 return false;
             }
-            
+
+            // Check inverse flattening (distinguishes GRS 1980 from WGS 84)
+            if (params.rf != 0 && refParams.rf != 0) {
+                if (Math.abs(params.rf - refParams.rf) > 1e-6) {
+                    return false;
+                }
+            } else if (Math.abs(params.b - refParams.b) > 0.01) {
+                // Fall back to semi-minor axis comparison
+                return false;
+            }
+
             // Check lat0/long0
             if (!closeEnough(params.lat0, refParams.lat0, 1e-9)) {
                 return false;
@@ -843,12 +1064,12 @@ public final class CRSSerializer {
             if (!closeEnough(params.long0, refParams.long0, 1e-9)) {
                 return false;
             }
-            
+
             // Check scale factor
             if (Math.abs(params.k0 - refParams.k0) > 1e-9) {
                 return false;
             }
-            
+
             // Check false easting/northing
             if (Math.abs(params.x0 - refParams.x0) > 0.01) {
                 return false;
@@ -856,7 +1077,7 @@ public final class CRSSerializer {
             if (Math.abs(params.y0 - refParams.y0) > 0.01) {
                 return false;
             }
-            
+
             return true;
         } catch (Exception e) {
             return false;
