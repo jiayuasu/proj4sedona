@@ -86,37 +86,46 @@ public final class CRSSerializer {
         }
     }
 
-    // Well-known datum names mapped to EPSG geographic CRS codes.
+    // Well-known datum names mapped to EPSG geographic 2D CRS codes.
+    // Source: PROJ database (EPSG registry) via scripts/gen_datum_map.py
     // Used for datum-name-based identification when no id field is present (like pyproj).
+    // Keys are lowercase. Lookup also normalizes underscores to spaces, so underscore
+    // variants are not needed here.
     private static final Map<String, String> DATUM_NAME_TO_EPSG = new LinkedHashMap<>();
 
     static {
+        // WGS 84 (datum name, ensemble name, and aliases)
         DATUM_NAME_TO_EPSG.put("world geodetic system 1984", "EPSG:4326");
-        DATUM_NAME_TO_EPSG.put("wgs 1984", "EPSG:4326");
+        DATUM_NAME_TO_EPSG.put("world geodetic system 1984 ensemble", "EPSG:4326");
+        DATUM_NAME_TO_EPSG.put("wgs 84", "EPSG:4326");
         DATUM_NAME_TO_EPSG.put("wgs84", "EPSG:4326");
-        DATUM_NAME_TO_EPSG.put("wgs_1984", "EPSG:4326");
+        // NAD83 family
         DATUM_NAME_TO_EPSG.put("north american datum 1983", "EPSG:4269");
-        DATUM_NAME_TO_EPSG.put("north_american_datum_1983", "EPSG:4269");
         DATUM_NAME_TO_EPSG.put("nad83", "EPSG:4269");
         DATUM_NAME_TO_EPSG.put("nad83 (national spatial reference system 2011)", "EPSG:6318");
         DATUM_NAME_TO_EPSG.put("nad83 (national spatial reference system 2007)", "EPSG:4759");
-        DATUM_NAME_TO_EPSG.put("nad83 (cors96)", "EPSG:6783");
-        DATUM_NAME_TO_EPSG.put("nad83 (high accuracy reference network)", "EPSG:4957");
-        DATUM_NAME_TO_EPSG.put("nad83 (high accuracy reference network - cors96)", "EPSG:4893");
+        DATUM_NAME_TO_EPSG.put("nad83 (continuously operating reference station 1996)", "EPSG:6783");
+        DATUM_NAME_TO_EPSG.put("nad83(cors96)", "EPSG:6783");
+        DATUM_NAME_TO_EPSG.put("nad83 (high accuracy reference network)", "EPSG:4152");
+        DATUM_NAME_TO_EPSG.put("nad83(harn)", "EPSG:4152");
+        // NAD27
         DATUM_NAME_TO_EPSG.put("north american datum 1927", "EPSG:4267");
-        DATUM_NAME_TO_EPSG.put("north_american_datum_1927", "EPSG:4267");
         DATUM_NAME_TO_EPSG.put("nad27", "EPSG:4267");
+        // ETRS89 (datum name, ensemble name, and aliases)
         DATUM_NAME_TO_EPSG.put("european terrestrial reference system 1989", "EPSG:4258");
+        DATUM_NAME_TO_EPSG.put("european terrestrial reference system 1989 ensemble", "EPSG:4258");
         DATUM_NAME_TO_EPSG.put("etrs89", "EPSG:4258");
-        DATUM_NAME_TO_EPSG.put("geodetic reference system 1980", "EPSG:4019");
+        // Other commonly used datums
         DATUM_NAME_TO_EPSG.put("reseau geodesique francais 1993", "EPSG:4171");
+        DATUM_NAME_TO_EPSG.put("reseau geodesique francais 1993 v1", "EPSG:4171");
         DATUM_NAME_TO_EPSG.put("geocentric datum of australia 1994", "EPSG:4283");
         DATUM_NAME_TO_EPSG.put("geocentric datum of australia 2020", "EPSG:7844");
-        DATUM_NAME_TO_EPSG.put("japan geodetic datum 2011", "EPSG:6668");
+        DATUM_NAME_TO_EPSG.put("japanese geodetic datum 2011", "EPSG:6668");
         DATUM_NAME_TO_EPSG.put("china geodetic coordinate system 2000", "EPSG:4490");
         DATUM_NAME_TO_EPSG.put("indian 1975", "EPSG:4240");
         DATUM_NAME_TO_EPSG.put("ordnance survey of great britain 1936", "EPSG:4277");
         DATUM_NAME_TO_EPSG.put("osgb 1936", "EPSG:4277");
+        DATUM_NAME_TO_EPSG.put("osgb36", "EPSG:4277");
     }
 
     private CRSSerializer() {
