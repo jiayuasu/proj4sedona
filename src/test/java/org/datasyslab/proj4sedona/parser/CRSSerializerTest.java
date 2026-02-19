@@ -331,6 +331,176 @@ class CRSSerializerTest {
         assertNull(CRSSerializer.toEpsgCode((Proj) null));
     }
 
+    // ==================== PROJJSON EPSG Code Tests ====================
+
+    @Test
+    @DisplayName("toEpsgCode: NAD83(2011) full PROJJSON with id.code=6318")
+    void testToEpsgCodeNad83ProjJson() {
+        String nad83 = "{\"type\":\"GeographicCRS\",\"name\":\"NAD83(2011)\","
+            + "\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"NAD83 (National Spatial Reference System 2011)\","
+            + "\"ellipsoid\":{\"name\":\"GRS 1980\",\"semi_major_axis\":6378137,\"inverse_flattening\":298.257222101}},"
+            + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":[{\"name\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
+            + "{\"name\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"}]},"
+            + "\"id\":{\"authority\":\"EPSG\",\"code\":6318}}";
+        Proj proj = new Proj(nad83);
+        assertEquals("EPSG:6318", proj.toEpsgCode());
+    }
+
+    @Test
+    @DisplayName("toEpsgCode: UTM 32N full PROJJSON with id.code=32632")
+    void testToEpsgCodeUtm32nFullProjJson() {
+        String utmFull = "{\"type\":\"ProjectedCRS\",\"name\":\"WGS 84 / UTM zone 32N\","
+            + "\"base_crs\":{\"name\":\"WGS 84\",\"datum\":{\"type\":\"GeodeticReferenceFrame\","
+            + "\"name\":\"World Geodetic System 1984\","
+            + "\"ellipsoid\":{\"name\":\"WGS 84\",\"semi_major_axis\":6378137,\"inverse_flattening\":298.257223563}}},"
+            + "\"conversion\":{\"name\":\"UTM zone 32N\",\"method\":{\"name\":\"Transverse Mercator\"},"
+            + "\"parameters\":[{\"name\":\"Latitude of natural origin\",\"value\":0},"
+            + "{\"name\":\"Longitude of natural origin\",\"value\":9},"
+            + "{\"name\":\"Scale factor at natural origin\",\"value\":0.9996},"
+            + "{\"name\":\"False easting\",\"value\":500000},"
+            + "{\"name\":\"False northing\",\"value\":0}]},"
+            + "\"coordinate_system\":{\"subtype\":\"Cartesian\",\"axis\":[{\"name\":\"Easting\",\"direction\":\"east\",\"unit\":\"metre\"},"
+            + "{\"name\":\"Northing\",\"direction\":\"north\",\"unit\":\"metre\"}]},"
+            + "\"id\":{\"authority\":\"EPSG\",\"code\":32632}}";
+        Proj proj = new Proj(utmFull);
+        assertEquals("EPSG:32632", proj.toEpsgCode());
+    }
+
+    @Test
+    @DisplayName("toEpsgCode: No id field with unknown datum returns null (not 4326)")
+    void testToEpsgCodeNoIdGrs80() {
+        String noId = "{\"type\":\"GeographicCRS\",\"name\":\"Unknown CRS\","
+            + "\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"Unknown datum\","
+            + "\"ellipsoid\":{\"name\":\"GRS 1980\",\"semi_major_axis\":6378137,\"inverse_flattening\":298.257222101}},"
+            + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":[{\"name\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
+            + "{\"name\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"}]}}";
+        Proj proj = new Proj(noId);
+        // "Unknown datum" is not a recognized datum name, so datumCodesMatch() rejects the
+        // match. This matches pyproj behavior (confidence 60% < 70% threshold → None).
+        assertNull(proj.toEpsgCode());
+    }
+
+    @Test
+    @DisplayName("toEpsgCode: IAU authority returns null for toEpsgCode")
+    void testToEpsgCodeIauAuthority() {
+        String iau = "{\"type\":\"GeographicCRS\",\"name\":\"Mars\","
+            + "\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"Mars\","
+            + "\"ellipsoid\":{\"name\":\"Mars\",\"semi_major_axis\":3396190,\"inverse_flattening\":169.89444722361179}},"
+            + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":[{\"name\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
+            + "{\"name\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"}]},"
+            + "\"id\":{\"authority\":\"IAU\",\"code\":49900}}";
+        Proj proj = new Proj(iau);
+        // IAU is not EPSG -> toEpsgCode should return null
+        assertNull(proj.toEpsgCode());
+    }
+
+    @Test
+    @DisplayName("toEpsgCode: UTM 32N minimal PROJJSON throws (incomplete)")
+    void testToEpsgCodeMinimalProjJsonThrows() {
+        String utmMin = "{\"type\":\"ProjectedCRS\",\"name\":\"WGS 84 / UTM zone 32N\","
+            + "\"id\":{\"authority\":\"EPSG\",\"code\":32632}}";
+        // Minimal PROJJSON without full CRS definition should throw
+        assertThrows(IllegalArgumentException.class, () -> new Proj(utmMin));
+    }
+
+    // ==================== toAuthority Tests ====================
+
+    @Test
+    @DisplayName("toAuthority: EPSG:4326 string")
+    void testToAuthorityEpsg4326() {
+        Proj proj = new Proj("EPSG:4326");
+        String[] auth = proj.toAuthority();
+        assertNotNull(auth);
+        assertArrayEquals(new String[]{"EPSG", "4326"}, auth);
+    }
+
+    @Test
+    @DisplayName("toAuthority: EPSG:32632 string")
+    void testToAuthorityEpsg32632() {
+        Proj proj = new Proj("EPSG:32632");
+        String[] auth = proj.toAuthority();
+        assertNotNull(auth);
+        assertArrayEquals(new String[]{"EPSG", "32632"}, auth);
+    }
+
+    @Test
+    @DisplayName("toAuthority: NAD83(2011) PROJJSON returns EPSG:6318")
+    void testToAuthorityNad83ProjJson() {
+        String nad83 = "{\"type\":\"GeographicCRS\",\"name\":\"NAD83(2011)\","
+            + "\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"NAD83 (National Spatial Reference System 2011)\","
+            + "\"ellipsoid\":{\"name\":\"GRS 1980\",\"semi_major_axis\":6378137,\"inverse_flattening\":298.257222101}},"
+            + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":[{\"name\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
+            + "{\"name\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"}]},"
+            + "\"id\":{\"authority\":\"EPSG\",\"code\":6318}}";
+        Proj proj = new Proj(nad83);
+        String[] auth = proj.toAuthority();
+        assertNotNull(auth);
+        assertArrayEquals(new String[]{"EPSG", "6318"}, auth);
+    }
+
+    @Test
+    @DisplayName("toAuthority: IAU:49900 returns IAU authority")
+    void testToAuthorityIau() {
+        String iau = "{\"type\":\"GeographicCRS\",\"name\":\"Mars\","
+            + "\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"Mars\","
+            + "\"ellipsoid\":{\"name\":\"Mars\",\"semi_major_axis\":3396190,\"inverse_flattening\":169.89444722361179}},"
+            + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":[{\"name\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
+            + "{\"name\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"}]},"
+            + "\"id\":{\"authority\":\"IAU\",\"code\":49900}}";
+        Proj proj = new Proj(iau);
+        String[] auth = proj.toAuthority();
+        assertNotNull(auth);
+        assertArrayEquals(new String[]{"IAU", "49900"}, auth);
+    }
+
+    @Test
+    @DisplayName("toAuthority: WGS84 PROJ string matches by parameters")
+    void testToAuthorityWgs84ProjString() {
+        Proj proj = new Proj("+proj=longlat +datum=WGS84 +no_defs");
+        String[] auth = proj.toAuthority();
+        assertNotNull(auth);
+        assertArrayEquals(new String[]{"EPSG", "4326"}, auth);
+    }
+
+    @Test
+    @DisplayName("toAuthority: null returns null")
+    void testToAuthorityNull() {
+        assertNull(CRSSerializer.toAuthority((Proj) null));
+    }
+
+    @Test
+    @DisplayName("toAuthority: No id, unknown datum returns null")
+    void testToAuthorityNoIdUnknownDatum() {
+        String noId = "{\"type\":\"GeographicCRS\",\"name\":\"Unknown CRS\","
+            + "\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"Unknown datum\","
+            + "\"ellipsoid\":{\"name\":\"GRS 1980\",\"semi_major_axis\":6378137,\"inverse_flattening\":298.257222101}},"
+            + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":[{\"name\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
+            + "{\"name\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"}]}}";
+        Proj proj = new Proj(noId);
+        // "Unknown datum" is unresolvable → datum mismatch → null (matches pyproj behavior)
+        assertNull(proj.toAuthority());
+    }
+
+    // ==================== Datum Name Lookup Tests ====================
+
+    @Test
+    @DisplayName("toEpsgCode: NAD83(2011) no id, identified by datum name")
+    void testToEpsgCodeNad83ByDatumName() {
+        // NAD83(2011) with known datum name but no id field
+        // pyproj identifies this as EPSG:6318 by datum name
+        String nad83NoId = "{\"type\":\"GeographicCRS\",\"name\":\"NAD83(2011)\","
+            + "\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"NAD83 (National Spatial Reference System 2011)\","
+            + "\"ellipsoid\":{\"name\":\"GRS 1980\",\"semi_major_axis\":6378137,\"inverse_flattening\":298.257222101}},"
+            + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":[{\"name\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
+            + "{\"name\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"}]}}";
+        Proj proj = new Proj(nad83NoId);
+        String result = proj.toEpsgCode();
+        // The datum name "NAD83 (National Spatial Reference System 2011)" should be in our
+        // lookup table and should deterministically resolve to EPSG:6318.
+        assertEquals("EPSG:6318", result,
+            "Expected EPSG:6318, got: " + result);
+    }
+
     // ==================== Round-trip Tests ====================
 
     @Test
