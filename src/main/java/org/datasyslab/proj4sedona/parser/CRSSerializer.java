@@ -704,6 +704,19 @@ public final class CRSSerializer {
             json.put("coordinate_system", buildProjJsonProjCS(params));
         }
 
+        // Add "id" field when the authority is known
+        String[] authority = toAuthority(params);
+        if (authority != null) {
+            Map<String, Object> id = new LinkedHashMap<>();
+            id.put("authority", authority[0]);
+            try {
+                id.put("code", Integer.parseInt(authority[1]));
+            } catch (NumberFormatException e) {
+                id.put("code", authority[1]);
+            }
+            json.put("id", id);
+        }
+
         return json;
     }
 
