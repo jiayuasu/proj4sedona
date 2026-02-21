@@ -211,6 +211,9 @@ class CRSSerializerTest {
         assertTrue(result.contains("\"ellipsoid\""));
         assertTrue(result.contains("\"semi_major_axis\""));
         assertTrue(result.contains("\"coordinate_system\""));
+        assertTrue(result.contains("\"id\""));
+        assertTrue(result.contains("\"authority\": \"EPSG\""));
+        assertTrue(result.contains("\"code\": 4326"));
     }
 
     @Test
@@ -225,6 +228,9 @@ class CRSSerializerTest {
         assertTrue(result.contains("\"conversion\""));
         assertTrue(result.contains("\"method\""));
         assertTrue(result.contains("\"parameters\""));
+        assertTrue(result.contains("\"id\""));
+        assertTrue(result.contains("\"authority\": \"EPSG\""));
+        assertTrue(result.contains("\"code\": 32610"));
     }
 
     @Test
@@ -246,6 +252,8 @@ class CRSSerializerTest {
         assertNotNull(result);
         assertFalse(result.contains("\n")); // No newlines in compact format
         assertTrue(result.contains("\"type\":\"GeographicCRS\""));
+        assertTrue(result.contains("\"authority\":\"EPSG\""));
+        assertTrue(result.contains("\"code\":4326"));
     }
 
     @Test
@@ -266,6 +274,34 @@ class CRSSerializerTest {
     @DisplayName("toProjJson: null input returns null")
     void testToProjJsonNull() {
         assertNull(CRSSerializer.toProjJson((Proj) null));
+    }
+
+    @Test
+    @DisplayName("toProjJson: id field present for EPSG CRS")
+    void testToProjJsonIdFieldPresent() {
+        // Geographic CRS from authority string
+        Proj wgs84 = new Proj("EPSG:4326");
+        String json4326 = CRSSerializer.toProjJson(wgs84);
+        assertTrue(json4326.contains("\"id\""));
+        assertTrue(json4326.contains("\"authority\": \"EPSG\""));
+        assertTrue(json4326.contains("\"code\": 4326"));
+
+        // Projected CRS from authority string
+        Proj webMercator = new Proj("EPSG:3857");
+        String json3857 = CRSSerializer.toProjJson(webMercator);
+        assertTrue(json3857.contains("\"id\""));
+        assertTrue(json3857.contains("\"authority\": \"EPSG\""));
+        assertTrue(json3857.contains("\"code\": 3857"));
+    }
+
+    @Test
+    @DisplayName("toProjJson: id field absent for custom projection")
+    void testToProjJsonIdFieldAbsentForCustom() {
+        // Custom projection with no known authority
+        Proj custom = new Proj("+proj=lcc +lat_1=20 +lat_2=60 +lat_0=40 +lon_0=-96 +ellps=GRS80 +units=m");
+        String json = CRSSerializer.toProjJson(custom);
+        assertNotNull(json);
+        assertFalse(json.contains("\"id\""), "Custom projection should not have an id field");
     }
 
     // ==================== EPSG Code Lookup Tests ====================
