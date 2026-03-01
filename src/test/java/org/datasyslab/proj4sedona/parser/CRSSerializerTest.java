@@ -643,4 +643,122 @@ class CRSSerializerTest {
         String wkt1 = CRSSerializer.toWkt1(proj);
         assertTrue(wkt1.contains("US survey foot") || wkt1.contains("us-ft"));
     }
+
+    // ==================== Issue #44: Polar Stereographic lat_ts round-trip ====================
+
+    @Test
+    @DisplayName("Issue #44: lat_ts preserved in PROJ round-trip via WKT1")
+    void testLatTsPreservedProjWkt1RoundTrip() {
+        // Antarctic Polar Stereographic: lat_0=-90, lat_ts=-71
+        String input = "+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m";
+        Proj proj = new Proj(input);
+
+        // Export to WKT1
+        String wkt1 = CRSSerializer.toWkt1(proj);
+        assertNotNull(wkt1);
+        // WKT1 should contain standard_parallel_1 with -71
+        assertTrue(wkt1.contains("standard_parallel_1") || wkt1.contains("Standard_Parallel_1"),
+                "WKT1 should contain standard_parallel_1 parameter");
+        assertTrue(wkt1.contains("-71"), "WKT1 should preserve lat_ts value of -71");
+
+        // Re-import and re-export to PROJ
+        Proj reimported = new Proj(wkt1);
+        String projRoundTrip = CRSSerializer.toProjString(reimported);
+        assertTrue(projRoundTrip.contains("+lat_ts=-71"),
+                "Round-tripped PROJ string should preserve +lat_ts=-71, got: " + projRoundTrip);
+    }
+
+    @Test
+    @DisplayName("Issue #44: lat_ts preserved in PROJ round-trip via WKT2")
+    void testLatTsPreservedProjWkt2RoundTrip() {
+        // Arctic Polar Stereographic: lat_0=90, lat_ts=70
+        String input = "+proj=stere +lat_0=90 +lat_ts=70 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m";
+        Proj proj = new Proj(input);
+
+        // Export to WKT2
+        String wkt2 = CRSSerializer.toWkt2(proj);
+        assertNotNull(wkt2);
+        // WKT2 should contain "Latitude of standard parallel" with 70
+        assertTrue(wkt2.contains("Latitude of standard parallel") || wkt2.contains("standard parallel"),
+                "WKT2 should contain standard parallel parameter");
+        assertTrue(wkt2.contains("70"), "WKT2 should preserve lat_ts value of 70");
+
+        // Re-import and re-export to PROJ
+        Proj reimported = new Proj(wkt2);
+        String projRoundTrip = CRSSerializer.toProjString(reimported);
+        assertTrue(projRoundTrip.contains("+lat_ts=70"),
+                "Round-tripped PROJ string should preserve +lat_ts=70, got: " + projRoundTrip);
+    }
+
+    @Test
+    @DisplayName("Issue #44: lat_ts preserved in PROJ round-trip via PROJJSON")
+    void testLatTsPreservedProjJsonRoundTrip() {
+        // Antarctic Polar Stereographic: lat_0=-90, lat_ts=-71
+        String input = "+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m";
+        Proj proj = new Proj(input);
+
+        // Export to PROJJSON
+        String projJson = CRSSerializer.toProjJson(proj);
+        assertNotNull(projJson);
+        assertTrue(projJson.contains("Latitude of standard parallel") || projJson.contains("standard parallel"),
+                "PROJJSON should contain standard parallel parameter");
+
+        // Re-import and re-export to PROJ
+        Proj reimported = new Proj(projJson);
+        String projRoundTrip = CRSSerializer.toProjString(reimported);
+        assertTrue(projRoundTrip.contains("+lat_ts=-71"),
+                "Round-tripped PROJ string should preserve +lat_ts=-71, got: " + projRoundTrip);
+    }
+
+    @Test
+    @DisplayName("Issue #44: Mercator lat_ts preserved in WKT1 round-trip")
+    void testMercatorLatTsPreservedWkt1RoundTrip() {
+        String input = "+proj=merc +lat_ts=30 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m";
+        Proj proj = new Proj(input);
+
+        String wkt1 = CRSSerializer.toWkt1(proj.getParams());
+        assertNotNull(wkt1);
+        assertTrue(wkt1.contains("30"), "WKT1 should contain lat_ts value of 30");
+
+        Proj reimported = new Proj(wkt1);
+        String projRoundTrip = CRSSerializer.toProjString(reimported);
+        // Assert numerically with epsilon to avoid flaky string matching on float representation
+        assertNotNull(reimported.getParams().latTs, "Mercator round-trip should preserve latTs");
+        assertEquals(Math.toRadians(30), reimported.getParams().latTs, 1e-9,
+                "Mercator round-trip latTs should be ~30 degrees, got: " + Math.toDegrees(reimported.getParams().latTs));
+        // lat_0 should not be corrupted to 30 (it should be 0 or absent)
+        assertTrue(reimported.getParams().lat0 == null || Math.abs(reimported.getParams().lat0) < 1e-9,
+                "Mercator lat_0 should be 0 or absent, got: " + (reimported.getParams().lat0 != null ? Math.toDegrees(reimported.getParams().lat0) : "null"));
+    }
+
+    @Test
+    @DisplayName("Issue #44: CEA lat_ts preserved in WKT2 round-trip")
+    void testCeaLatTsPreservedWkt2RoundTrip() {
+        String input = "+proj=cea +lat_ts=30 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m";
+        Proj proj = new Proj(input);
+
+        String wkt2 = CRSSerializer.toWkt2(proj);
+        assertNotNull(wkt2);
+
+        Proj reimported = new Proj(wkt2);
+        // Assert numerically with epsilon to avoid flaky string matching on float representation
+        assertNotNull(reimported.getParams().latTs, "CEA round-trip should preserve latTs");
+        assertEquals(Math.toRadians(30), reimported.getParams().latTs, 1e-9,
+                "CEA round-trip latTs should be ~30 degrees, got: " + Math.toDegrees(reimported.getParams().latTs));
+    }
+
+    @Test
+    @DisplayName("Issue #44: EQC lat_ts preserved in PROJJSON round-trip")
+    void testEqcLatTsPreservedProjJsonRoundTrip() {
+        String input = "+proj=eqc +lat_ts=45 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m";
+        Proj proj = new Proj(input);
+
+        String projJson = CRSSerializer.toProjJson(proj);
+        assertNotNull(projJson);
+
+        Proj reimported = new Proj(projJson);
+        String projRoundTrip = CRSSerializer.toProjString(reimported);
+        assertTrue(projRoundTrip.contains("+lat_ts=45"),
+                "EQC round-trip should preserve +lat_ts=45, got: " + projRoundTrip);
+    }
 }

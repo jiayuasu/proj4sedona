@@ -20,6 +20,7 @@ public class Mercator implements Projection {
         "Mercator_1SP", 
         "Mercator_Auxiliary_Sphere", 
         "Mercator_Variant_A", 
+        "Mercator_Variant_B", 
         "merc"
     };
 

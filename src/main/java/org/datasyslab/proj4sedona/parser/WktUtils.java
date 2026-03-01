@@ -61,9 +61,13 @@ public final class WktUtils {
         }
 
         // Handle stereographic projections
+        // Strip parentheses so underscore-normalized variants also match
+        String stripped = normalizedProjName.replace("(", "").replace(")", "").trim()
+                .replaceAll("\\s+", " ");
         if (def.getLatTs() == null && def.getLat1() != null) {
             if (normalizedProjName.equals("stereographic south pole") ||
-                normalizedProjName.equals("polar stereographic (variant b)")) {
+                normalizedProjName.equals("polar stereographic (variant b)") ||
+                stripped.equals("polar stereographic variant b")) {
                 double lat1 = def.getLat1();
                 def.setLat0(d2r(lat1 > 0 ? 90 : -90));
                 def.setLatTs(lat1);
@@ -75,6 +79,22 @@ public final class WktUtils {
                 double lat0 = def.getLat0();
                 def.setLatTs(lat0);
                 def.setLat0(d2r(lat0 > 0 ? 90 : -90));
+                def.setLat1(null);
+            }
+        }
+
+        // Handle projections that use lat_ts as their standard parallel.
+        // On WKT re-import, "standard_parallel_1" becomes lat1 via applyRenaming.
+        // For these projections, lat1 is really latTs, so convert it back.
+        if (def.getLatTs() == null && def.getLat1() != null) {
+            if (normalizedProjName.equals("mercator (variant b)") || stripped.equals("mercator variant b") ||
+                normalizedProjName.equals("cylindrical equal area") ||
+                normalizedProjName.equals("lambert cylindrical equal area") ||
+                stripped.equals("lambert cylindrical equal area spherical") ||
+                normalizedProjName.equals("lambert cylindrical equal area (spherical)") ||
+                normalizedProjName.equals("equidistant cylindrical") ||
+                normalizedProjName.equals("equirectangular")) {
+                def.setLatTs(def.getLat1());
                 def.setLat1(null);
             }
         }
@@ -347,6 +367,7 @@ public final class WktUtils {
         Object[][] renamingRules = {
             {"standard_parallel_1", "Standard_Parallel_1", null},
             {"standard_parallel_1", "Latitude of 1st standard parallel", null},
+            {"standard_parallel_1", "Latitude of standard parallel", null},
             {"standard_parallel_2", "Standard_Parallel_2", null},
             {"standard_parallel_2", "Latitude of 2nd standard parallel", null},
             {"false_easting", "False_Easting", null},
