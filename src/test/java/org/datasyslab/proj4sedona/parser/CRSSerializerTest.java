@@ -761,4 +761,34 @@ class CRSSerializerTest {
         assertTrue(projRoundTrip.contains("+lat_ts=45"),
                 "EQC round-trip should preserve +lat_ts=45, got: " + projRoundTrip);
     }
+
+    @Test
+    @DisplayName("Issue #46: WKT2 round-trip should not drift lat_0 for EPSG:28992 (sterea)")
+    void testWkt2RoundTripNoDriftSterea28992() {
+        // EPSG:28992 - Amersfoort / RD New (Oblique Stereographic)
+        Proj proj = new Proj("EPSG:28992");
+
+        // First conversion: PROJ -> WKT2
+        String wkt2First = CRSSerializer.toWkt2(proj);
+        assertNotNull(wkt2First);
+
+        // Extract lat_0 from the internal representation
+        double lat0Original = proj.getParams().getLat0();
+
+        // Round-trip: WKT2 -> PROJ -> get lat_0
+        Proj reimported = new Proj(wkt2First);
+        double lat0RoundTrip1 = reimported.getParams().getLat0();
+
+        // The latitude of natural origin should not drift across round-trips
+        assertEquals(lat0Original, lat0RoundTrip1, 0.0,
+                "lat_0 should be identical after first WKT2 round-trip (no floating-point drift)");
+
+        // Second round-trip: PROJ -> WKT2 -> PROJ -> get lat_0
+        String wkt2Second = CRSSerializer.toWkt2(reimported);
+        Proj reimported2 = new Proj(wkt2Second);
+        double lat0RoundTrip2 = reimported2.getParams().getLat0();
+
+        assertEquals(lat0Original, lat0RoundTrip2, 0.0,
+                "lat_0 should be identical after second WKT2 round-trip (no cumulative drift)");
+    }
 }
