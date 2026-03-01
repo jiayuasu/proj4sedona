@@ -62,8 +62,8 @@ public final class CRSSerializer {
         PROJ_TO_WKT_METHOD.put("mill", "Miller Cylindrical");
         PROJ_TO_WKT_METHOD.put("sinu", "Sinusoidal");
         PROJ_TO_WKT_METHOD.put("moll", "Mollweide");
-        PROJ_TO_WKT_METHOD.put("eqc", "Equirectangular");
-        PROJ_TO_WKT_METHOD.put("cea", "Cylindrical Equal Area");
+        PROJ_TO_WKT_METHOD.put("eqc", "Equidistant Cylindrical");
+        PROJ_TO_WKT_METHOD.put("cea", "Lambert Cylindrical Equal Area");
         PROJ_TO_WKT_METHOD.put("gnom", "Gnomonic");
         PROJ_TO_WKT_METHOD.put("ortho", "Orthographic");
         PROJ_TO_WKT_METHOD.put("vandg", "Van der Grinten");
@@ -80,7 +80,7 @@ public final class CRSSerializer {
     static {
         // Build reverse mapping from PROJ_TO_WKT_METHOD
         for (Map.Entry<String, String> entry : PROJ_TO_WKT_METHOD.entrySet()) {
-            String wktLower = entry.getValue().toLowerCase();
+            String wktLower = entry.getValue().toLowerCase(Locale.ROOT);
             if (!WKT_TO_PROJ_METHOD.containsKey(wktLower)) {
                 WKT_TO_PROJ_METHOD.put(wktLower, entry.getKey());
             }
@@ -109,6 +109,8 @@ public final class CRSSerializer {
         WKT_TO_PROJ_METHOD.put("krovak modified (north orientated)", "krovak");
         WKT_TO_PROJ_METHOD.put("american polyconic", "poly");
         WKT_TO_PROJ_METHOD.put("equidistant cylindrical", "eqc");
+        WKT_TO_PROJ_METHOD.put("equirectangular", "eqc");
+        WKT_TO_PROJ_METHOD.put("cylindrical equal area", "cea");
         WKT_TO_PROJ_METHOD.put("lambert cylindrical equal area", "cea");
         WKT_TO_PROJ_METHOD.put("lambert cylindrical equal area (spherical)", "cea");
         WKT_TO_PROJ_METHOD.put("lambert azimuthal equal area (spherical)", "laea");
@@ -194,7 +196,14 @@ public final class CRSSerializer {
         // Projection name
         String projName = params.projName;
         if (projName != null) {
-            sb.append("+proj=").append(projName);
+            // Normalize WKT method names back to PROJ short codes
+            String lookupKey = projName.toLowerCase(Locale.ROOT);
+            String shortCode = WKT_TO_PROJ_METHOD.get(lookupKey);
+            // Some WKT method names use underscores instead of spaces (e.g., "Mercator_Variant_B")
+            if (shortCode == null && projName.indexOf('_') >= 0) {
+                shortCode = WKT_TO_PROJ_METHOD.get(lookupKey.replace('_', ' '));
+            }
+            sb.append("+proj=").append(shortCode != null ? shortCode : projName);
         }
 
         // UTM zone
@@ -368,7 +377,7 @@ public final class CRSSerializer {
         sb.append("],");
 
         // Projection
-        String methodName = getWktMethodName(params.projName);
+        String methodName = getWktMethodName(params);
         sb.append("PROJECTION[\"").append(methodName).append("\"]");
 
         // Parameters
@@ -410,6 +419,10 @@ public final class CRSSerializer {
         if (params.lat0 != null) {
             sb.append(",PARAMETER[\"latitude_of_origin\",");
             sb.append(formatAngle(params.lat0 * RAD_TO_DEG)).append("]");
+        } else if (usesLatTsAsStandardParallel(params)) {
+            // Emit explicit latitude_of_origin=0 so that on re-import,
+            // standard_parallel_1 doesn't get misinterpreted as lat0
+            sb.append(",PARAMETER[\"latitude_of_origin\",0]");
         }
 
         // Central meridian
@@ -419,13 +432,19 @@ public final class CRSSerializer {
         }
 
         // Standard parallels
-        if (params.lat1 != null) {
+        if (usesLatTsAsStandardParallel(params)) {
+            // Projections using latTs: emit it as standard_parallel_1
             sb.append(",PARAMETER[\"standard_parallel_1\",");
-            sb.append(formatAngle(params.lat1 * RAD_TO_DEG)).append("]");
-        }
-        if (params.lat2 != null) {
-            sb.append(",PARAMETER[\"standard_parallel_2\",");
-            sb.append(formatAngle(params.lat2 * RAD_TO_DEG)).append("]");
+            sb.append(formatAngle(params.latTs * RAD_TO_DEG)).append("]");
+        } else {
+            if (params.lat1 != null) {
+                sb.append(",PARAMETER[\"standard_parallel_1\",");
+                sb.append(formatAngle(params.lat1 * RAD_TO_DEG)).append("]");
+            }
+            if (params.lat2 != null) {
+                sb.append(",PARAMETER[\"standard_parallel_2\",");
+                sb.append(formatAngle(params.lat2 * RAD_TO_DEG)).append("]");
+            }
         }
 
         // Scale factor
@@ -522,7 +541,7 @@ public final class CRSSerializer {
         sb.append("],");
 
         // Conversion
-        String methodName = getWktMethodName(params.projName);
+        String methodName = getWktMethodName(params);
         sb.append("CONVERSION[\"unnamed\",");
         sb.append("METHOD[\"").append(methodName).append("\"]");
         appendWkt2Parameters(sb, params);
@@ -560,6 +579,10 @@ public final class CRSSerializer {
             sb.append(",PARAMETER[\"Latitude of natural origin\",");
             sb.append(formatAngle(params.lat0 * RAD_TO_DEG));
             sb.append(",ANGLEUNIT[\"degree\",0.0174532925199433]]");
+        } else if (usesLatTsAsStandardParallel(params)) {
+            // Emit explicit origin=0 so re-import doesn't confuse standard_parallel with lat0
+            sb.append(",PARAMETER[\"Latitude of natural origin\",0");
+            sb.append(",ANGLEUNIT[\"degree\",0.0174532925199433]]");
         }
 
         // Longitude of natural origin
@@ -570,15 +593,26 @@ public final class CRSSerializer {
         }
 
         // Standard parallels
-        if (params.lat1 != null) {
-            sb.append(",PARAMETER[\"Latitude of 1st standard parallel\",");
-            sb.append(formatAngle(params.lat1 * RAD_TO_DEG));
+        if (usesLatTsAsStandardParallel(params)) {
+            // Polar stere uses "Latitude of standard parallel" (singular);
+            // merc/cea/eqc use "Latitude of 1st standard parallel" (matching PROJ)
+            String paramName = isPolarStereographic(params)
+                    ? "Latitude of standard parallel"
+                    : "Latitude of 1st standard parallel";
+            sb.append(",PARAMETER[\"" + paramName + "\",");
+            sb.append(formatAngle(params.latTs * RAD_TO_DEG));
             sb.append(",ANGLEUNIT[\"degree\",0.0174532925199433]]");
-        }
-        if (params.lat2 != null) {
-            sb.append(",PARAMETER[\"Latitude of 2nd standard parallel\",");
-            sb.append(formatAngle(params.lat2 * RAD_TO_DEG));
-            sb.append(",ANGLEUNIT[\"degree\",0.0174532925199433]]");
+        } else {
+            if (params.lat1 != null) {
+                sb.append(",PARAMETER[\"Latitude of 1st standard parallel\",");
+                sb.append(formatAngle(params.lat1 * RAD_TO_DEG));
+                sb.append(",ANGLEUNIT[\"degree\",0.0174532925199433]]");
+            }
+            if (params.lat2 != null) {
+                sb.append(",PARAMETER[\"Latitude of 2nd standard parallel\",");
+                sb.append(formatAngle(params.lat2 * RAD_TO_DEG));
+                sb.append(",ANGLEUNIT[\"degree\",0.0174532925199433]]");
+            }
         }
 
         // Scale factor
@@ -754,7 +788,7 @@ public final class CRSSerializer {
         conversion.put("name", "unnamed");
         
         Map<String, Object> method = new LinkedHashMap<>();
-        method.put("name", getWktMethodName(params.projName));
+        method.put("name", getWktMethodName(params));
         conversion.put("method", method);
         
         List<Map<String, Object>> parameters = new ArrayList<>();
@@ -763,18 +797,30 @@ public final class CRSSerializer {
         if (params.lat0 != null) {
             parameters.add(buildProjJsonParam("Latitude of natural origin", 
                 params.lat0 * RAD_TO_DEG, "degree"));
+        } else if (usesLatTsAsStandardParallel(params)) {
+            // Emit explicit origin=0 so re-import doesn't confuse standard_parallel with lat0
+            parameters.add(buildProjJsonParam("Latitude of natural origin", 0.0, "degree"));
         }
         if (params.long0 != null) {
             parameters.add(buildProjJsonParam("Longitude of natural origin", 
                 params.long0 * RAD_TO_DEG, "degree"));
         }
-        if (params.lat1 != null) {
-            parameters.add(buildProjJsonParam("Latitude of 1st standard parallel", 
-                params.lat1 * RAD_TO_DEG, "degree"));
-        }
-        if (params.lat2 != null) {
-            parameters.add(buildProjJsonParam("Latitude of 2nd standard parallel", 
-                params.lat2 * RAD_TO_DEG, "degree"));
+        if (usesLatTsAsStandardParallel(params)) {
+            // Polar stere: "Latitude of standard parallel"; merc/cea/eqc: "Latitude of 1st standard parallel"
+            String paramName = isPolarStereographic(params)
+                    ? "Latitude of standard parallel"
+                    : "Latitude of 1st standard parallel";
+            parameters.add(buildProjJsonParam(paramName, 
+                params.latTs * RAD_TO_DEG, "degree"));
+        } else {
+            if (params.lat1 != null) {
+                parameters.add(buildProjJsonParam("Latitude of 1st standard parallel", 
+                    params.lat1 * RAD_TO_DEG, "degree"));
+            }
+            if (params.lat2 != null) {
+                parameters.add(buildProjJsonParam("Latitude of 2nd standard parallel", 
+                    params.lat2 * RAD_TO_DEG, "degree"));
+            }
         }
         if (params.k0 != 1.0) {
             parameters.add(buildProjJsonParam("Scale factor at natural origin", params.k0, null));
@@ -985,7 +1031,7 @@ public final class CRSSerializer {
 
         // Try datumCode (set from PROJJSON datum.name or PROJ +datum flag)
         if (params.datumCode != null) {
-            String normalized = params.datumCode.toLowerCase().trim();
+            String normalized = params.datumCode.toLowerCase(Locale.ROOT).trim();
             String epsg = DATUM_NAME_TO_EPSG.get(normalized);
             if (epsg != null) {
                 return epsg;
@@ -1053,7 +1099,7 @@ public final class CRSSerializer {
         if (projName == null) {
             return null;
         }
-        String lower = projName.toLowerCase().trim();
+        String lower = projName.toLowerCase(Locale.ROOT).trim();
         // Already a PROJ short name?
         if (PROJ_TO_WKT_METHOD.containsKey(lower)) {
             return lower;
@@ -1187,7 +1233,7 @@ public final class CRSSerializer {
         if (datumCode == null || datumCode.isEmpty()) {
             return null;
         }
-        String lower = datumCode.toLowerCase().trim();
+        String lower = datumCode.toLowerCase(Locale.ROOT).trim();
 
         // Try DATUM_NAME_TO_EPSG directly
         String epsg = DATUM_NAME_TO_EPSG.get(lower);
@@ -1204,16 +1250,16 @@ public final class CRSSerializer {
         Datum d = Datum.get(datumCode);
         if (d != null) {
             if (d.getDatumName() != null) {
-                epsg = DATUM_NAME_TO_EPSG.get(d.getDatumName().toLowerCase());
+                epsg = DATUM_NAME_TO_EPSG.get(d.getDatumName().toLowerCase(Locale.ROOT));
                 if (epsg != null) {
                     return epsg;
                 }
-                epsg = DATUM_NAME_TO_EPSG.get(d.getDatumName().toLowerCase().replace('_', ' '));
+                epsg = DATUM_NAME_TO_EPSG.get(d.getDatumName().toLowerCase(Locale.ROOT).replace('_', ' '));
                 if (epsg != null) {
                     return epsg;
                 }
             }
-            epsg = DATUM_NAME_TO_EPSG.get(d.getCode().toLowerCase());
+            epsg = DATUM_NAME_TO_EPSG.get(d.getCode().toLowerCase(Locale.ROOT));
             if (epsg != null) {
                 return epsg;
             }
@@ -1285,6 +1331,58 @@ public final class CRSSerializer {
     private static String getWktMethodName(String projName) {
         String method = PROJ_TO_WKT_METHOD.get(projName);
         return method != null ? method : projName;
+    }
+
+    /**
+     * Get the WKT method name for a projection, taking into account whether
+     * stereographic projections are polar (lat0 at ±90°) and whether Mercator
+     * uses lat_ts (variant B) vs k0 (variant A).
+     */
+    private static String getWktMethodName(ProjectionParams params) {
+        if ("stere".equals(params.projName) && params.lat0 != null
+                && Math.abs(Math.abs(params.lat0) - Math.PI / 2) < 1e-10) {
+            // Polar Stereographic: use variant B when latTs is present, variant A otherwise
+            if (params.latTs != null && params.latTs != 0.0) {
+                return "Polar Stereographic (variant B)";
+            }
+            return "Polar Stereographic (variant A)";
+        }
+        if ("merc".equals(params.projName) && params.latTs != null && params.latTs != 0.0) {
+            return "Mercator (variant B)";
+        }
+        return getWktMethodName(params.projName);
+    }
+
+    /**
+     * Check if the projection uses latTs as the standard parallel parameter
+     * (instead of or in addition to lat1). For these projections, latTs should
+     * be emitted as standard_parallel_1 in WKT/PROJJSON, taking priority over
+     * the auto-set lat1 value from Proj.java.
+     *
+     * Projections that use latTs:
+     * - Polar Stereographic (stere with |lat0| ≈ π/2)
+     * - Mercator (merc)
+     * - Cylindrical Equal Area (cea)
+     * - Equidistant Cylindrical (eqc)
+     */
+    private static boolean usesLatTsAsStandardParallel(ProjectionParams params) {
+        if (params.latTs == null) return false;
+        // Normalize projName so both PROJ short codes ("merc") and WKT method
+        // names ("Mercator (variant B)") are handled correctly.
+        String proj = normalizeProjName(params.projName);
+        if ("merc".equals(proj) || "cea".equals(proj) || "eqc".equals(proj)) {
+            return true;
+        }
+        return isPolarStereographic(params);
+    }
+
+    /**
+     * Check if the projection is Polar Stereographic (lat0 at ±90°).
+     */
+    private static boolean isPolarStereographic(ProjectionParams params) {
+        String proj = normalizeProjName(params.projName);
+        return "stere".equals(proj) && params.lat0 != null
+                && Math.abs(Math.abs(params.lat0) - Math.PI / 2) < 1e-10;
     }
 
     private static String getUnitName(String unitCode) {
