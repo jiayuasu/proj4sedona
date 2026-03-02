@@ -6,7 +6,7 @@
 
     <groupId>org.datasyslab</groupId>
     <artifactId>proj4sedona</artifactId>
-    <version>0.0.6</version>
+    <version>0.0.7</version>
     <packaging>jar</packaging>
 
     <name>Proj4Sedona</name>
