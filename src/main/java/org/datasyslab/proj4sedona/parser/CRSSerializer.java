@@ -368,6 +368,8 @@ public final class CRSSerializer {
     }
 
     private static void appendWkt1ProjCS(StringBuilder sb, ProjectionParams params) {
+        String proj = normalizeProjName(params.projName);
+
         // Name
         String name = getCrsName(params);
         sb.append("\"").append(name).append("\",");
@@ -378,11 +380,11 @@ public final class CRSSerializer {
         sb.append("],");
 
         // Projection
-        String methodName = getWktMethodName(params);
+        String methodName = getWktMethodName(proj, params);
         sb.append("PROJECTION[\"").append(methodName).append("\"]");
 
         // Parameters
-        appendWkt1Parameters(sb, params);
+        appendWkt1Parameters(sb, proj, params);
 
         // Unit
         appendWkt1Unit(sb, params);
@@ -415,8 +417,7 @@ public final class CRSSerializer {
         sb.append("]");
     }
 
-    private static void appendWkt1Parameters(StringBuilder sb, ProjectionParams params) {
-        String proj = normalizeProjName(params.projName);
+    private static void appendWkt1Parameters(StringBuilder sb, String proj, ProjectionParams params) {
 
         // Latitude of origin
         if (params.lat0 != null) {
@@ -535,6 +536,8 @@ public final class CRSSerializer {
     }
 
     private static void appendWkt2ProjCRS(StringBuilder sb, ProjectionParams params) {
+        String proj = normalizeProjName(params.projName);
+
         String name = getCrsName(params);
         sb.append("\"").append(name).append("\",");
 
@@ -545,10 +548,10 @@ public final class CRSSerializer {
         sb.append("],");
 
         // Conversion
-        String methodName = getWktMethodName(params);
+        String methodName = getWktMethodName(proj, params);
         sb.append("CONVERSION[\"unnamed\",");
         sb.append("METHOD[\"").append(methodName).append("\"]");
-        appendWkt2Parameters(sb, params);
+        appendWkt2Parameters(sb, proj, params);
         sb.append("],");
 
         // Coordinate System
@@ -577,8 +580,7 @@ public final class CRSSerializer {
         sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
     }
 
-    private static void appendWkt2Parameters(StringBuilder sb, ProjectionParams params) {
-        String proj = normalizeProjName(params.projName);
+    private static void appendWkt2Parameters(StringBuilder sb, String proj, ProjectionParams params) {
 
         // Latitude of natural origin
         if (params.lat0 != null) {
@@ -790,16 +792,16 @@ public final class CRSSerializer {
     }
 
     private static Map<String, Object> buildProjJsonConversion(ProjectionParams params) {
+        String proj = normalizeProjName(params.projName);
+
         Map<String, Object> conversion = new LinkedHashMap<>();
         conversion.put("name", "unnamed");
         
         Map<String, Object> method = new LinkedHashMap<>();
-        method.put("name", getWktMethodName(params));
+        method.put("name", getWktMethodName(proj, params));
         conversion.put("method", method);
         
         List<Map<String, Object>> parameters = new ArrayList<>();
-        
-        String proj = normalizeProjName(params.projName);
 
         // Add parameters
         if (params.lat0 != null) {
@@ -1107,8 +1109,13 @@ public final class CRSSerializer {
         if (projName == null) {
             return null;
         }
+        // Fast path: most common case is already a lowercase PROJ short name
+        // (e.g. "tmerc", "lcc", "stere") — avoid toLowerCase() allocation.
+        if (PROJ_TO_WKT_METHOD.containsKey(projName)) {
+            return projName;
+        }
         String lower = projName.toLowerCase(Locale.ROOT).trim();
-        // Already a PROJ short name?
+        // Check again after lowercasing (handles "Tmerc", " lcc ", etc.)
         if (PROJ_TO_WKT_METHOD.containsKey(lower)) {
             return lower;
         }
@@ -1342,8 +1349,12 @@ public final class CRSSerializer {
      * stereographic projections are polar (lat0 at ±90°) and whether Mercator
      * uses lat_ts (variant B) vs k0 (variant A).
      */
-    private static String getWktMethodName(ProjectionParams params) {
-        String proj = normalizeProjName(params.projName);
+    /**
+     * Get the WKT method name for a projection, using a pre-normalized proj name.
+     *
+     * @param proj pre-normalized projection short name (from normalizeProjName)
+     */
+    private static String getWktMethodName(String proj, ProjectionParams params) {
         if (isPolarStereographic(proj, params)) {
             // Polar Stereographic: use variant B when latTs is present, variant A otherwise
             if (params.latTs != null && params.latTs != 0.0) {
@@ -1354,7 +1365,7 @@ public final class CRSSerializer {
         if ("merc".equals(proj) && params.latTs != null && params.latTs != 0.0) {
             return "Mercator (variant B)";
         }
-        return getWktMethodName(params.projName);
+        return getWktMethodName(proj);
     }
 
     /**
