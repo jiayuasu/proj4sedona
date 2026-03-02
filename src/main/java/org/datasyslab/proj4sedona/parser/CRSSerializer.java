@@ -537,7 +537,8 @@ public final class CRSSerializer {
         sb.append("\"").append(name).append("\",");
 
         // Base CRS (geographic)
-        sb.append("BASEGEOGCRS[\"Base\",");
+        String baseCrsName = getDatumName(params);
+        sb.append("BASEGEOGCRS[\"").append(baseCrsName).append("\",");
         appendWkt2Datum(sb, params);
         sb.append("],");
 
@@ -778,7 +779,7 @@ public final class CRSSerializer {
     private static Map<String, Object> buildProjJsonBaseCRS(ProjectionParams params) {
         Map<String, Object> baseCrs = new LinkedHashMap<>();
         baseCrs.put("type", "GeographicCRS");
-        baseCrs.put("name", "Base");
+        baseCrs.put("name", getDatumName(params));
         baseCrs.put("datum", buildProjJsonDatum(params));
         baseCrs.put("coordinate_system", buildProjJsonGeogCS());
         return baseCrs;

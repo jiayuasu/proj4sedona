@@ -82,6 +82,21 @@ public final class Datum {
     public static final Datum EPSG_4269 = register("EPSG_4269", "0,0,0", null, null);
     public static final Datum EPSG_4230 = register("EPSG_4230", "-68.863,-134.888,-111.49,-0.53,-0.14,0.57,-3.4", null, null);
 
+    // ISO 19162 / PROJJSON / WKT2 datum-name aliases.
+    // These map the verbose names found in WKT2 and PROJJSON documents to the
+    // short PROJ codes already registered above.
+    static {
+        registerAlias("World Geodetic System 1984", WGS84);
+        registerAlias("World Geodetic System 1984 ensemble", WGS84);
+        registerAlias("WGS 84", WGS84);
+        registerAlias("North American Datum 1983", NAD83);
+        registerAlias("North American Datum of 1983", NAD83);
+        registerAlias("North American Datum 1927", NAD27);
+        registerAlias("North American Datum of 1927", NAD27);
+        registerAlias("Ordnance Survey of Great Britain 1936", OSGB36);
+        registerAlias("OSGB 1936", OSGB36);
+    }
+
     private final String code;
     private final String towgs84;
     private final String ellipse;
@@ -106,6 +121,13 @@ public final class Datum {
             DATUMS.put(datumName.toLowerCase(), d);
         }
         return d;
+    }
+
+    /**
+     * Register an alias name that maps to an existing datum.
+     */
+    private static void registerAlias(String alias, Datum datum) {
+        DATUMS.put(alias.toLowerCase(), datum);
     }
 
     /**

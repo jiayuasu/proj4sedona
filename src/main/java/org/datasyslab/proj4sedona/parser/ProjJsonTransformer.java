@@ -1,5 +1,6 @@
 package org.datasyslab.proj4sedona.parser;
 
+import org.datasyslab.proj4sedona.constants.Datum;
 import org.datasyslab.proj4sedona.constants.Values;
 import org.datasyslab.proj4sedona.core.ProjectionDef;
 
@@ -187,16 +188,54 @@ public final class ProjJsonTransformer {
                     } else if (baseDatumEnsemble instanceof Map) {
                         processDatum((Map<String, Object>) baseDatumEnsemble, def);
                     }
-                    // Set datumCode
-                    Object baseId = baseCrs.get("id");
-                    if (baseId instanceof Map) {
-                        Map<String, Object> id = (Map<String, Object>) baseId;
-                        def.setDatumCode(id.get("authority") + "_" + id.get("code"));
-                    } else {
+                    // Set datumCode from datum name (preferred) or base CRS id/name
+                    String resolvedDatumCode = null;
+                    // First, try to get datum name from the datum/datum_ensemble object
+                    Map<String, Object> datumSource = baseDatum instanceof Map
+                            ? (Map<String, Object>) baseDatum
+                            : (baseDatumEnsemble instanceof Map ? (Map<String, Object>) baseDatumEnsemble : null);
+                    if (datumSource != null) {
+                        Object datumName = datumSource.get("name");
+                        if (datumName != null) {
+                            // Resolve via Datum registry to get the short code
+                            // (e.g., "World Geodetic System 1984" -> "wgs84")
+                            // This avoids datum names with spaces producing invalid +datum= values.
+                            // If the name is not in the registry, skip it and fall through to
+                            // the base CRS id fallback — raw names may contain whitespace or
+                            // be legacy placeholders (e.g., "Base").
+                            Datum datum = Datum.get(datumName.toString());
+                            if (datum != null) {
+                                resolvedDatumCode = datum.getCode();
+                            }
+                        }
+                    }
+                    // Fall back to base CRS id if datum name not found
+                    if (resolvedDatumCode == null) {
+                        Object baseId = baseCrs.get("id");
+                        if (baseId instanceof Map) {
+                            Map<String, Object> id = (Map<String, Object>) baseId;
+                            Object authority = id.get("authority");
+                            Object code = id.get("code");
+                            if (authority != null && code != null) {
+                                resolvedDatumCode = authority.toString() + "_" + toIntString(code);
+                            }
+                        }
+                    }
+                    // Last resort: base CRS name, normalized to a PROJ-safe
+                    // token (strip whitespace, lowercase).  e.g. "WGS 84" -> "wgs84".
+                    if (resolvedDatumCode == null) {
                         Object baseName = baseCrs.get("name");
                         if (baseName != null) {
-                            def.setDatumCode(baseName.toString());
+                            String normalized = baseName.toString()
+                                    .replaceAll("\\s+", "").toLowerCase();
+                            if (!normalized.isEmpty()
+                                    && !"base".equals(normalized)) {
+                                resolvedDatumCode = normalized;
+                            }
                         }
+                    }
+                    if (resolvedDatumCode != null) {
+                        def.setDatumCode(resolvedDatumCode);
                     }
                 }
                 break;
