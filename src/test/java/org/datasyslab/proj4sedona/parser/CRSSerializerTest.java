@@ -841,4 +841,79 @@ class CRSSerializerTest {
         assertEquals(lat0Original, lat0RoundTrip2,
                 "lat_0 should be identical after second WKT2 round-trip (no cumulative drift)");
     }
+
+    // ==================== Issue #47: Datum name round-trip ====================
+
+    @Test
+    @DisplayName("Issue #47: WKT2 round-trip preserves datum name")
+    void testWkt2RoundTripPreservesDatumName() {
+        // Any projected CRS with a known datum
+        Proj proj = new Proj("+proj=utm +zone=10 +datum=WGS84 +units=m +no_defs");
+
+        // First serialization - should contain the proper datum name ("WGS84" from Datum registry)
+        String wkt2First = CRSSerializer.toWkt2(proj);
+        assertNotNull(wkt2First);
+        assertTrue(wkt2First.contains("DATUM[\"WGS84\""),
+                "First WKT2 should contain DATUM[\"WGS84\"], got: " + wkt2First);
+
+        // Round-trip: WKT2 -> Proj -> WKT2
+        Proj reimported = new Proj(wkt2First);
+        String wkt2Second = CRSSerializer.toWkt2(reimported);
+
+        // The datum name should be preserved, not replaced with "BASE"
+        assertTrue(wkt2Second.contains("DATUM[\"WGS84\""),
+                "Round-tripped WKT2 should preserve datum name, got: " + wkt2Second);
+        assertFalse(wkt2Second.toUpperCase().contains("DATUM[\"BASE\""),
+                "Round-tripped WKT2 should not contain DATUM[\"BASE\"]");
+    }
+
+    @Test
+    @DisplayName("Issue #47: PROJJSON round-trip preserves datum name")
+    void testProjJsonRoundTripPreservesDatumName() {
+        Proj proj = new Proj("+proj=utm +zone=10 +datum=WGS84 +units=m +no_defs");
+
+        // First serialization - datum name should be "WGS84" from registry
+        String jsonFirst = CRSSerializer.toProjJson(proj);
+        assertNotNull(jsonFirst);
+        assertTrue(jsonFirst.contains("\"WGS84\""),
+                "First PROJJSON should contain datum name 'WGS84', got: " + jsonFirst);
+
+        // Round-trip: PROJJSON -> Proj -> PROJJSON
+        Proj reimported = new Proj(jsonFirst);
+        String jsonSecond = CRSSerializer.toProjJson(reimported);
+
+        // Datum name should be preserved, not replaced with "Base" or "BASE"
+        assertTrue(jsonSecond.contains("\"WGS84\""),
+                "Round-tripped PROJJSON should preserve datum name, got: " + jsonSecond);
+        assertFalse(jsonSecond.contains("\"name\":\"Base\"") || jsonSecond.contains("\"name\": \"Base\""),
+                "Round-tripped PROJJSON should not contain '\"name\":\"Base\"' for the datum");
+    }
+
+    @Test
+    @DisplayName("Issue #47: WKT2 BASEGEOGCRS uses datum name instead of 'Base'")
+    void testWkt2BaseGeogCrsUsesProperName() {
+        Proj proj = new Proj("+proj=utm +zone=10 +datum=WGS84 +units=m +no_defs");
+        String wkt2 = CRSSerializer.toWkt2(proj);
+
+        // BASEGEOGCRS should use the datum name ("WGS84"), not "Base"
+        assertTrue(wkt2.contains("BASEGEOGCRS[\"WGS84\""),
+                "BASEGEOGCRS should use datum name, got: " + wkt2);
+        assertFalse(wkt2.contains("BASEGEOGCRS[\"Base\""),
+                "BASEGEOGCRS should not use hardcoded 'Base' name");
+    }
+
+    @Test
+    @DisplayName("Issue #47: NAD83 datum name preserved in round-trip")
+    void testNad83DatumNameRoundTrip() {
+        Proj proj = new Proj("+proj=lcc +lat_1=33 +lat_2=45 +lat_0=39 +lon_0=-96 +datum=NAD83 +units=m");
+
+        String wkt2 = CRSSerializer.toWkt2(proj);
+        assertTrue(wkt2.contains("North_American_Datum_1983"),
+                "WKT2 should contain NAD83 datum name");
+
+        Proj reimported = new Proj(wkt2);
+        String wkt2_rt = CRSSerializer.toWkt2(reimported);
+        assertTrue(wkt2_rt.contains("North_American_Datum_1983"),
+                "Round-tripped WKT2 should preserve NAD83 datum name, got: " + wkt2_rt);
+    }
 }

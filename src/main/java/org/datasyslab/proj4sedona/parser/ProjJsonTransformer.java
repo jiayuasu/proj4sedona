@@ -187,16 +187,35 @@ public final class ProjJsonTransformer {
                     } else if (baseDatumEnsemble instanceof Map) {
                         processDatum((Map<String, Object>) baseDatumEnsemble, def);
                     }
-                    // Set datumCode
-                    Object baseId = baseCrs.get("id");
-                    if (baseId instanceof Map) {
-                        Map<String, Object> id = (Map<String, Object>) baseId;
-                        def.setDatumCode(id.get("authority") + "_" + id.get("code"));
-                    } else {
-                        Object baseName = baseCrs.get("name");
-                        if (baseName != null) {
-                            def.setDatumCode(baseName.toString());
+                    // Set datumCode from datum name (preferred) or base CRS id/name
+                    String resolvedDatumCode = null;
+                    // First, try to get datum name from the datum/datum_ensemble object
+                    Map<String, Object> datumSource = baseDatum instanceof Map
+                            ? (Map<String, Object>) baseDatum
+                            : (baseDatumEnsemble instanceof Map ? (Map<String, Object>) baseDatumEnsemble : null);
+                    if (datumSource != null) {
+                        Object datumName = datumSource.get("name");
+                        if (datumName != null) {
+                            resolvedDatumCode = datumName.toString();
                         }
+                    }
+                    // Fall back to base CRS id if datum name not found
+                    if (resolvedDatumCode == null) {
+                        Object baseId = baseCrs.get("id");
+                        if (baseId instanceof Map) {
+                            Map<String, Object> id = (Map<String, Object>) baseId;
+                            resolvedDatumCode = id.get("authority") + "_" + id.get("code");
+                        }
+                    }
+                    // Last resort: base CRS name (but not generic placeholders)
+                    if (resolvedDatumCode == null) {
+                        Object baseName = baseCrs.get("name");
+                        if (baseName != null && !"Base".equalsIgnoreCase(baseName.toString())) {
+                            resolvedDatumCode = baseName.toString();
+                        }
+                    }
+                    if (resolvedDatumCode != null) {
+                        def.setDatumCode(resolvedDatumCode);
                     }
                 }
                 break;
