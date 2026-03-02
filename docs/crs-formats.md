@@ -1,0 +1,251 @@
+# CRS Formats
+
+Proj4Sedona can parse and export coordinate reference system definitions in multiple formats. This guide covers all supported formats with examples.
+
+## Parsing CRS Definitions
+
+The `Proj` constructor auto-detects the format:
+
+```java
+import org.datasyslab.proj4sedona.core.Proj;
+
+// All of these create equivalent Proj objects for WGS84 / UTM zone 18N
+Proj fromProj = new Proj("+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs");
+Proj fromEpsg = new Proj("EPSG:32618");
+Proj fromWkt1 = new Proj("PROJCS[\"WGS 84 / UTM zone 18N\", ...]");
+Proj fromWkt2 = new Proj("PROJCRS[\"WGS 84 / UTM zone 18N\", ...]");
+Proj fromJson = new Proj("{\"type\": \"ProjectedCRS\", ...}");
+```
+
+### Format Detection
+
+| Format | How it is detected |
+|--------|-------------------|
+| PROJ string | Starts with `+` |
+| WKT1 | Contains `[` and starts with `PROJCS`, `GEOGCS`, `GEOCCS`, or `LOCAL_CS` |
+| WKT2 | Contains `[` and starts with `PROJCRS`, `GEOGCRS`, `GEODCRS`, `ENGCRS`, or `VERTCRS` |
+| PROJJSON | Starts with `{` |
+| Authority code | Matches pattern `AUTHORITY:CODE` (e.g., `EPSG:4326`, `ESRI:102001`, `IAU_2015:49900`) |
+| Shorthand alias | Matches a pre-registered name like `WGS84` or `GOOGLE` |
+
+## PROJ Strings
+
+PROJ strings are the most compact representation. Parameters start with `+`:
+
+```java
+// Geographic CRS (longitude/latitude)
+Proj wgs84 = new Proj("+proj=longlat +datum=WGS84 +no_defs");
+
+// Projected CRS (UTM)
+Proj utm = new Proj("+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs");
+
+// Projected CRS with ellipsoid and towgs84
+Proj osgb = new Proj("+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 " +
+    "+x_0=400000 +y_0=-100000 +ellps=airy " +
+    "+towgs84=446.448,-125.157,542.060,0.1502,0.2470,0.8421,-20.4894 +units=m");
+
+// Lambert Conformal Conic with standard parallels
+Proj lcc = new Proj("+proj=lcc +lat_1=33 +lat_2=45 +lat_0=39 +lon_0=-96 " +
+    "+x_0=0 +y_0=0 +datum=WGS84 +units=m");
+```
+
+Common PROJ parameters:
+
+| Parameter | Meaning | Example |
+|-----------|---------|---------|
+| `+proj` | Projection name | `longlat`, `utm`, `merc`, `lcc` |
+| `+datum` | Datum name | `WGS84`, `NAD83`, `NAD27` |
+| `+ellps` | Ellipsoid name | `WGS84`, `GRS80`, `airy`, `bessel` |
+| `+zone` | UTM zone number | `1` to `60` |
+| `+south` | Southern hemisphere UTM | (flag, no value) |
+| `+lat_0` | Latitude of origin | Degrees |
+| `+lon_0` | Central meridian | Degrees |
+| `+lat_1`, `+lat_2` | Standard parallels | Degrees |
+| `+k`, `+k_0` | Scale factor | e.g., `0.9996` |
+| `+x_0` | False easting | Meters |
+| `+y_0` | False northing | Meters |
+| `+units` | Linear unit | `m`, `ft`, `us-ft`, `km` |
+| `+towgs84` | Datum shift parameters | 3 or 7 values |
+| `+nadgrids` | NAD grid file(s) | Comma-separated filenames |
+| `+no_defs` | Do not use defaults | (flag) |
+| `+a` | Semi-major axis | Meters |
+| `+b` | Semi-minor axis | Meters |
+| `+rf` | Inverse flattening | Dimensionless |
+
+## WKT1
+
+Well-Known Text version 1 (OGC standard):
+
+```java
+String wkt1 = "GEOGCS[\"WGS 84\"," +
+    "DATUM[\"WGS_1984\"," +
+        "SPHEROID[\"WGS 84\",6378137,298.257223563]]," +
+    "PRIMEM[\"Greenwich\",0]," +
+    "UNIT[\"degree\",0.0174532925199433]]";
+
+Proj wgs84 = new Proj(wkt1);
+```
+
+A projected CRS in WKT1:
+
+```java
+String wkt1Proj = "PROJCS[\"WGS 84 / UTM zone 18N\"," +
+    "GEOGCS[\"WGS 84\"," +
+        "DATUM[\"WGS_1984\"," +
+            "SPHEROID[\"WGS 84\",6378137,298.257223563]]," +
+        "PRIMEM[\"Greenwich\",0]," +
+        "UNIT[\"degree\",0.0174532925199433]]," +
+    "PROJECTION[\"Transverse_Mercator\"]," +
+    "PARAMETER[\"latitude_of_origin\",0]," +
+    "PARAMETER[\"central_meridian\",-75]," +
+    "PARAMETER[\"scale_factor\",0.9996]," +
+    "PARAMETER[\"false_easting\",500000]," +
+    "PARAMETER[\"false_northing\",0]," +
+    "UNIT[\"metre\",1]]";
+
+Proj utm18 = new Proj(wkt1Proj);
+```
+
+## WKT2
+
+Well-Known Text version 2 (ISO 19162):
+
+```java
+String wkt2 = "GEOGCRS[\"WGS 84\"," +
+    "DATUM[\"World Geodetic System 1984\"," +
+        "ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]]]," +
+    "CS[ellipsoidal,2]," +
+        "AXIS[\"latitude\",north,ORDER[1]]," +
+        "AXIS[\"longitude\",east,ORDER[2]]," +
+        "ANGLEUNIT[\"degree\",0.0174532925199433]]";
+
+Proj wgs84 = new Proj(wkt2);
+```
+
+### Detecting WKT Version
+
+```java
+import org.datasyslab.proj4sedona.parser.WktParser;
+
+WktParser.isWkt("GEOGCS[...]");    // true (WKT1 or WKT2)
+WktParser.isWkt2("GEOGCRS[...]");  // true (WKT2 only)
+WktParser.isWkt2("GEOGCS[...]");   // false (WKT1)
+WktParser.isWkt("+proj=longlat");  // false (PROJ string)
+```
+
+## PROJJSON
+
+JSON-based CRS format (following the PROJJSON schema):
+
+```java
+String projJson = "{" +
+    "\"type\": \"GeographicCRS\"," +
+    "\"name\": \"WGS 84\"," +
+    "\"datum\": {" +
+        "\"type\": \"GeodeticReferenceFrame\"," +
+        "\"name\": \"World Geodetic System 1984\"," +
+        "\"ellipsoid\": {" +
+            "\"name\": \"WGS 84\"," +
+            "\"semi_major_axis\": 6378137," +
+            "\"inverse_flattening\": 298.257223563" +
+        "}" +
+    "}," +
+    "\"coordinate_system\": {" +
+        "\"subtype\": \"ellipsoidal\"," +
+        "\"axis\": [{\"name\": \"Latitude\", \"direction\": \"north\", \"unit\": \"degree\"}," +
+                   "{\"name\": \"Longitude\", \"direction\": \"east\", \"unit\": \"degree\"}]" +
+    "}" +
+"}";
+
+Proj wgs84 = new Proj(projJson);
+```
+
+## EPSG and Authority Codes
+
+Look up CRS from the built-in registry or remote providers:
+
+```java
+// Common EPSG codes
+Proj wgs84 = new Proj("EPSG:4326");     // WGS84 geographic
+Proj webMerc = new Proj("EPSG:3857");   // Web Mercator
+Proj nad83 = new Proj("EPSG:4269");     // NAD83 geographic
+Proj utm18n = new Proj("EPSG:32618");   // WGS84 / UTM zone 18N
+
+// Other authorities (resolved via URL providers)
+Proj esri = new Proj("ESRI:102001");
+Proj iau = new Proj("IAU_2015:49900");
+```
+
+Built-in EPSG codes (no network needed):
+- `EPSG:4326` -- WGS84
+- `EPSG:4269` -- NAD83
+- `EPSG:3857` -- Web Mercator
+- `EPSG:32601` through `EPSG:32660` -- UTM zones 1-60 North
+- `EPSG:32701` through `EPSG:32760` -- UTM zones 1-60 South
+- `EPSG:5041` -- UPS North
+- `EPSG:5042` -- UPS South
+
+See [CRS Registry](crs-registry.md) for extending the provider chain.
+
+## Shorthand Aliases
+
+Some common CRS have shorthand names:
+
+```java
+Proj wgs84 = new Proj("WGS84");   // same as EPSG:4326
+Proj google = new Proj("GOOGLE"); // same as EPSG:3857
+```
+
+## Exporting CRS Definitions
+
+Any `Proj` object can be exported to all supported formats:
+
+```java
+Proj proj = new Proj("EPSG:32618");
+
+// Export to PROJ string
+String projStr = proj.toProjString();
+// "+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs"
+
+// Export to WKT1
+String wkt1 = proj.toWkt1();
+// "PROJCS[\"WGS 84 / UTM zone 18N\", ...]"
+
+// Export to WKT2
+String wkt2 = proj.toWkt2();
+// "PROJCRS[\"WGS 84 / UTM zone 18N\", ...]"
+
+// Export to PROJJSON
+String json = proj.toProjJson();
+// {"type": "ProjectedCRS", ...}
+
+// Export to PROJJSON with pretty-printing
+String prettyJson = proj.toProjJson(true);
+
+// Get EPSG code (if known)
+String epsg = proj.toEpsgCode();    // "EPSG:32618"
+
+// Get full authority reference
+String auth = proj.toAuthority();   // "EPSG:32618"
+```
+
+### Using CRSSerializer Directly
+
+```java
+import org.datasyslab.proj4sedona.parser.CRSSerializer;
+
+Proj proj = new Proj("+proj=utm +zone=18 +datum=WGS84");
+
+String projStr = CRSSerializer.toProjString(proj);
+String wkt1 = CRSSerializer.toWkt1(proj);
+String wkt2 = CRSSerializer.toWkt2(proj);
+String json = CRSSerializer.toProjJson(proj);
+String epsg = CRSSerializer.toEpsgCode(proj);
+String auth = CRSSerializer.toAuthority(proj);
+```
+
+## See Also
+
+- [Getting Started](getting-started.md) -- basic usage
+- [CRS Registry](crs-registry.md) -- adding custom CRS providers
+- [Constants Reference](constants-reference.md) -- built-in datums and ellipsoids

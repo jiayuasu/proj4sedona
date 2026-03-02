@@ -7,12 +7,29 @@ A high-performance Java library for coordinate system transformations, ported fr
 Proj4Sedona provides coordinate system transformations, datum conversions, and projection operations for geospatial applications.
 
 **Key Features:**
-- 🚀 High-performance: faster than Python's pyproj
-- 🌍 Format support: PROJ strings, WKT1/WKT2, PROJJSON, EPSG codes
-- 🗺️ 21 map projections (Mercator, UTM, Lambert, Albers, Sinusoidal, Robinson, etc.)
-- 🎯 MGRS coordinate conversion
-- 📊 GeoTIFF datum grids with PROJ CDN integration
-- ✅ lots of unit tests
+- High-performance: faster than Python's pyproj
+- Format support: PROJ strings, WKT1/WKT2, PROJJSON, EPSG codes
+- 15 map projections (Mercator, UTM, Lambert, Albers, Sinusoidal, Robinson, etc.)
+- MGRS coordinate conversion
+- GeoTIFF datum grids with PROJ CDN integration
+- JTS geometry transformation support
+- Extensive unit tests
+
+## Documentation
+
+Full documentation is available in the [docs/](docs/) folder:
+
+- [Getting Started](docs/getting-started.md) -- installation and first transformation
+- [Coordinate Transformations](docs/coordinate-transformations.md) -- single, batch, and flat array transforms
+- [CRS Formats](docs/crs-formats.md) -- PROJ strings, WKT1, WKT2, PROJJSON, EPSG codes
+- [Projections](docs/projections.md) -- all 15 supported map projections
+- [Datum Transformations](docs/datum-transformations.md) -- 3-param, 7-param, and grid-based shifts
+- [Grid Shifts](docs/grid-shifts.md) -- NTv2/GeoTIFF grid loading and CDN auto-fetching
+- [MGRS Coordinates](docs/mgrs.md) -- Military Grid Reference System conversion
+- [JTS Integration](docs/jts-integration.md) -- transforming JTS geometries
+- [CRS Registry](docs/crs-registry.md) -- extending the CRS provider chain
+- [Caching and Performance](docs/caching-and-performance.md) -- projection caching and thread safety
+- [Constants Reference](docs/constants-reference.md) -- datums, ellipsoids, units, prime meridians
 
 ## Quick Start
 
