@@ -538,7 +538,7 @@ public final class CRSSerializer {
 
         // Base CRS (geographic)
         String baseCrsName = getDatumName(params);
-        sb.append("BASEGEOGCRS[\"" + baseCrsName + "\",");
+        sb.append("BASEGEOGCRS[\"").append(baseCrsName).append("\",");
         appendWkt2Datum(sb, params);
         sb.append("],");
 

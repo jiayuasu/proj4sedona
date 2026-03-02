@@ -1,5 +1,6 @@
 package org.datasyslab.proj4sedona.parser;
 
+import org.datasyslab.proj4sedona.constants.Datum;
 import org.datasyslab.proj4sedona.constants.Values;
 import org.datasyslab.proj4sedona.core.ProjectionDef;
 
@@ -196,7 +197,15 @@ public final class ProjJsonTransformer {
                     if (datumSource != null) {
                         Object datumName = datumSource.get("name");
                         if (datumName != null) {
-                            resolvedDatumCode = datumName.toString();
+                            // Resolve via Datum registry to get the short code
+                            // (e.g., "World Geodetic System 1984" -> "wgs84")
+                            // This avoids datum names with spaces producing invalid +datum= values
+                            Datum datum = Datum.get(datumName.toString());
+                            if (datum != null) {
+                                resolvedDatumCode = datum.getCode();
+                            } else {
+                                resolvedDatumCode = datumName.toString();
+                            }
                         }
                     }
                     // Fall back to base CRS id if datum name not found
@@ -204,7 +213,11 @@ public final class ProjJsonTransformer {
                         Object baseId = baseCrs.get("id");
                         if (baseId instanceof Map) {
                             Map<String, Object> id = (Map<String, Object>) baseId;
-                            resolvedDatumCode = id.get("authority") + "_" + id.get("code");
+                            Object authority = id.get("authority");
+                            Object code = id.get("code");
+                            if (authority != null && code != null) {
+                                resolvedDatumCode = authority.toString() + "_" + toIntString(code);
+                            }
                         }
                     }
                     // Last resort: base CRS name (but not generic placeholders)

@@ -875,18 +875,20 @@ class CRSSerializerTest {
         // First serialization - datum name should be "WGS84" from registry
         String jsonFirst = CRSSerializer.toProjJson(proj);
         assertNotNull(jsonFirst);
-        assertTrue(jsonFirst.contains("\"WGS84\""),
-                "First PROJJSON should contain datum name 'WGS84', got: " + jsonFirst);
+        // Assert datum name field specifically (handles pretty-printed JSON)
+        // Pattern: "datum" : { ... "name" : "WGS84" ... } — with DOTALL to span lines
+        assertTrue(jsonFirst.matches("(?s).*\"datum\"\\s*:\\s*\\{.*?\"name\"\\s*:\\s*\"WGS84\".*"),
+                "First PROJJSON should contain datum name 'WGS84' in datum object, got: " + jsonFirst);
 
         // Round-trip: PROJJSON -> Proj -> PROJJSON
         Proj reimported = new Proj(jsonFirst);
         String jsonSecond = CRSSerializer.toProjJson(reimported);
 
         // Datum name should be preserved, not replaced with "Base" or "BASE"
-        assertTrue(jsonSecond.contains("\"WGS84\""),
-                "Round-tripped PROJJSON should preserve datum name, got: " + jsonSecond);
-        assertFalse(jsonSecond.contains("\"name\":\"Base\"") || jsonSecond.contains("\"name\": \"Base\""),
-                "Round-tripped PROJJSON should not contain '\"name\":\"Base\"' for the datum");
+        assertTrue(jsonSecond.matches("(?s).*\"datum\"\\s*:\\s*\\{.*?\"name\"\\s*:\\s*\"WGS84\".*"),
+                "Round-tripped PROJJSON should preserve datum name in datum object, got: " + jsonSecond);
+        assertFalse(jsonSecond.matches("(?s).*\"datum\"\\s*:\\s*\\{.*?\"name\"\\s*:\\s*\"Base\".*"),
+                "Round-tripped PROJJSON should not contain datum name 'Base'");
     }
 
     @Test
