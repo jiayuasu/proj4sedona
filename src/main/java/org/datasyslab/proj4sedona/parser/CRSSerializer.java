@@ -416,11 +416,13 @@ public final class CRSSerializer {
     }
 
     private static void appendWkt1Parameters(StringBuilder sb, ProjectionParams params) {
+        String proj = normalizeProjName(params.projName);
+
         // Latitude of origin
         if (params.lat0 != null) {
             sb.append(",PARAMETER[\"latitude_of_origin\",");
             sb.append(formatAngle(params.lat0 * RAD_TO_DEG)).append("]");
-        } else if (usesLatTsAsStandardParallel(params)) {
+        } else if (usesLatTsAsStandardParallel(proj, params)) {
             // Emit explicit latitude_of_origin=0 so that on re-import,
             // standard_parallel_1 doesn't get misinterpreted as lat0
             sb.append(",PARAMETER[\"latitude_of_origin\",0]");
@@ -433,7 +435,7 @@ public final class CRSSerializer {
         }
 
         // Standard parallels
-        if (usesLatTsAsStandardParallel(params)) {
+        if (usesLatTsAsStandardParallel(proj, params)) {
             // Projections using latTs: emit it as standard_parallel_1
             sb.append(",PARAMETER[\"standard_parallel_1\",");
             sb.append(formatAngle(params.latTs * RAD_TO_DEG)).append("]");
@@ -576,12 +578,14 @@ public final class CRSSerializer {
     }
 
     private static void appendWkt2Parameters(StringBuilder sb, ProjectionParams params) {
+        String proj = normalizeProjName(params.projName);
+
         // Latitude of natural origin
         if (params.lat0 != null) {
             sb.append(",PARAMETER[\"Latitude of natural origin\",");
             sb.append(formatAngle(params.lat0 * RAD_TO_DEG));
             sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
-        } else if (usesLatTsAsStandardParallel(params)) {
+        } else if (usesLatTsAsStandardParallel(proj, params)) {
             // Emit explicit origin=0 so re-import doesn't confuse standard_parallel with lat0
             sb.append(",PARAMETER[\"Latitude of natural origin\",0");
             sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
@@ -595,16 +599,16 @@ public final class CRSSerializer {
         }
 
         // Standard parallels
-        if (usesLatTsAsStandardParallel(params)) {
+        if (usesLatTsAsStandardParallel(proj, params)) {
             // Polar stere uses "Latitude of standard parallel" (singular);
             // merc/cea/eqc use "Latitude of 1st standard parallel" (matching PROJ)
-            String paramName = isPolarStereographic(params)
+            String paramName = isPolarStereographic(proj, params)
                     ? "Latitude of standard parallel"
                     : "Latitude of 1st standard parallel";
             sb.append(",PARAMETER[\"" + paramName + "\",");
             sb.append(formatAngle(params.latTs * RAD_TO_DEG));
             sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
-        } else if (usesStandardParallels(params)) {
+        } else if (usesStandardParallels(proj)) {
             if (params.lat1 != null) {
                 sb.append(",PARAMETER[\"Latitude of 1st standard parallel\",");
                 sb.append(formatAngle(params.lat1 * RAD_TO_DEG));
@@ -795,11 +799,13 @@ public final class CRSSerializer {
         
         List<Map<String, Object>> parameters = new ArrayList<>();
         
+        String proj = normalizeProjName(params.projName);
+
         // Add parameters
         if (params.lat0 != null) {
             parameters.add(buildProjJsonParam("Latitude of natural origin", 
                 params.lat0 * RAD_TO_DEG, "degree"));
-        } else if (usesLatTsAsStandardParallel(params)) {
+        } else if (usesLatTsAsStandardParallel(proj, params)) {
             // Emit explicit origin=0 so re-import doesn't confuse standard_parallel with lat0
             parameters.add(buildProjJsonParam("Latitude of natural origin", 0.0, "degree"));
         }
@@ -807,14 +813,14 @@ public final class CRSSerializer {
             parameters.add(buildProjJsonParam("Longitude of natural origin", 
                 params.long0 * RAD_TO_DEG, "degree"));
         }
-        if (usesLatTsAsStandardParallel(params)) {
+        if (usesLatTsAsStandardParallel(proj, params)) {
             // Polar stere: "Latitude of standard parallel"; merc/cea/eqc: "Latitude of 1st standard parallel"
-            String paramName = isPolarStereographic(params)
+            String paramName = isPolarStereographic(proj, params)
                     ? "Latitude of standard parallel"
                     : "Latitude of 1st standard parallel";
             parameters.add(buildProjJsonParam(paramName, 
                 params.latTs * RAD_TO_DEG, "degree"));
-        } else if (usesStandardParallels(params)) {
+        } else if (usesStandardParallels(proj)) {
             if (params.lat1 != null) {
                 parameters.add(buildProjJsonParam("Latitude of 1st standard parallel", 
                     params.lat1 * RAD_TO_DEG, "degree"));
@@ -1337,15 +1343,15 @@ public final class CRSSerializer {
      * uses lat_ts (variant B) vs k0 (variant A).
      */
     private static String getWktMethodName(ProjectionParams params) {
-        if ("stere".equals(params.projName) && params.lat0 != null
-                && Math.abs(Math.abs(params.lat0) - Math.PI / 2) < 1e-10) {
+        String proj = normalizeProjName(params.projName);
+        if (isPolarStereographic(proj, params)) {
             // Polar Stereographic: use variant B when latTs is present, variant A otherwise
             if (params.latTs != null && params.latTs != 0.0) {
                 return "Polar Stereographic (variant B)";
             }
             return "Polar Stereographic (variant A)";
         }
-        if ("merc".equals(params.projName) && params.latTs != null && params.latTs != 0.0) {
+        if ("merc".equals(proj) && params.latTs != null && params.latTs != 0.0) {
             return "Mercator (variant B)";
         }
         return getWktMethodName(params.projName);
@@ -1362,23 +1368,23 @@ public final class CRSSerializer {
      * - Mercator (merc)
      * - Cylindrical Equal Area (cea)
      * - Equidistant Cylindrical (eqc)
+     *
+     * @param proj pre-normalized projection short name (from normalizeProjName)
      */
-    private static boolean usesLatTsAsStandardParallel(ProjectionParams params) {
+    private static boolean usesLatTsAsStandardParallel(String proj, ProjectionParams params) {
         if (params.latTs == null) return false;
-        // Normalize projName so both PROJ short codes ("merc") and WKT method
-        // names ("Mercator (variant B)") are handled correctly.
-        String proj = normalizeProjName(params.projName);
         if ("merc".equals(proj) || "cea".equals(proj) || "eqc".equals(proj)) {
             return true;
         }
-        return isPolarStereographic(params);
+        return isPolarStereographic(proj, params);
     }
 
     /**
      * Check if the projection is Polar Stereographic (lat0 at ±90°).
+     *
+     * @param proj pre-normalized projection short name (from normalizeProjName)
      */
-    private static boolean isPolarStereographic(ProjectionParams params) {
-        String proj = normalizeProjName(params.projName);
+    private static boolean isPolarStereographic(String proj, ProjectionParams params) {
         return "stere".equals(proj) && params.lat0 != null
                 && Math.abs(Math.abs(params.lat0) - Math.PI / 2) < 1e-10;
     }
@@ -1390,9 +1396,10 @@ public final class CRSSerializer {
      * may have lat1 auto-set from lat0 by Proj.java, but should NOT emit it in WKT2/PROJJSON.
      * Projections that use latTs (merc variant B, CEA, EQC, polar stere variant B) are
      * handled separately by usesLatTsAsStandardParallel().
+     *
+     * @param proj pre-normalized projection short name (from normalizeProjName)
      */
-    private static boolean usesStandardParallels(ProjectionParams params) {
-        String proj = normalizeProjName(params.projName);
+    private static boolean usesStandardParallels(String proj) {
         return "lcc".equals(proj) || "aea".equals(proj)
                 || "eqdc".equals(proj) || "krovak".equals(proj)
                 || "bonne".equals(proj);
