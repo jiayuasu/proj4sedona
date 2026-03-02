@@ -12,6 +12,7 @@ import org.datasyslab.proj4sedona.projection.ProjectionParams;
 import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Main projection class that initializes and manages coordinate system transformations.
@@ -24,6 +25,12 @@ import java.util.Map;
  * 4. Initializes the projection implementation
  */
 public class Proj {
+
+    // Known web mercator EPSG codes whose WKT2/PROJJSON definitions are
+    // traditionally wrong (they declare the WGS84 ellipsoid instead of a sphere).
+    // When we detect one of these after parsing, we replace it with the correct
+    // hard-coded definition.  Mirrors: proj4js lib/parseCode.js checkMercator()
+    private static final Set<String> WEB_MERCATOR_CODES = Set.of("3857", "900913", "3785", "102113");
 
     private final ProjectionParams params;
     private final Projection projection;
@@ -125,7 +132,7 @@ public class Proj {
             try {
                 Gson gson = new Gson();
                 Map<String, Object> json = gson.fromJson(srsCode, Map.class);
-                return WktParser.parse(json);
+                return checkWebMercator(WktParser.parse(json));
             } catch (Exception e) {
                 throw new IllegalArgumentException("Invalid PROJJSON: " + e.getMessage(), e);
             }
@@ -133,7 +140,7 @@ public class Proj {
 
         // Check if it's WKT format (contains '[' and doesn't start with '+')
         if (WktParser.isWkt(srsCode)) {
-            return WktParser.parse(srsCode);
+            return checkWebMercator(WktParser.parse(srsCode));
         }
 
         // Try looking up in the Defs registry (for EPSG codes, aliases, etc.)
@@ -148,6 +155,30 @@ public class Proj {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * If the parsed definition matches a known web mercator EPSG code,
+     * return the hard-coded (correct, sphere-based) definition instead.
+     * Web mercator WKT2/PROJJSON definitions are traditionally wrong because
+     * they declare the WGS84 ellipsoid instead of a sphere (a == b == 6378137).
+     * Mirrors: proj4js PR #546 / lib/parseCode.js checkMercator()
+     */
+    private static ProjectionDef checkWebMercator(ProjectionDef def) {
+        if (def == null) {
+            return null;
+        }
+        String title = def.getTitle();
+        if (title != null) {
+            String lower = title.toLowerCase();
+            if (lower.startsWith("epsg:") && WEB_MERCATOR_CODES.contains(lower.substring(5))) {
+                ProjectionDef hardcoded = Defs.get("EPSG:3857");
+                if (hardcoded != null) {
+                    return hardcoded;
+                }
+            }
+        }
+        return def;
     }
 
     /**

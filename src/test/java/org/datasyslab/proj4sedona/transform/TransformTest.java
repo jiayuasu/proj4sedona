@@ -465,4 +465,88 @@ class TransformTest {
         assertEquals(0, r1.x, METER_TOLERANCE);
         assertEquals(1000000, r2.x, METER_TOLERANCE);
     }
+
+    // ==================== Web Mercator WKT2/PROJJSON Tests (proj4js #546) ====================
+
+    @Test
+    void testWebMercatorWkt2MatchesEpsgCode() {
+        // WKT2 definition for EPSG:3857 declares the WGS84 ellipsoid (a != b),
+        // but Web Mercator must use a sphere (a == b == 6378137).
+        // After the fix, parsing this WKT2 should produce the same results as "EPSG:3857".
+        String wkt2_3857 = "PROJCRS[\"WGS 84 / Pseudo-Mercator\","
+            + "BASEGEOGCRS[\"WGS 84\","
+            + "  ENSEMBLE[\"World Geodetic System 1984 ensemble\","
+            + "    MEMBER[\"World Geodetic System 1984 (Transit)\"],"
+            + "    MEMBER[\"World Geodetic System 1984 (G730)\"],"
+            + "    MEMBER[\"World Geodetic System 1984 (G873)\"],"
+            + "    MEMBER[\"World Geodetic System 1984 (G1150)\"],"
+            + "    MEMBER[\"World Geodetic System 1984 (G1674)\"],"
+            + "    MEMBER[\"World Geodetic System 1984 (G1762)\"],"
+            + "    MEMBER[\"World Geodetic System 1984 (G2139)\"],"
+            + "    MEMBER[\"World Geodetic System 1984 (G2296)\"],"
+            + "    ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]],"
+            + "    ENSEMBLEACCURACY[2.0]],"
+            + "  PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "  ID[\"EPSG\",4326]],"
+            + "CONVERSION[\"Popular Visualisation Pseudo-Mercator\","
+            + "  METHOD[\"Popular Visualisation Pseudo Mercator\",ID[\"EPSG\",1024]],"
+            + "  PARAMETER[\"Latitude of natural origin\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8801]],"
+            + "  PARAMETER[\"Longitude of natural origin\",0,ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",8802]],"
+            + "  PARAMETER[\"False easting\",0,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8806]],"
+            + "  PARAMETER[\"False northing\",0,LENGTHUNIT[\"metre\",1],ID[\"EPSG\",8807]]],"
+            + "CS[Cartesian,2],"
+            + "  AXIS[\"easting (X)\",east,ORDER[1],LENGTHUNIT[\"metre\",1]],"
+            + "  AXIS[\"northing (Y)\",north,ORDER[2],LENGTHUNIT[\"metre\",1]],"
+            + "USAGE[SCOPE[\"Web mapping and visualisation.\"],"
+            + "  AREA[\"World between 85.06S and 85.06N.\"],"
+            + "  BBOX[-85.06,-180,85.06,180]],"
+            + "ID[\"EPSG\",3857]]";
+
+        Converter fromEpsg = Proj4.proj4("EPSG:4326", "EPSG:3857");
+        Converter fromWkt2 = Proj4.proj4("EPSG:4326", wkt2_3857);
+
+        // lon=-112.5, lat=42.04 — same test point as proj4js
+        Point ll = new Point(-112.50042920000004, 42.036926809999976);
+        Point xyFromEpsg = fromEpsg.forward(ll);
+        Point xyFromWkt2 = fromWkt2.forward(ll);
+
+        assertEquals(xyFromEpsg.x, xyFromWkt2.x, 0.01, "WKT2 3857 x should match EPSG:3857");
+        assertEquals(xyFromEpsg.y, xyFromWkt2.y, 0.01, "WKT2 3857 y should match EPSG:3857");
+
+        // Verify specific expected values
+        assertEquals(-12523490.49, xyFromWkt2.x, 1.0);
+        assertEquals(5166512.51,   xyFromWkt2.y, 1.0);
+    }
+
+    @Test
+    void testWebMercatorWkt1StillWorks() {
+        // WKT1 with EXTENSION[PROJ4,...] should also continue to work
+        String wkt1_3857 = "PROJCS[\"WGS 84 / Pseudo-Mercator\","
+            + "GEOGCS[\"WGS 84\","
+            + "  DATUM[\"WGS_1984\","
+            + "    SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],"
+            + "    AUTHORITY[\"EPSG\",\"6326\"]],"
+            + "  PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],"
+            + "  UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],"
+            + "  AUTHORITY[\"EPSG\",\"4326\"]],"
+            + "PROJECTION[\"Mercator_1SP\"],"
+            + "PARAMETER[\"central_meridian\",0],"
+            + "PARAMETER[\"scale_factor\",1],"
+            + "PARAMETER[\"false_easting\",0],"
+            + "PARAMETER[\"false_northing\",0],"
+            + "UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],"
+            + "AXIS[\"X\",EAST],AXIS[\"Y\",NORTH],"
+            + "EXTENSION[\"PROJ4\",\"+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs\"],"
+            + "AUTHORITY[\"EPSG\",\"3857\"]]";
+
+        Converter fromEpsg = Proj4.proj4("EPSG:4326", "EPSG:3857");
+        Converter fromWkt1 = Proj4.proj4("EPSG:4326", wkt1_3857);
+
+        Point ll = new Point(-112.50042920000004, 42.036926809999976);
+        Point xyFromEpsg = fromEpsg.forward(ll);
+        Point xyFromWkt1 = fromWkt1.forward(ll);
+
+        assertEquals(xyFromEpsg.x, xyFromWkt1.x, 0.01, "WKT1 3857 x should match EPSG:3857");
+        assertEquals(xyFromEpsg.y, xyFromWkt1.y, 0.01, "WKT1 3857 y should match EPSG:3857");
+    }
 }
