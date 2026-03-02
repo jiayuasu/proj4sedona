@@ -780,7 +780,7 @@ class CRSSerializerTest {
         double lat0RoundTrip1 = reimported.getParams().getLat0();
 
         // The latitude of natural origin should not drift across round-trips
-        assertEquals(lat0Original, lat0RoundTrip1, 0.0,
+        assertEquals(lat0Original, lat0RoundTrip1,
                 "lat_0 should be identical after first WKT2 round-trip (no floating-point drift)");
 
         // Second round-trip: PROJ -> WKT2 -> PROJ -> get lat_0
@@ -788,7 +788,7 @@ class CRSSerializerTest {
         Proj reimported2 = new Proj(wkt2Second);
         double lat0RoundTrip2 = reimported2.getParams().getLat0();
 
-        assertEquals(lat0Original, lat0RoundTrip2, 0.0,
+        assertEquals(lat0Original, lat0RoundTrip2,
                 "lat_0 should be identical after second WKT2 round-trip (no cumulative drift)");
     }
 }
