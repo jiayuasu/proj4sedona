@@ -761,4 +761,52 @@ class CRSSerializerTest {
         assertTrue(projRoundTrip.contains("+lat_ts=45"),
                 "EQC round-trip should preserve +lat_ts=45, got: " + projRoundTrip);
     }
+
+    // ==================== Issue #45: Named ellipsoid round-trip ====================
+
+    @Test
+    @DisplayName("Issue #45: Named ellipsoid 'airy' preserved in PROJ round-trip via WKT1")
+    void testNamedEllipsoidAiryRoundTrip() {
+        // EPSG:27700 - British National Grid uses +ellps=airy
+        String input = "+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +units=m +no_defs";
+        Proj proj = new Proj(input);
+
+        // Round-trip: PROJ -> WKT1 -> PROJ
+        String wkt1 = CRSSerializer.toWkt1(proj);
+        assertNotNull(wkt1);
+
+        Proj reimported = new Proj(wkt1);
+        String projRoundTrip = CRSSerializer.toProjString(reimported);
+
+        assertTrue(projRoundTrip.contains("+ellps=airy"),
+                "Round-trip should preserve +ellps=airy, got: " + projRoundTrip);
+        assertFalse(projRoundTrip.contains("+a="),
+                "Round-trip should not contain raw +a= when named ellipsoid matches, got: " + projRoundTrip);
+    }
+
+    @Test
+    @DisplayName("Issue #45: Named ellipsoid 'krass' preserved in PROJ round-trip")
+    void testNamedEllipsoidKrassRoundTrip() {
+        // Krassovsky 1942 - previously not in the hardcoded lookup list
+        String input = "+proj=longlat +ellps=krass +no_defs";
+        Proj proj = new Proj(input);
+
+        String projRoundTrip = CRSSerializer.toProjString(proj);
+        assertTrue(projRoundTrip.contains("+ellps=krass"),
+                "Should preserve +ellps=krass, got: " + projRoundTrip);
+    }
+
+    @Test
+    @DisplayName("Issue #45: Named ellipsoid 'bessel' preserved in PROJ round-trip via WKT1")
+    void testNamedEllipsoidBesselRoundTrip() {
+        String input = "+proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=3500000 +y_0=0 +ellps=bessel +units=m +no_defs";
+        Proj proj = new Proj(input);
+
+        String wkt1 = CRSSerializer.toWkt1(proj);
+        Proj reimported = new Proj(wkt1);
+        String projRoundTrip = CRSSerializer.toProjString(reimported);
+
+        assertTrue(projRoundTrip.contains("+ellps=bessel"),
+                "Round-trip should preserve +ellps=bessel, got: " + projRoundTrip);
+    }
 }
