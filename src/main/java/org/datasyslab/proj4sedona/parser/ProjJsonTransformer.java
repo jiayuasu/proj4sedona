@@ -221,11 +221,17 @@ public final class ProjJsonTransformer {
                             }
                         }
                     }
-                    // Last resort: base CRS name (but not generic placeholders)
+                    // Last resort: base CRS name (but not generic placeholders
+                    // and not names that contain whitespace — those would produce
+                    // an invalid PROJ string like +datum=WGS 84).
                     if (resolvedDatumCode == null) {
                         Object baseName = baseCrs.get("name");
-                        if (baseName != null && !"Base".equalsIgnoreCase(baseName.toString())) {
-                            resolvedDatumCode = baseName.toString();
+                        if (baseName != null) {
+                            String nameStr = baseName.toString();
+                            if (!"Base".equalsIgnoreCase(nameStr)
+                                    && !nameStr.contains(" ")) {
+                                resolvedDatumCode = nameStr;
+                            }
                         }
                     }
                     if (resolvedDatumCode != null) {
