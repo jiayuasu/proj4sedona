@@ -1,6 +1,6 @@
 package org.datasyslab.proj4sedona.constants;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -41,8 +41,8 @@ import java.util.Map;
  */
 public final class Ellipsoid {
 
-    /** Registry of all known ellipsoids, keyed by lowercase code */
-    private static final Map<String, Ellipsoid> ELLIPSOIDS = new HashMap<>();
+    /** Registry of all known ellipsoids, keyed by lowercase code (insertion-ordered) */
+    private static final Map<String, Ellipsoid> ELLIPSOIDS = new LinkedHashMap<>();
 
     // All ellipsoids from proj4js Ellipsoid.js
     public static final Ellipsoid MERIT = register("MERIT", 6378137, 298.257, "MERIT 1983");
@@ -157,6 +157,15 @@ public final class Ellipsoid {
             return null;
         }
         return ELLIPSOIDS.get(code.toLowerCase());
+    }
+
+    /**
+     * Get all registered ellipsoids.
+     *
+     * @return Unmodifiable map of all ellipsoids keyed by lowercase code
+     */
+    public static Map<String, Ellipsoid> getAll() {
+        return java.util.Collections.unmodifiableMap(ELLIPSOIDS);
     }
 
     /** @return The ellipsoid code (e.g., "WGS84") */

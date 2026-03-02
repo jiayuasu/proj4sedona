@@ -78,6 +78,11 @@ public final class DeriveConstants {
             bVal = (1.0 - 1.0 / rfVal) * aVal;
         }
 
+        // If b is given but not rf, calculate rf (e.g., Airy defined by a,b)
+        if ((rfVal == null || rfVal == 0) && bVal > 0 && Math.abs(aVal - bVal) > Values.EPSLN) {
+            rfVal = aVal / (aVal - bVal);
+        }
+
         // Check if this is effectively a sphere
         // Only check rf == 0 if rf was explicitly provided as 0 (not null)
         boolean rfIsZero = (rfVal != null && rfVal == 0);

@@ -1314,16 +1314,12 @@ public final class CRSSerializer {
     }
 
     private static String findEllipsoidCode(double a, double b, double rf) {
-        // Check common ellipsoids
-        String[] codes = {"WGS84", "GRS80", "clrk66", "bessel", "intl", "airy", "sphere"};
-        
-        for (String code : codes) {
-            Ellipsoid ellps = Ellipsoid.get(code);
-            if (ellps != null) {
-                if (Math.abs(ellps.getA() - a) < 0.1 && 
-                    (Math.abs(ellps.getB() - b) < 0.1 || Math.abs(ellps.getRf() - rf) < 0.0001)) {
-                    return code;
-                }
+        // Check all registered ellipsoids (LinkedHashMap ensures deterministic order)
+        for (Map.Entry<String, Ellipsoid> entry : Ellipsoid.getAll().entrySet()) {
+            Ellipsoid ellps = entry.getValue();
+            if (Math.abs(ellps.getA() - a) < 0.1 && 
+                (Math.abs(ellps.getB() - b) < 0.1 || Math.abs(ellps.getRf() - rf) < 1e-6)) {
+                return ellps.getCode();
             }
         }
         return null;
