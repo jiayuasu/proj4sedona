@@ -1348,9 +1348,6 @@ public final class CRSSerializer {
      * Get the WKT method name for a projection, taking into account whether
      * stereographic projections are polar (lat0 at ±90°) and whether Mercator
      * uses lat_ts (variant B) vs k0 (variant A).
-     */
-    /**
-     * Get the WKT method name for a projection, using a pre-normalized proj name.
      *
      * @param proj pre-normalized projection short name (from normalizeProjName)
      */
