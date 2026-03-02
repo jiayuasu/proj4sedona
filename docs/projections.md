@@ -1,6 +1,6 @@
 # Projections
 
-Proj4Sedona supports 21 map projections covering cylindrical, pseudocylindrical, conic, and azimuthal families. This page lists each projection with its PROJ name, aliases, and a usage example.
+Proj4Sedona supports 15 map projections covering cylindrical, pseudocylindrical, conic, and azimuthal families. This page lists each projection with its PROJ name, aliases, and a usage example.
 
 ## Cylindrical Projections
 
@@ -87,21 +87,6 @@ double[] result = Proj4.proj4(
 );
 ```
 
-### Miller Cylindrical
-
-Compromise cylindrical projection (neither conformal nor equal-area).
-
-- PROJ name: `mill`
-- Aliases: `Miller_Cylindrical`
-
-```java
-double[] result = Proj4.proj4(
-    "+proj=longlat +datum=WGS84",
-    "+proj=mill +datum=WGS84",
-    new double[]{-77.0, 38.9}
-);
-```
-
 ## Pseudocylindrical Projections
 
 ### Sinusoidal
@@ -145,21 +130,6 @@ Compromise pseudocylindrical projection designed for visual appeal.
 double[] result = Proj4.proj4(
     "+proj=longlat +datum=WGS84",
     "+proj=robin +lon_0=0 +datum=WGS84 +units=m",
-    new double[]{-77.0, 38.9}
-);
-```
-
-### Equal Earth
-
-Equal-area pseudocylindrical projection designed as an alternative to Robinson with true area preservation.
-
-- PROJ name: `eqearth`
-- Aliases: `Equal Earth`, `Equal_Earth`
-
-```java
-double[] result = Proj4.proj4(
-    "+proj=longlat +datum=WGS84",
-    "+proj=eqearth +lon_0=0 +datum=WGS84 +units=m",
     new double[]{-77.0, 38.9}
 );
 ```
@@ -260,67 +230,7 @@ double[] result = Proj4.proj4(
 );
 ```
 
-### Orthographic
-
-Perspective azimuthal projection simulating a view from infinite distance.
-
-- PROJ name: `ortho`
-- Aliases: `Orthographic`
-
-```java
-double[] result = Proj4.proj4(
-    "+proj=longlat +datum=WGS84",
-    "+proj=ortho +lat_0=40 +lon_0=-77 +datum=WGS84 +units=m",
-    new double[]{-77.0, 40.0}
-);
-```
-
-### Gnomonic
-
-Azimuthal projection where all great circles are straight lines.
-
-- PROJ name: `gnom`
-- Aliases: `Gnomonic`
-
-```java
-double[] result = Proj4.proj4(
-    "+proj=longlat +datum=WGS84",
-    "+proj=gnom +lat_0=38.9 +lon_0=-77.0 +datum=WGS84 +units=m",
-    new double[]{-77.0, 38.9}
-);
-```
-
 ## Other Projections
-
-### Van der Grinten
-
-Compromise projection inscribed in a circle.
-
-- PROJ name: `vandg`
-- Aliases: `Van_der_Grinten`
-
-```java
-double[] result = Proj4.proj4(
-    "+proj=longlat +datum=WGS84",
-    "+proj=vandg +lon_0=0 +datum=WGS84 +units=m",
-    new double[]{-77.0, 38.9}
-);
-```
-
-### Hotine Oblique Mercator
-
-Conformal cylindrical projection aligned along an oblique great circle. Used for mapping areas along an oblique path (e.g., Alaska zone 1).
-
-- PROJ name: `omerc`
-- Aliases: `Hotine_Oblique_Mercator`, `Hotine_Oblique_Mercator_Azimuth_Natural_Origin`
-
-```java
-double[] result = Proj4.proj4(
-    "+proj=longlat +datum=WGS84",
-    "+proj=omerc +lat_0=4 +lonc=115 +alpha=53.31582 +k=0.99984 +x_0=590476.87 +y_0=442857.65 +datum=WGS84 +units=m",
-    new double[]{115.0, 4.0}
-);
-```
 
 ### Identity (Longitude/Latitude)
 
@@ -342,21 +252,15 @@ Proj wgs84 = new Proj("+proj=longlat +datum=WGS84");
 | Cylindrical | UTM | `utm` | Conformal |
 | Cylindrical | Equidistant Cylindrical | `eqc` | Equidistant |
 | Cylindrical | Cylindrical Equal Area | `cea` | Equal-area |
-| Cylindrical | Miller | `mill` | Compromise |
 | Pseudocylindrical | Sinusoidal | `sinu` | Equal-area |
 | Pseudocylindrical | Mollweide | `moll` | Equal-area |
 | Pseudocylindrical | Robinson | `robin` | Compromise |
-| Pseudocylindrical | Equal Earth | `eqearth` | Equal-area |
 | Conic | Lambert Conformal Conic | `lcc` | Conformal |
 | Conic | Albers Equal Area | `aea` | Equal-area |
 | Conic | Equidistant Conic | `eqdc` | Equidistant |
 | Azimuthal | Lambert Azimuthal Equal Area | `laea` | Equal-area |
 | Azimuthal | Stereographic | `stere` | Conformal |
 | Azimuthal | Azimuthal Equidistant | `aeqd` | Equidistant |
-| Azimuthal | Orthographic | `ortho` | Perspective |
-| Azimuthal | Gnomonic | `gnom` | Gnomonic |
-| Other | Van der Grinten | `vandg` | Compromise |
-| Other | Hotine Oblique Mercator | `omerc` | Conformal |
 | Other | Identity | `longlat` | None |
 
 ## See Also

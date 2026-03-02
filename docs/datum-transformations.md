@@ -118,6 +118,7 @@ Datum names are resolved case-insensitively. Aliases like "World Geodetic System
 
 ```java
 import org.datasyslab.proj4sedona.Proj4;
+import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.transform.Converter;
 
 // Create a converter from OSGB36 to WGS84

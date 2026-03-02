@@ -8,6 +8,7 @@ Proj4Sedona supports conversion between geographic coordinates (longitude/latitu
 
 ```java
 import org.datasyslab.proj4sedona.Proj4;
+import org.datasyslab.proj4sedona.core.Point;
 
 // Default accuracy (5 = 1-meter precision)
 String mgrs = Proj4.toMGRS(-77.0369, 38.9072);

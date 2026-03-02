@@ -74,6 +74,10 @@ Fetch a specific grid file without enabling auto-fetch:
 
 ```java
 import org.datasyslab.proj4sedona.grid.GridCdnFetcher;
+import org.datasyslab.proj4sedona.grid.GridData;
+import org.datasyslab.proj4sedona.grid.GridLoader;
+
+import java.util.concurrent.CompletableFuture;
 
 // Synchronous fetch and load
 GridData grid = GridLoader.fetchFromCdn("us_noaa_conus.tif");
