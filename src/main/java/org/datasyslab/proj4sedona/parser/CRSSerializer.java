@@ -37,6 +37,7 @@ public final class CRSSerializer {
 
     private static final double RAD_TO_DEG = 180.0 / Math.PI;
     private static final double DEG_TO_RAD = Math.PI / 180.0;
+    private static final String DEG_TO_RAD_STR = Double.toString(DEG_TO_RAD);
 
     // Projection name mappings: PROJ -> WKT method names (short/generic names)
     private static final Map<String, String> PROJ_TO_WKT_METHOD = new LinkedHashMap<>();
@@ -363,7 +364,7 @@ public final class CRSSerializer {
         sb.append("]");
 
         // Unit
-        sb.append(",UNIT[\"degree\",0.0174532925199433]");
+        sb.append(",UNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]");
     }
 
     private static void appendWkt1ProjCS(StringBuilder sb, ProjectionParams params) {
@@ -527,8 +528,8 @@ public final class CRSSerializer {
 
         // Coordinate System
         sb.append(",CS[ellipsoidal,2],");
-        sb.append("AXIS[\"latitude\",north,ORDER[1],ANGLEUNIT[\"degree\",0.0174532925199433]],");
-        sb.append("AXIS[\"longitude\",east,ORDER[2],ANGLEUNIT[\"degree\",0.0174532925199433]]");
+        sb.append("AXIS[\"latitude\",north,ORDER[1],ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]],");
+        sb.append("AXIS[\"longitude\",east,ORDER[2],ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
     }
 
     private static void appendWkt2ProjCRS(StringBuilder sb, ProjectionParams params) {
@@ -570,7 +571,7 @@ public final class CRSSerializer {
         // Prime Meridian
         sb.append(",PRIMEM[\"Greenwich\",");
         sb.append(params.fromGreenwich != null ? formatAngle(params.fromGreenwich * RAD_TO_DEG) : "0");
-        sb.append(",ANGLEUNIT[\"degree\",0.0174532925199433]]");
+        sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
     }
 
     private static void appendWkt2Parameters(StringBuilder sb, ProjectionParams params) {
@@ -578,18 +579,18 @@ public final class CRSSerializer {
         if (params.lat0 != null) {
             sb.append(",PARAMETER[\"Latitude of natural origin\",");
             sb.append(formatAngle(params.lat0 * RAD_TO_DEG));
-            sb.append(",ANGLEUNIT[\"degree\",0.0174532925199433]]");
+            sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
         } else if (usesLatTsAsStandardParallel(params)) {
             // Emit explicit origin=0 so re-import doesn't confuse standard_parallel with lat0
             sb.append(",PARAMETER[\"Latitude of natural origin\",0");
-            sb.append(",ANGLEUNIT[\"degree\",0.0174532925199433]]");
+            sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
         }
 
         // Longitude of natural origin
         if (params.long0 != null) {
             sb.append(",PARAMETER[\"Longitude of natural origin\",");
             sb.append(formatAngle(params.long0 * RAD_TO_DEG));
-            sb.append(",ANGLEUNIT[\"degree\",0.0174532925199433]]");
+            sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
         }
 
         // Standard parallels
@@ -601,17 +602,17 @@ public final class CRSSerializer {
                     : "Latitude of 1st standard parallel";
             sb.append(",PARAMETER[\"" + paramName + "\",");
             sb.append(formatAngle(params.latTs * RAD_TO_DEG));
-            sb.append(",ANGLEUNIT[\"degree\",0.0174532925199433]]");
+            sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
         } else {
             if (params.lat1 != null) {
                 sb.append(",PARAMETER[\"Latitude of 1st standard parallel\",");
                 sb.append(formatAngle(params.lat1 * RAD_TO_DEG));
-                sb.append(",ANGLEUNIT[\"degree\",0.0174532925199433]]");
+                sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
             }
             if (params.lat2 != null) {
                 sb.append(",PARAMETER[\"Latitude of 2nd standard parallel\",");
                 sb.append(formatAngle(params.lat2 * RAD_TO_DEG));
-                sb.append(",ANGLEUNIT[\"degree\",0.0174532925199433]]");
+                sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
             }
         }
 
