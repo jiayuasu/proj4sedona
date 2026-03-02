@@ -14,7 +14,7 @@ import org.datasyslab.proj4sedona.core.Point;
 public class Stereographic implements Projection {
 
     private static final String[] NAMES = {
-        "stere", "Stereographic", "Stereographic_South_Pole", "Stereographic_North_Pole",
+        "stere", "sterea", "Stereographic", "Stereographic_South_Pole", "Stereographic_North_Pole",
         "Polar_Stereographic_variant_A", "Polar_Stereographic_variant_B", 
         "Polar_Stereographic", "Oblique_Stereographic"
     };

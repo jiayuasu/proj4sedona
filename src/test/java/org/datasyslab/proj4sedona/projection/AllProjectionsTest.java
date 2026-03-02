@@ -94,7 +94,26 @@ class AllProjectionsTest {
     @Test
     void testStereographicRegisteredNames() {
         assertNotNull(ProjectionRegistry.get("stere"));
+        assertNotNull(ProjectionRegistry.get("sterea"),
+            "sterea should be registered as alias for Stereographic (issue #56)");
         assertNotNull(ProjectionRegistry.get("Polar_Stereographic"));
+    }
+
+    @Test
+    void testStereaRoundTrip() {
+        // Issue #56: +proj=sterea must be accepted since it is output by toProjString
+        Converter conv = Proj4.proj4(
+            "+proj=longlat +datum=WGS84",
+            "+proj=sterea +lat_0=52.15616055555555 +lon_0=5.38763888888889 "
+                + "+k=0.9999079 +x_0=155000 +y_0=463000 +ellps=bessel "
+                + "+towgs84=565.417,50.3319,465.552,-0.398957,0.343988,-1.8774,4.0725 "
+                + "+units=m +no_defs"
+        );
+        Point original = new Point(5.387638889, 52.156160556);
+        Point projected = conv.forward(original);
+        Point restored = conv.inverse(projected);
+        assertEquals(original.x, restored.x, DEGREE_TOLERANCE);
+        assertEquals(original.y, restored.y, DEGREE_TOLERANCE);
     }
 
     @Test
