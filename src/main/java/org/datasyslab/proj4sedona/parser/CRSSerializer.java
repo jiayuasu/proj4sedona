@@ -604,7 +604,7 @@ public final class CRSSerializer {
             sb.append(",PARAMETER[\"" + paramName + "\",");
             sb.append(formatAngle(params.latTs * RAD_TO_DEG));
             sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
-        } else {
+        } else if (usesStandardParallels(params)) {
             if (params.lat1 != null) {
                 sb.append(",PARAMETER[\"Latitude of 1st standard parallel\",");
                 sb.append(formatAngle(params.lat1 * RAD_TO_DEG));
@@ -814,7 +814,7 @@ public final class CRSSerializer {
                     : "Latitude of 1st standard parallel";
             parameters.add(buildProjJsonParam(paramName, 
                 params.latTs * RAD_TO_DEG, "degree"));
-        } else {
+        } else if (usesStandardParallels(params)) {
             if (params.lat1 != null) {
                 parameters.add(buildProjJsonParam("Latitude of 1st standard parallel", 
                     params.lat1 * RAD_TO_DEG, "degree"));
@@ -1381,6 +1381,21 @@ public final class CRSSerializer {
         String proj = normalizeProjName(params.projName);
         return "stere".equals(proj) && params.lat0 != null
                 && Math.abs(Math.abs(params.lat0) - Math.PI / 2) < 1e-10;
+    }
+
+    /**
+     * Check if the projection uses standard parallels (lat1/lat2).
+     * Only conic projections genuinely use these parameters.
+     * Other projections (e.g., LAEA, Polar Stereographic variant A, Transverse Mercator)
+     * may have lat1 auto-set from lat0 by Proj.java, but should NOT emit it in WKT2/PROJJSON.
+     * Projections that use latTs (merc variant B, CEA, EQC, polar stere variant B) are
+     * handled separately by usesLatTsAsStandardParallel().
+     */
+    private static boolean usesStandardParallels(ProjectionParams params) {
+        String proj = normalizeProjName(params.projName);
+        return "lcc".equals(proj) || "aea".equals(proj)
+                || "eqdc".equals(proj) || "krovak".equals(proj)
+                || "bonne".equals(proj);
     }
 
     private static String getUnitName(String unitCode) {

@@ -918,4 +918,124 @@ class CRSSerializerTest {
         assertTrue(wkt2_rt.contains("North_American_Datum_1983"),
                 "Round-tripped WKT2 should preserve NAD83 datum name, got: " + wkt2_rt);
     }
+
+    // ==================== Issue #48: WKT2/PROJJSON round-trip tests ====================
+
+    @Test
+    @DisplayName("Issue #48: Polar Stereographic variant A (EPSG:32661) WKT2 round-trip")
+    void testPolarStereographicVariantAWkt2RoundTrip() {
+        // EPSG:32661 = WGS 84 / UPS North — Polar Stereographic variant A (uses k0, not lat_ts)
+        Proj proj = new Proj("+proj=stere +lat_0=90 +lon_0=0 +k=0.994 +x_0=2000000 +y_0=2000000 +datum=WGS84 +units=m");
+
+        String wkt2 = CRSSerializer.toWkt2(proj);
+        assertNotNull(wkt2);
+        assertTrue(wkt2.contains("Polar Stereographic (variant A)"),
+                "WKT2 should use variant A method name");
+        assertTrue(wkt2.contains("Scale factor at natural origin"),
+                "WKT2 variant A should include scale factor");
+        assertFalse(wkt2.contains("Latitude of 1st standard parallel"),
+                "WKT2 variant A should NOT include spurious standard parallel, got: " + wkt2);
+
+        // Round-trip: re-import the WKT2 and verify parameters are preserved
+        Proj reimported = new Proj(wkt2);
+        assertEquals(0.994, reimported.getParams().k0, 1e-10,
+                "k0 should be preserved through WKT2 round-trip");
+        assertEquals(Math.PI / 2, reimported.getParams().lat0, 1e-10,
+                "lat0 should be 90° (π/2) through WKT2 round-trip");
+        assertEquals(2000000.0, reimported.getParams().x0, 1e-3,
+                "x0 should be preserved through WKT2 round-trip");
+        assertEquals(2000000.0, reimported.getParams().y0, 1e-3,
+                "y0 should be preserved through WKT2 round-trip");
+    }
+
+    @Test
+    @DisplayName("Issue #48: Polar Stereographic variant A PROJJSON round-trip")
+    void testPolarStereographicVariantAProjJsonRoundTrip() {
+        Proj proj = new Proj("+proj=stere +lat_0=90 +lon_0=0 +k=0.994 +x_0=2000000 +y_0=2000000 +datum=WGS84 +units=m");
+
+        String projjson = CRSSerializer.toProjJson(proj);
+        assertNotNull(projjson);
+        assertFalse(projjson.contains("Latitude of 1st standard parallel"),
+                "PROJJSON variant A should NOT include spurious standard parallel");
+
+        // Round-trip
+        Proj reimported = new Proj(projjson);
+        assertEquals(0.994, reimported.getParams().k0, 1e-10,
+                "k0 should be preserved through PROJJSON round-trip");
+        assertEquals(Math.PI / 2, reimported.getParams().lat0, 1e-10,
+                "lat0 should be 90° (π/2) through PROJJSON round-trip");
+    }
+
+    @Test
+    @DisplayName("Issue #48: Lambert Azimuthal Equal Area WKT2 round-trip")
+    void testLaeaWkt2RoundTrip() {
+        // LAEA does NOT use standard parallels
+        Proj proj = new Proj("+proj=laea +lat_0=90 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m");
+
+        String wkt2 = CRSSerializer.toWkt2(proj);
+        assertNotNull(wkt2);
+        assertTrue(wkt2.contains("Lambert Azimuthal Equal Area"),
+                "WKT2 should use LAEA method name");
+        assertFalse(wkt2.contains("Latitude of 1st standard parallel"),
+                "WKT2 LAEA should NOT include spurious standard parallel, got: " + wkt2);
+
+        // Round-trip
+        Proj reimported = new Proj(wkt2);
+        assertEquals(Math.PI / 2, reimported.getParams().lat0, 1e-10,
+                "lat0 should be 90° (π/2) through WKT2 round-trip");
+    }
+
+    @Test
+    @DisplayName("Issue #48: Lambert Azimuthal Equal Area PROJJSON round-trip")
+    void testLaeaProjJsonRoundTrip() {
+        Proj proj = new Proj("+proj=laea +lat_0=90 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m");
+
+        String projjson = CRSSerializer.toProjJson(proj);
+        assertNotNull(projjson);
+        assertFalse(projjson.contains("Latitude of 1st standard parallel"),
+                "PROJJSON LAEA should NOT include spurious standard parallel");
+
+        // Round-trip
+        Proj reimported = new Proj(projjson);
+        assertEquals(Math.PI / 2, reimported.getParams().lat0, 1e-10,
+                "lat0 should be 90° (π/2) through PROJJSON round-trip");
+    }
+
+    @Test
+    @DisplayName("Issue #48: LCC still emits standard parallels correctly")
+    void testLccStandardParallelsPreserved() {
+        // LCC SHOULD still emit standard parallels — regression guard
+        Proj proj = new Proj("+proj=lcc +lat_1=33 +lat_2=45 +lat_0=39 +lon_0=-96 +datum=WGS84 +units=m");
+
+        String wkt2 = CRSSerializer.toWkt2(proj);
+        assertTrue(wkt2.contains("Latitude of 1st standard parallel"),
+                "WKT2 LCC should include 1st standard parallel");
+        assertTrue(wkt2.contains("Latitude of 2nd standard parallel"),
+                "WKT2 LCC should include 2nd standard parallel");
+
+        // Round-trip
+        Proj reimported = new Proj(wkt2);
+        assertEquals(33 * Math.PI / 180, reimported.getParams().lat1, 1e-10,
+                "lat1 should be preserved through WKT2 round-trip");
+        assertEquals(45 * Math.PI / 180, reimported.getParams().lat2, 1e-10,
+                "lat2 should be preserved through WKT2 round-trip");
+    }
+
+    @Test
+    @DisplayName("Issue #48: Polar Stereographic variant B still works correctly")
+    void testPolarStereographicVariantBPreserved() {
+        // Variant B uses lat_ts — regression guard
+        Proj proj = new Proj("+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m");
+
+        String wkt2 = CRSSerializer.toWkt2(proj);
+        assertTrue(wkt2.contains("Polar Stereographic (variant B)"),
+                "WKT2 should use variant B method name");
+        assertTrue(wkt2.contains("Latitude of standard parallel"),
+                "WKT2 variant B should include standard parallel");
+
+        // Round-trip
+        Proj reimported = new Proj(wkt2);
+        assertEquals(-71 * Math.PI / 180, reimported.getParams().latTs, 1e-10,
+                "latTs should be preserved through WKT2 round-trip");
+    }
 }

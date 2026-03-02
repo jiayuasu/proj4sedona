@@ -74,8 +74,9 @@ public final class WktUtils {
                 def.setLat1(null);
             }
         } else if (def.getLatTs() == null && def.getLat0() != null) {
-            if (normalizedProjName.equals("polar stereographic") ||
-                normalizedProjName.equals("polar stereographic (variant a)")) {
+            // Generic "polar stereographic" (WKT1): convert lat0 to latTs.
+            // Explicit "variant A" uses scale factor (k0), NOT lat_ts, so skip it.
+            if (normalizedProjName.equals("polar stereographic")) {
                 double lat0 = def.getLat0();
                 def.setLatTs(lat0);
                 def.setLat0(d2r(lat0 > 0 ? 90 : -90));
