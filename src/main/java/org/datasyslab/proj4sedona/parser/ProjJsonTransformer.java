@@ -199,12 +199,13 @@ public final class ProjJsonTransformer {
                         if (datumName != null) {
                             // Resolve via Datum registry to get the short code
                             // (e.g., "World Geodetic System 1984" -> "wgs84")
-                            // This avoids datum names with spaces producing invalid +datum= values
+                            // This avoids datum names with spaces producing invalid +datum= values.
+                            // If the name is not in the registry, skip it and fall through to
+                            // the base CRS id fallback — raw names may contain whitespace or
+                            // be legacy placeholders (e.g., "Base").
                             Datum datum = Datum.get(datumName.toString());
                             if (datum != null) {
                                 resolvedDatumCode = datum.getCode();
-                            } else {
-                                resolvedDatumCode = datumName.toString();
                             }
                         }
                     }
