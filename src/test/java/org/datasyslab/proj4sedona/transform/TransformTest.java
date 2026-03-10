@@ -519,6 +519,29 @@ class TransformTest {
     }
 
     @Test
+    void testWebMercatorProjStringMatchesEpsgCode() {
+        // A PROJ string tagged +title=EPSG:3857 but using the WGS84 ellipsoid
+        // (a != b) should be corrected to the sphere-based definition by
+        // checkWebMercator.  Ported from proj4js PR #553 which ensures the
+        // mercator check runs on ALL code paths, including raw PROJ strings.
+        String wrongProjStr = "+proj=merc +a=6378137 +b=6356752.314245179"
+            + " +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m"
+            + " +title=EPSG:3857 +no_defs";
+
+        Converter fromEpsg = Proj4.proj4("EPSG:4326", "EPSG:3857");
+        Converter fromProj = Proj4.proj4("EPSG:4326", wrongProjStr);
+
+        Point ll = new Point(-112.50042920000004, 42.036926809999976);
+        Point xyFromEpsg = fromEpsg.forward(ll);
+        Point xyFromProj = fromProj.forward(ll);
+
+        assertEquals(xyFromEpsg.x, xyFromProj.x, 0.01,
+            "PROJ-string 3857 x should match EPSG:3857 after mercator correction");
+        assertEquals(xyFromEpsg.y, xyFromProj.y, 0.01,
+            "PROJ-string 3857 y should match EPSG:3857 after mercator correction");
+    }
+
+    @Test
     void testWebMercatorWkt1StillWorks() {
         // WKT1 with EXTENSION[PROJ4,...] should also continue to work
         String wkt1_3857 = "PROJCS[\"WGS 84 / Pseudo-Mercator\","
