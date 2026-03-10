@@ -125,29 +125,29 @@ public class Proj {
 
         // Check if it's a PROJ string (starts with +)
         if (firstChar == '+') {
-            out = ProjString.parse(srsCode);
+            out = ProjString.parse(trimmed);
         }
         // Check if it's a PROJJSON string (starts with {)
         else if (firstChar == '{') {
             try {
                 Gson gson = new Gson();
-                Map<String, Object> json = gson.fromJson(srsCode, Map.class);
+                Map<String, Object> json = gson.fromJson(trimmed, Map.class);
                 out = WktParser.parse(json);
             } catch (Exception e) {
                 throw new IllegalArgumentException("Invalid PROJJSON: " + e.getMessage(), e);
             }
         }
         // Check if it's WKT format (contains '[' and doesn't start with '+')
-        else if (WktParser.isWkt(srsCode)) {
-            out = WktParser.parse(srsCode);
+        else if (WktParser.isWkt(trimmed)) {
+            out = WktParser.parse(trimmed);
         } else {
             // Try looking up in the Defs registry (for EPSG codes, aliases, etc.)
-            out = Defs.get(srsCode);
+            out = Defs.get(trimmed);
 
             // Try parsing as PROJ string anyway (for simple strings without +)
             if (out == null) {
                 try {
-                    out = ProjString.parse(srsCode);
+                    out = ProjString.parse(trimmed);
                 } catch (Exception e) {
                     return null;
                 }
