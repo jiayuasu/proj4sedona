@@ -82,6 +82,21 @@ public final class Datum {
     public static final Datum EPSG_4269 = register("EPSG_4269", "0,0,0", null, null);
     public static final Datum EPSG_4230 = register("EPSG_4230", "-68.863,-134.888,-111.49,-0.53,-0.14,0.57,-3.4", null, null);
 
+    // Datums added / corrected from proj4js v2.20.4 (PR #551).
+    // Rotation values were corrected from microradians to arcseconds.
+    /** Amersfoort datum (Netherlands) — used by EPSG:28992 (RD New) */
+    public static final Datum EPSG_4289 = register("EPSG_4289",
+            "565.7381,50.4018,465.2904,-0.395026,0.330772,-1.876073,4.07244", "bessel", null);
+    /** GDA94 (Geocentric Datum of Australia 1994) */
+    public static final Datum EPSG_4283 = register("EPSG_4283",
+            "0.06155,-0.01087,-0.04019,0.039492,0.032722,0.032898,-0.009994", "GRS80", null);
+    /** NAD83(CSRS) — Canadian Spatial Reference System */
+    public static final Datum EPSG_4617 = register("EPSG_4617",
+            "-0.991,1.9072,0.5129,0.02579,0.00965,0.01166,0", "GRS80", null);
+    /** S-JTSK/05 (Ferro) / Modified Krovak — used by EPSG:5514 (Czech Republic) */
+    public static final Datum EPSG_8351 = register("EPSG_8351",
+            "485.021,169.465,483.839,7.786342,4.397554,4.102655,0", "bessel", null);
+
     // ISO 19162 / PROJJSON / WKT2 datum-name aliases.
     // These map the verbose names found in WKT2 and PROJJSON documents to the
     // short PROJ codes already registered above.
@@ -95,6 +110,13 @@ public final class Datum {
         registerAlias("North American Datum of 1927", NAD27);
         registerAlias("Ordnance Survey of Great Britain 1936", OSGB36);
         registerAlias("OSGB 1936", OSGB36);
+        // Aliases for newly-added datums (PR #551 corrections)
+        registerAlias("Amersfoort", EPSG_4289);
+        registerAlias("Geocentric Datum of Australia 1994", EPSG_4283);
+        registerAlias("GDA94", EPSG_4283);
+        registerAlias("NAD83 Canadian Spatial Reference System", EPSG_4617);
+        registerAlias("NAD83(CSRS)", EPSG_4617);
+        registerAlias("System of the Unified Trigonometrical Cadastral Network [JTSK03]", EPSG_8351);
     }
 
     private final String code;

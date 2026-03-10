@@ -144,6 +144,54 @@ class ConstantsTest {
     }
 
     @Test
+    void testCorrectedEpsgDatums() {
+        // Datums added with corrected rotation values (arcseconds, not microradians).
+        // Ported from proj4js v2.20.4 PR #551.
+
+        // EPSG:4289 (Amersfoort / Netherlands)
+        Datum amersfoort = Datum.get("EPSG_4289");
+        assertNotNull(amersfoort, "EPSG_4289 should be registered");
+        double[] p = amersfoort.getTowgs84Array();
+        assertEquals(7, p.length);
+        assertEquals(565.7381, p[0], DELTA);
+        assertEquals(50.4018, p[1], DELTA);
+        assertEquals(465.2904, p[2], DELTA);
+        assertEquals(-0.395026, p[3], DELTA);  // arcseconds, not microradians
+        assertEquals(0.330772, p[4], DELTA);
+        assertEquals(-1.876073, p[5], DELTA);
+        assertEquals(4.07244, p[6], DELTA);
+        assertEquals("bessel", amersfoort.getEllipse());
+
+        // Alias lookup
+        assertSame(amersfoort, Datum.get("Amersfoort"));
+
+        // EPSG:4283 (GDA94 / Australia)
+        Datum gda94 = Datum.get("EPSG_4283");
+        assertNotNull(gda94, "EPSG_4283 should be registered");
+        double[] g = gda94.getTowgs84Array();
+        assertEquals(7, g.length);
+        assertEquals(0.06155, g[0], DELTA);
+        assertEquals(-0.01087, g[1], DELTA);
+        assertEquals("GRS80", gda94.getEllipse());
+        assertSame(gda94, Datum.get("GDA94"));
+        assertSame(gda94, Datum.get("Geocentric Datum of Australia 1994"));
+
+        // EPSG:4617 (NAD83(CSRS) / Canada)
+        Datum csrs = Datum.get("EPSG_4617");
+        assertNotNull(csrs, "EPSG_4617 should be registered");
+        double[] c = csrs.getTowgs84Array();
+        assertEquals(7, c.length);
+        assertEquals(-0.991, c[0], DELTA);
+        assertEquals(0.02579, c[3], DELTA);
+        assertSame(csrs, Datum.get("NAD83(CSRS)"));
+
+        // EPSG:8351 (S-JTSK/05)
+        Datum jtsk = Datum.get("EPSG_8351");
+        assertNotNull(jtsk, "EPSG_8351 should be registered");
+        assertEquals("bessel", jtsk.getEllipse());
+    }
+
+    @Test
     void testPrimeMeridians() {
         // Verify values match lib/constants/PrimeMeridian.js
         assertEquals(0.0, PrimeMeridian.get("greenwich"), DELTA);

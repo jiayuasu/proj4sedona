@@ -120,41 +120,45 @@ public class Proj {
             return null;
         }
 
+        ProjectionDef out = null;
         char firstChar = trimmed.charAt(0);
 
         // Check if it's a PROJ string (starts with +)
         if (firstChar == '+') {
-            return ProjString.parse(srsCode);
+            out = ProjString.parse(srsCode);
         }
-
         // Check if it's a PROJJSON string (starts with {)
-        if (firstChar == '{') {
+        else if (firstChar == '{') {
             try {
                 Gson gson = new Gson();
                 Map<String, Object> json = gson.fromJson(srsCode, Map.class);
-                return checkWebMercator(WktParser.parse(json));
+                out = WktParser.parse(json);
             } catch (Exception e) {
                 throw new IllegalArgumentException("Invalid PROJJSON: " + e.getMessage(), e);
             }
         }
-
         // Check if it's WKT format (contains '[' and doesn't start with '+')
-        if (WktParser.isWkt(srsCode)) {
-            return checkWebMercator(WktParser.parse(srsCode));
+        else if (WktParser.isWkt(srsCode)) {
+            out = WktParser.parse(srsCode);
+        } else {
+            // Try looking up in the Defs registry (for EPSG codes, aliases, etc.)
+            out = Defs.get(srsCode);
+
+            // Try parsing as PROJ string anyway (for simple strings without +)
+            if (out == null) {
+                try {
+                    out = ProjString.parse(srsCode);
+                } catch (Exception e) {
+                    return null;
+                }
+            }
         }
 
-        // Try looking up in the Defs registry (for EPSG codes, aliases, etc.)
-        ProjectionDef defFromRegistry = Defs.get(srsCode);
-        if (defFromRegistry != null) {
-            return defFromRegistry;
-        }
-
-        // Try parsing as PROJ string anyway (for simple strings without +)
-        try {
-            return ProjString.parse(srsCode);
-        } catch (Exception e) {
-            return null;
-        }
+        // Check for special Web Mercator case in all code paths.
+        // Web Mercator definitions are commonly malformed (WGS84 ellipsoid
+        // instead of sphere), so always replace with the correct hard-coded
+        // definition. Mirrors: proj4js PR #553.
+        return checkWebMercator(out);
     }
 
     /**
@@ -162,7 +166,7 @@ public class Proj {
      * return the hard-coded (correct, sphere-based) definition instead.
      * Web mercator WKT2/PROJJSON definitions are traditionally wrong because
      * they declare the WGS84 ellipsoid instead of a sphere (a == b == 6378137).
-     * Mirrors: proj4js PR #546 / lib/parseCode.js checkMercator()
+     * Mirrors: proj4js PR #546, #553 / lib/parseCode.js checkMercator()
      */
     private static ProjectionDef checkWebMercator(ProjectionDef def) {
         if (def == null) {
