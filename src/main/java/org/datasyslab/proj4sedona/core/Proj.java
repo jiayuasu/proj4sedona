@@ -165,7 +165,8 @@ public class Proj {
      * If the parsed definition matches a known web mercator EPSG code,
      * return the hard-coded (correct, sphere-based) definition instead.
      * Web mercator WKT2/PROJJSON definitions are traditionally wrong because
-     * they declare the WGS84 ellipsoid instead of a sphere (a == b == 6378137).
+     * they declare the WGS84 ellipsoid (a != b) instead of a sphere; the
+     * hard-coded replacement uses a sphere with a == b == 6378137.
      * Mirrors: proj4js PR #546, #553 / lib/parseCode.js checkMercator()
      */
     private static ProjectionDef checkWebMercator(ProjectionDef def) {
