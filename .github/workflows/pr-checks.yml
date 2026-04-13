@@ -54,7 +54,7 @@ jobs:
       uses: actions/checkout@v6
 
     - name: Check PR size
-      uses: actions/github-script@v8
+      uses: actions/github-script@v9
       with:
         script: |
           const pr = context.payload.pull_request;
@@ -136,7 +136,7 @@ jobs:
         path: test-results/
 
     - name: Comment PR with summary
-      uses: actions/github-script@v8
+      uses: actions/github-script@v9
       with:
         script: |
           const fs = require('fs');
