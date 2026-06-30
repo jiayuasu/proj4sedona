@@ -152,7 +152,8 @@ public final class ProjectionRegistry {
         add(UTM::new);
         add(EquidistantCylindrical::new);
         add(CylindricalEqualArea::new);
-        
+        add(SwissObliqueMercator::new);
+
         // Conic projections
         add(LambertConformalConic::new);
         add(AlbersEqualArea::new);
