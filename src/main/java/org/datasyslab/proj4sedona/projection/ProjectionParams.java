@@ -132,6 +132,12 @@ public class ProjectionParams {
     /** Allow longitude values outside ±180° (+over) - prevents wrapping */
     public Boolean over;
 
+    /** Oblique Mercator without origin offset (+no_uoff / +no_off, variant A) */
+    public Boolean noUoff;
+
+    /** Oblique Mercator without rectification rotation (+no_rot) */
+    public Boolean noRot;
+
     // ==================== Original Definition ====================
     
     /** Original SRS code or PROJ string */

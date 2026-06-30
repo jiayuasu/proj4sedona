@@ -58,6 +58,8 @@ public class ProjectionDef {
     private Boolean rA;            // R_A: Use authalic radius
     private Boolean approx;        // Use approximate algorithms
     private Boolean over;          // Allow longitude wrapping
+    private Boolean noUoff;        // no_uoff / no_off: Oblique Mercator without origin offset (variant A)
+    private Boolean noRot;         // no_rot: Oblique Mercator without rectification rotation
 
     // Datum object (populated after parsing)
     private DatumParams datum;
@@ -173,6 +175,12 @@ public class ProjectionDef {
 
     public Boolean getOver() { return over; }
     public void setOver(Boolean over) { this.over = over; }
+
+    public Boolean getNoUoff() { return noUoff; }
+    public void setNoUoff(Boolean noUoff) { this.noUoff = noUoff; }
+
+    public Boolean getNoRot() { return noRot; }
+    public void setNoRot(Boolean noRot) { this.noRot = noRot; }
 
     public DatumParams getDatum() { return datum; }
     public void setDatum(DatumParams datum) { this.datum = datum; }

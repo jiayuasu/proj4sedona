@@ -166,6 +166,13 @@ public final class ProjString {
             case "over":
                 def.setOver(true);
                 break;
+            case "no_uoff":
+            case "no_off":
+                def.setNoUoff(true);
+                break;
+            case "no_rot":
+                def.setNoRot(true);
+                break;
 
             // towgs84 parameters
             case "towgs84":

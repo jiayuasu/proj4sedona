@@ -293,6 +293,8 @@ public class Proj {
         p.alpha = def.getAlpha();
         p.longc = def.getLongc();
         p.rectifiedGridAngle = def.getRectifiedGridAngle();
+        p.noUoff = def.getNoUoff();
+        p.noRot = def.getNoRot();
 
         // Scale and offsets
         p.k0 = def.getK0() != null ? def.getK0() : 1.0;
