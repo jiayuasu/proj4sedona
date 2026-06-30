@@ -15,8 +15,12 @@ import org.datasyslab.proj4sedona.core.Point;
  */
 public class StereographicAlternative implements Projection {
 
+    // Note: proj4js's sterea.js also lists "Stereographic_North_Pole", but that is
+    // a proj4js bug — the ESRI polar-north name is the Snyder polar stereographic
+    // and must honor +lat_ts, which this algorithm ignores. It is intentionally
+    // kept on Stereographic (matching PROJ/pyproj and proj4sedona's prior behavior).
     private static final String[] NAMES = {
-        "Stereographic_North_Pole", "Oblique_Stereographic", "sterea",
+        "Oblique_Stereographic", "sterea",
         "Oblique Stereographic Alternative", "Double_Stereographic"
     };
 

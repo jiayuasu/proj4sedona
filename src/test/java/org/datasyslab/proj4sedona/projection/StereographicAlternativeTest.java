@@ -39,10 +39,24 @@ class StereographicAlternativeTest {
         assertNotNull(ProjectionRegistry.get("sterea"));
         assertNotNull(ProjectionRegistry.get("Oblique_Stereographic"));
         assertNotNull(ProjectionRegistry.get("Double_Stereographic"));
-        assertNotNull(ProjectionRegistry.get("Stereographic_North_Pole"));
-        // Snyder stereographic names stay on Stereographic
+        // Snyder stereographic names stay on Stereographic. Both ESRI polar names
+        // (incl. Stereographic_North_Pole) belong to Snyder so +lat_ts is honored.
         assertNotNull(ProjectionRegistry.get("stere"));
         assertNotNull(ProjectionRegistry.get("Stereographic_South_Pole"));
+        assertNotNull(ProjectionRegistry.get("Stereographic_North_Pole"));
+    }
+
+    @Test
+    void testStereographicNorthPoleHonorsLatTs() {
+        // Regression guard: Stereographic_North_Pole must route to the Snyder polar
+        // stereographic (which honors +lat_ts), not the lat_ts-ignoring sterea.
+        // Reference from PROJ/pyproj (proj4js is wrong here, returning -1102658.86).
+        Converter named = Proj4.proj4("+proj=longlat +datum=WGS84 +no_defs",
+            "+proj=Stereographic_North_Pole +lat_0=90 +lat_ts=70 +lon_0=0 +k=1 "
+                + "+x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs");
+        Point xy = named.forward(new Point(10, 80));
+        assertEquals(188568.08, xy.x, 0.5, "easting");
+        assertEquals(-1069422.73, xy.y, 0.5, "northing");
     }
 
     @Test
