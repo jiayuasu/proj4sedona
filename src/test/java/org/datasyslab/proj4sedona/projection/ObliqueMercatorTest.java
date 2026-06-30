@@ -73,6 +73,25 @@ class ObliqueMercatorTest {
     }
 
     @Test
+    void testTwoPointForm() {
+        // Two-point parameterization (lon_1/lat_1/lon_2/lat_2). Reference from proj4js 2.20.9.
+        check("+proj=omerc +lat_0=40 +lon_1=-74 +lat_1=40.5 +lon_2=-73 +lat_2=41 +k=1 "
+                + "+x_0=0 +y_0=0 +ellps=WGS84 +units=m +no_defs",
+            -73.5, 40.7, 124132.858041, 78757.080957, XY_EPSLN);
+    }
+
+    @Test
+    void testTwoPointProjStringRoundTrip() {
+        // Two-point omerc must keep lon_1/lat_1/lon_2/lat_2 through serialization; a
+        // dropped two-point parameter sends re-import into a different/invalid projection.
+        assertSerializationRoundTrip(
+            "+proj=omerc +lat_0=40 +lon_1=-74 +lat_1=40.5 +lon_2=-73 +lat_2=41 +k=1 "
+                + "+x_0=0 +y_0=0 +ellps=WGS84 +units=m +no_defs",
+            new double[][] {{-73.5, 40.7}, {-73.8, 40.6}, {-73.2, 40.9}},
+            true);
+    }
+
+    @Test
     void testSerializationRoundTripTypeA() {
         // Variant A (+no_uoff) must survive serialize -> re-import across all formats,
         // previously dropped lonc/alpha/gamma/no_uoff and crashed with an NPE.
@@ -92,14 +111,25 @@ class ObliqueMercatorTest {
             new double[][] {{141.0, 37.48}, {141.5, 37.6}, {140.5, 37.3}});
     }
 
-    /** Compares datum-independent projection math of each re-imported format against the original. */
     private void assertSerializationRoundTrip(String def, double[][] coords) {
+        assertSerializationRoundTrip(def, coords, false);
+    }
+
+    /**
+     * Compares datum-independent projection math of each re-imported format against the
+     * original. The two-point form only serializes through the proj string (WKT/PROJJSON
+     * two-point output is not implemented), so {@code projStringOnly} limits the check.
+     */
+    private void assertSerializationRoundTrip(String def, double[][] coords, boolean projStringOnly) {
         Proj original = new Proj(def);
-        for (String serialized : new String[] {
+        String[] formats = projStringOnly
+            ? new String[] {CRSSerializer.toProjString(original)}
+            : new String[] {
                 CRSSerializer.toProjString(original),
                 CRSSerializer.toWkt1(original),
                 CRSSerializer.toWkt2(original),
-                CRSSerializer.toProjJson(original)}) {
+                CRSSerializer.toProjJson(original)};
+        for (String serialized : formats) {
             Proj reimported = new Proj(serialized); // must not throw
             for (double[] c : coords) {
                 Point want = original.forward(new Point(c[0] * Math.PI / 180, c[1] * Math.PI / 180));

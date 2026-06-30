@@ -92,6 +92,10 @@ public class ObliqueMercator implements Projection {
         }
 
         if (alp || gam) {
+            if (params.longc == null) {
+                throw new IllegalArgumentException(
+                    "Oblique Mercator with alpha/gamma requires the longitude of center (+lonc)");
+            }
             lamc = params.longc;
         } else {
             if (params.long1 == null || params.lat1 == null

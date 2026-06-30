@@ -258,21 +258,40 @@ public final class CRSSerializer {
             sb.append(" +y_0=").append(params.y0);
         }
 
-        // Oblique Mercator (omerc) defining parameters
-        if (params.longc != null) {
-            sb.append(" +lonc=").append(formatAngle(params.longc * RAD_TO_DEG));
-        }
-        if (params.alpha != null) {
-            sb.append(" +alpha=").append(formatAngle(params.alpha * RAD_TO_DEG));
-        }
-        if (params.rectifiedGridAngle != null) {
-            sb.append(" +gamma=").append(formatAngle(params.rectifiedGridAngle * RAD_TO_DEG));
-        }
-        if (isOmerc && omercIsTypeA(params)) {
-            sb.append(" +no_uoff");
-        }
-        if (Boolean.TRUE.equals(params.noRot)) {
-            sb.append(" +no_rot");
+        // Oblique Mercator (omerc) defining parameters: either the azimuth/gamma
+        // parameterization or the two-point form.
+        if (isOmerc) {
+            if (params.alpha != null || params.rectifiedGridAngle != null) {
+                if (params.longc != null) {
+                    sb.append(" +lonc=").append(formatAngle(params.longc * RAD_TO_DEG));
+                }
+                if (params.alpha != null) {
+                    sb.append(" +alpha=").append(formatAngle(params.alpha * RAD_TO_DEG));
+                }
+                if (params.rectifiedGridAngle != null) {
+                    sb.append(" +gamma=").append(formatAngle(params.rectifiedGridAngle * RAD_TO_DEG));
+                }
+                if (omercIsTypeA(params)) {
+                    sb.append(" +no_uoff");
+                }
+            } else {
+                // Two-point form requires lon_1/lat_1/lon_2/lat_2
+                if (params.long1 != null) {
+                    sb.append(" +lon_1=").append(formatAngle(params.long1 * RAD_TO_DEG));
+                }
+                if (params.lat1 != null) {
+                    sb.append(" +lat_1=").append(formatAngle(params.lat1 * RAD_TO_DEG));
+                }
+                if (params.long2 != null) {
+                    sb.append(" +lon_2=").append(formatAngle(params.long2 * RAD_TO_DEG));
+                }
+                if (params.lat2 != null) {
+                    sb.append(" +lat_2=").append(formatAngle(params.lat2 * RAD_TO_DEG));
+                }
+            }
+            if (Boolean.TRUE.equals(params.noRot)) {
+                sb.append(" +no_rot");
+            }
         }
 
         // Ellipsoid parameters
@@ -623,8 +642,10 @@ public final class CRSSerializer {
 
     private static void appendWkt2Parameters(StringBuilder sb, String proj, ProjectionParams params) {
 
-        // Latitude of natural origin
-        if (params.lat0 != null) {
+        boolean isOmerc = "omerc".equals(proj);
+
+        // Latitude of natural origin (omerc emits "Latitude of projection centre" below)
+        if (params.lat0 != null && !isOmerc) {
             sb.append(",PARAMETER[\"Latitude of natural origin\",");
             sb.append(formatAngle(params.lat0 * RAD_TO_DEG));
             sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
@@ -634,8 +655,8 @@ public final class CRSSerializer {
             sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
         }
 
-        // Longitude of natural origin
-        if (params.long0 != null) {
+        // Longitude of natural origin (omerc uses the projection-centre name below)
+        if (params.long0 != null && !isOmerc) {
             sb.append(",PARAMETER[\"Longitude of natural origin\",");
             sb.append(formatAngle(params.long0 * RAD_TO_DEG));
             sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
@@ -643,7 +664,12 @@ public final class CRSSerializer {
 
         // Oblique Mercator defining parameters. WKT2 is parsed via WKT2->PROJJSON,
         // so use the EPSG projection-centre parameter names the PROJJSON reader knows.
-        if ("omerc".equals(proj)) {
+        if (isOmerc) {
+            if (params.lat0 != null) {
+                sb.append(",PARAMETER[\"Latitude of projection centre\",")
+                  .append(formatAngle(params.lat0 * RAD_TO_DEG))
+                  .append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
+            }
             if (params.longc != null) {
                 sb.append(",PARAMETER[\"Longitude of projection centre\",")
                   .append(formatAngle(params.longc * RAD_TO_DEG))
