@@ -13,10 +13,17 @@ import org.datasyslab.proj4sedona.core.Point;
  */
 public class Stereographic implements Projection {
 
+    // Snyder stereographic names (lib/projections/stere.js). The oblique
+    // stereographic alternative names (sterea, Oblique_Stereographic,
+    // Double_Stereographic) live on StereographicAlternative. Bare "Stereographic"
+    // is kept here for ESRI WKT, which uses it for the standard (Snyder)
+    // stereographic. Both ESRI polar names (Stereographic_North_Pole /
+    // _South_Pole) stay here so +lat_ts is honored — unlike proj4js, which routes
+    // the north-pole name to sterea and drops lat_ts.
     private static final String[] NAMES = {
-        "stere", "sterea", "Stereographic", "Stereographic_South_Pole", "Stereographic_North_Pole",
-        "Polar_Stereographic_variant_A", "Polar_Stereographic_variant_B", 
-        "Polar_Stereographic", "Oblique_Stereographic"
+        "stere", "Stereographic", "Stereographic_South_Pole", "Stereographic_North_Pole",
+        "Polar_Stereographic_variant_A", "Polar_Stereographic_variant_B",
+        "Polar_Stereographic"
     };
 
     private double a, e, es, lat0, long0, k0, x0, y0;
