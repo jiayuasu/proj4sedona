@@ -161,6 +161,7 @@ public final class ProjectionRegistry {
 
         // Azimuthal projections
         add(Stereographic::new);
+        add(StereographicAlternative::new);
         add(LambertAzimuthalEqualArea::new);
         add(AzimuthalEquidistant::new);
         

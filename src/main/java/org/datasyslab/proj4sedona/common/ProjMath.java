@@ -114,6 +114,19 @@ public final class ProjMath {
     }
 
     /**
+     * Compute ((1 - esinp) / (1 + esinp))^exp, used by the Gauss conformal
+     * sphere mapping.
+     * Mirrors: lib/common/srat.js
+     *
+     * @param esinp Eccentricity times sine of latitude
+     * @param exp Exponent
+     * @return The srat value
+     */
+    public static double srat(double esinp, double exp) {
+        return Math.pow((1 - esinp) / (1 + esinp), exp);
+    }
+
+    /**
      * Compute the latitude angle, phi2, for the inverse of various projections.
      * Mirrors: lib/common/phi2z.js
      *
