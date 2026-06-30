@@ -84,6 +84,20 @@ public final class ProjMath {
     }
 
     /**
+     * Compute the radius of curvature in the prime vertical (N).
+     * Mirrors: lib/common/gN.js
+     *
+     * @param a Semi-major axis
+     * @param e Eccentricity of the ellipsoid
+     * @param sinphi Sine of the latitude
+     * @return The radius of curvature in the prime vertical
+     */
+    public static double gN(double a, double e, double sinphi) {
+        double temp = e * sinphi;
+        return a / Math.sqrt(1 - temp * temp);
+    }
+
+    /**
      * Compute the constant small t for use in the forward computations.
      * Mirrors: lib/common/tsfnz.js
      *
