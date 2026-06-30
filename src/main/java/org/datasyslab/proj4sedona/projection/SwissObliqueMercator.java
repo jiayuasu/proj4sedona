@@ -13,7 +13,10 @@ import org.datasyslab.proj4sedona.core.Point;
  */
 public class SwissObliqueMercator implements Projection {
 
-    private static final String[] NAMES = {"somerc"};
+    // proj4js names somerc only "somerc". The extra alias lets a CRS round-trip
+    // through proj4sedona's WKT/PROJJSON serializer, which emits the EPSG method
+    // name "Swiss Oblique Mercator" (registry lookup normalizes spaces/underscores).
+    private static final String[] NAMES = {"somerc", "Swiss_Oblique_Mercator"};
 
     private static final int MAX_ITER = 20;
 

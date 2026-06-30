@@ -4,6 +4,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.datasyslab.proj4sedona.Proj4;
 import org.datasyslab.proj4sedona.core.Point;
+import org.datasyslab.proj4sedona.core.Proj;
+import org.datasyslab.proj4sedona.parser.CRSSerializer;
 import org.datasyslab.proj4sedona.transform.Converter;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -67,13 +69,48 @@ class SwissObliqueMercatorTest {
 
     @Test
     void testLv03RoundTrip() {
-        Converter conv = Proj4.proj4("+proj=longlat +datum=WGS84 +no_defs", LV03);
+        assertProjectionRoundTrip(LV03);
+    }
+
+    @Test
+    void testLv95RoundTrip() {
+        // LV95 differs from LV03 only by false easting/northing; exercise x0/y0
+        // handling in both directions here too.
+        assertProjectionRoundTrip(LV95);
+    }
+
+    private void assertProjectionRoundTrip(String def) {
+        Converter conv = Proj4.proj4("+proj=longlat +datum=WGS84 +no_defs", def);
         double[][] coords = {{7.439583333, 46.952405556}, {8.55, 47.37}, {6.14, 46.2}, {9.5, 47.5}};
         for (double[] c : coords) {
             Point xy = conv.forward(new Point(c[0], c[1]));
             Point ll = conv.inverse(new Point(xy.x, xy.y));
             assertEquals(c[0], ll.x, LL_EPSLN, "lng for " + c[0]);
             assertEquals(c[1], ll.y, LL_EPSLN, "lat for " + c[1]);
+        }
+    }
+
+    @Test
+    void testSerializationRoundTrip() {
+        // Regression guard for the round-trip bug: proj4sedona's serializer emits the
+        // method name "Swiss Oblique Mercator", which must re-import (previously failed
+        // with "Unknown projection: Swiss Oblique Mercator"). Compare the projection
+        // math (datum-independent) of the re-imported def against the original, so this
+        // does not depend on whether a given serialization preserves +towgs84.
+        Proj original = new Proj(LV03);
+        double[][] coords = {{7.439583333, 46.952405556}, {8.55, 47.37}, {6.14, 46.2}};
+        for (String serialized : new String[] {
+                CRSSerializer.toProjString(original),
+                CRSSerializer.toWkt1(original),
+                CRSSerializer.toWkt2(original),
+                CRSSerializer.toProjJson(original)}) {
+            Proj reimported = new Proj(serialized); // must not throw
+            for (double[] c : coords) {
+                Point want = original.forward(new Point(c[0] * Math.PI / 180, c[1] * Math.PI / 180));
+                Point got = reimported.forward(new Point(c[0] * Math.PI / 180, c[1] * Math.PI / 180));
+                assertEquals(want.x, got.x, XY_EPSLN, "easting after re-import of " + serialized);
+                assertEquals(want.y, got.y, XY_EPSLN, "northing after re-import of " + serialized);
+            }
         }
     }
 
