@@ -94,6 +94,12 @@ public class ObliqueMercator implements Projection {
         if (alp || gam) {
             lamc = params.longc;
         } else {
+            if (params.long1 == null || params.lat1 == null
+                || params.long2 == null || params.lat2 == null) {
+                throw new IllegalArgumentException(
+                    "Oblique Mercator requires either alpha (+ optional gamma) or the "
+                        + "two-point parameters lon_1/lat_1/lon_2/lat_2");
+            }
             lam1 = params.long1;
             phi1 = params.lat1;
             lam2 = params.long2;

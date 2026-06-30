@@ -104,6 +104,10 @@ public final class CRSSerializer {
         WKT_TO_PROJ_METHOD.put("polar stereographic (variant c)", "stere");
         WKT_TO_PROJ_METHOD.put("hotine oblique mercator (variant a)", "omerc");
         WKT_TO_PROJ_METHOD.put("hotine oblique mercator (variant b)", "omerc");
+        WKT_TO_PROJ_METHOD.put("hotine oblique mercator", "omerc");
+        WKT_TO_PROJ_METHOD.put("hotine oblique mercator azimuth center", "omerc");
+        WKT_TO_PROJ_METHOD.put("hotine oblique mercator azimuth natural origin", "omerc");
+        WKT_TO_PROJ_METHOD.put("hotine oblique mercator two point natural origin", "omerc");
         WKT_TO_PROJ_METHOD.put("laborde oblique mercator", "omerc");
         WKT_TO_PROJ_METHOD.put("krovak (north orientated)", "krovak");
         WKT_TO_PROJ_METHOD.put("krovak modified", "krovak");
@@ -193,6 +197,7 @@ public final class CRSSerializer {
         }
 
         StringBuilder sb = new StringBuilder();
+        boolean isOmerc = "omerc".equals(normalizeProjName(params.projName));
 
         // Projection name
         String projName = params.projName;
@@ -225,12 +230,14 @@ public final class CRSSerializer {
             sb.append(" +lon_0=").append(formatAngle(params.long0 * RAD_TO_DEG));
         }
 
-        // Standard parallels (for conic projections)
-        if (params.lat1 != null) {
-            sb.append(" +lat_1=").append(formatAngle(params.lat1 * RAD_TO_DEG));
-        }
-        if (params.lat2 != null) {
-            sb.append(" +lat_2=").append(formatAngle(params.lat2 * RAD_TO_DEG));
+        // Standard parallels (for conic projections; omerc uses lonc/alpha/gamma instead)
+        if (!isOmerc) {
+            if (params.lat1 != null) {
+                sb.append(" +lat_1=").append(formatAngle(params.lat1 * RAD_TO_DEG));
+            }
+            if (params.lat2 != null) {
+                sb.append(" +lat_2=").append(formatAngle(params.lat2 * RAD_TO_DEG));
+            }
         }
 
         // Latitude of true scale (for Mercator)
@@ -249,6 +256,23 @@ public final class CRSSerializer {
         }
         if (params.y0 != 0.0) {
             sb.append(" +y_0=").append(params.y0);
+        }
+
+        // Oblique Mercator (omerc) defining parameters
+        if (params.longc != null) {
+            sb.append(" +lonc=").append(formatAngle(params.longc * RAD_TO_DEG));
+        }
+        if (params.alpha != null) {
+            sb.append(" +alpha=").append(formatAngle(params.alpha * RAD_TO_DEG));
+        }
+        if (params.rectifiedGridAngle != null) {
+            sb.append(" +gamma=").append(formatAngle(params.rectifiedGridAngle * RAD_TO_DEG));
+        }
+        if (isOmerc && omercIsTypeA(params)) {
+            sb.append(" +no_uoff");
+        }
+        if (Boolean.TRUE.equals(params.noRot)) {
+            sb.append(" +no_rot");
         }
 
         // Ellipsoid parameters
@@ -435,8 +459,10 @@ public final class CRSSerializer {
             sb.append(formatAngle(params.long0 * RAD_TO_DEG)).append("]");
         }
 
-        // Standard parallels
-        if (usesLatTsAsStandardParallel(proj, params)) {
+        // Oblique Mercator defining parameters (lonc/alpha/gamma)
+        if ("omerc".equals(proj)) {
+            appendWkt1OmercParams(sb, params);
+        } else if (usesLatTsAsStandardParallel(proj, params)) {
             // Projections using latTs: emit it as standard_parallel_1
             sb.append(",PARAMETER[\"standard_parallel_1\",");
             sb.append(formatAngle(params.latTs * RAD_TO_DEG)).append("]");
@@ -462,6 +488,21 @@ public final class CRSSerializer {
         }
         if (params.y0 != 0.0) {
             sb.append(",PARAMETER[\"false_northing\",").append(params.y0).append("]");
+        }
+    }
+
+    private static void appendWkt1OmercParams(StringBuilder sb, ProjectionParams params) {
+        if (params.longc != null) {
+            sb.append(",PARAMETER[\"longitude_of_center\",")
+              .append(formatAngle(params.longc * RAD_TO_DEG)).append("]");
+        }
+        if (params.alpha != null) {
+            sb.append(",PARAMETER[\"azimuth\",")
+              .append(formatAngle(params.alpha * RAD_TO_DEG)).append("]");
+        }
+        if (params.rectifiedGridAngle != null) {
+            sb.append(",PARAMETER[\"rectified_grid_angle\",")
+              .append(formatAngle(params.rectifiedGridAngle * RAD_TO_DEG)).append("]");
         }
     }
 
@@ -598,6 +639,26 @@ public final class CRSSerializer {
             sb.append(",PARAMETER[\"Longitude of natural origin\",");
             sb.append(formatAngle(params.long0 * RAD_TO_DEG));
             sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
+        }
+
+        // Oblique Mercator defining parameters. WKT2 is parsed via WKT2->PROJJSON,
+        // so use the EPSG projection-centre parameter names the PROJJSON reader knows.
+        if ("omerc".equals(proj)) {
+            if (params.longc != null) {
+                sb.append(",PARAMETER[\"Longitude of projection centre\",")
+                  .append(formatAngle(params.longc * RAD_TO_DEG))
+                  .append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
+            }
+            if (params.alpha != null) {
+                sb.append(",PARAMETER[\"Azimuth at projection centre\",")
+                  .append(formatAngle(params.alpha * RAD_TO_DEG))
+                  .append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
+            }
+            if (params.rectifiedGridAngle != null) {
+                sb.append(",PARAMETER[\"Angle from Rectified to Skew Grid\",")
+                  .append(formatAngle(params.rectifiedGridAngle * RAD_TO_DEG))
+                  .append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
+            }
         }
 
         // Standard parallels
@@ -803,9 +864,40 @@ public final class CRSSerializer {
         
         List<Map<String, Object>> parameters = new ArrayList<>();
 
+        // Oblique Mercator: use projection-centre parameter names
+        if ("omerc".equals(proj)) {
+            if (params.lat0 != null) {
+                parameters.add(buildProjJsonParam("Latitude of projection centre",
+                    params.lat0 * RAD_TO_DEG, "degree"));
+            }
+            if (params.longc != null) {
+                parameters.add(buildProjJsonParam("Longitude of projection centre",
+                    params.longc * RAD_TO_DEG, "degree"));
+            }
+            if (params.alpha != null) {
+                parameters.add(buildProjJsonParam("Azimuth at projection centre",
+                    params.alpha * RAD_TO_DEG, "degree"));
+            }
+            if (params.rectifiedGridAngle != null) {
+                parameters.add(buildProjJsonParam("Angle from Rectified to Skew Grid",
+                    params.rectifiedGridAngle * RAD_TO_DEG, "degree"));
+            }
+            if (params.k0 != 1.0) {
+                parameters.add(buildProjJsonParam("Scale factor at projection centre", params.k0, null));
+            }
+            if (params.x0 != 0.0) {
+                parameters.add(buildProjJsonParam("Easting at projection centre", params.x0, "metre"));
+            }
+            if (params.y0 != 0.0) {
+                parameters.add(buildProjJsonParam("Northing at projection centre", params.y0, "metre"));
+            }
+            conversion.put("parameters", parameters);
+            return conversion;
+        }
+
         // Add parameters
         if (params.lat0 != null) {
-            parameters.add(buildProjJsonParam("Latitude of natural origin", 
+            parameters.add(buildProjJsonParam("Latitude of natural origin",
                 params.lat0 * RAD_TO_DEG, "degree"));
         } else if (usesLatTsAsStandardParallel(proj, params)) {
             // Emit explicit origin=0 so re-import doesn't confuse standard_parallel with lat0
@@ -1362,7 +1454,31 @@ public final class CRSSerializer {
         if ("merc".equals(proj) && params.latTs != null && params.latTs != 0.0) {
             return "Mercator (variant B)";
         }
+        if ("omerc".equals(proj)) {
+            return omercIsTypeA(params)
+                ? "Hotine Oblique Mercator (variant A)"
+                : "Hotine Oblique Mercator (variant B)";
+        }
         return getWktMethodName(proj);
+    }
+
+    // Oblique Mercator method names that select variant A (no origin offset).
+    // Mirrors ObliqueMercator's Type-A detection so serialized output re-imports
+    // with the same variant.
+    private static final java.util.Set<String> OMERC_TYPE_A_NAMES = new java.util.HashSet<>(Arrays.asList(
+        "Hotine_Oblique_Mercator", "Hotine_Oblique_Mercator_variant_A",
+        "Hotine_Oblique_Mercator_Azimuth_Natural_Origin"));
+
+    private static boolean omercIsTypeA(ProjectionParams params) {
+        if (Boolean.TRUE.equals(params.noUoff)) {
+            return true;
+        }
+        String pn = params.projName;
+        if (pn == null) {
+            return false;
+        }
+        String norm = pn.replaceAll("[-()\\s]+", " ").trim().replace(' ', '_');
+        return OMERC_TYPE_A_NAMES.contains(pn) || OMERC_TYPE_A_NAMES.contains(norm);
     }
 
     /**

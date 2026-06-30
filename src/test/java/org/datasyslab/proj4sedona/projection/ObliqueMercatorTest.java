@@ -4,6 +4,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.datasyslab.proj4sedona.Proj4;
 import org.datasyslab.proj4sedona.core.Point;
+import org.datasyslab.proj4sedona.core.Proj;
+import org.datasyslab.proj4sedona.parser.CRSSerializer;
 import org.datasyslab.proj4sedona.transform.Converter;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -68,6 +70,44 @@ class ObliqueMercatorTest {
         check("+proj=omerc +gamma=-1.574854 +lonc=144.6934349669362 +lat_0=-37.82121510921045 "
                 + "+x_0=2000 +y_0=2000 +k_0=1",
             144.7074447, -37.8195261, 3227.90322952057, 2221.20579300822, XY_EPSLN);
+    }
+
+    @Test
+    void testSerializationRoundTripTypeA() {
+        // Variant A (+no_uoff) must survive serialize -> re-import across all formats,
+        // previously dropped lonc/alpha/gamma/no_uoff and crashed with an NPE.
+        assertSerializationRoundTrip(
+            "+proj=omerc +lat_0=4 +lonc=102.25 +alpha=323.0257964666666 +k=0.99984 "
+                + "+x_0=804671 +y_0=0 +no_uoff +gamma=323.1301023611111 +ellps=GRS80 +units=m +no_defs",
+            new double[][] {{102.0, 4.0}, {102.5, 4.2}, {101.7, 3.06}});
+    }
+
+    @Test
+    void testSerializationRoundTripTypeB() {
+        // Variant B (offset applied): the variant must round-trip too, otherwise the
+        // u_0 offset would differ and coordinates would drift.
+        assertSerializationRoundTrip(
+            "+proj=omerc +lat_0=37.4769061 +lonc=141.0039618 +alpha=202.22 +k=1 "
+                + "+x_0=138 +y_0=77.65 +ellps=WGS84 +units=m +no_defs",
+            new double[][] {{141.0, 37.48}, {141.5, 37.6}, {140.5, 37.3}});
+    }
+
+    /** Compares datum-independent projection math of each re-imported format against the original. */
+    private void assertSerializationRoundTrip(String def, double[][] coords) {
+        Proj original = new Proj(def);
+        for (String serialized : new String[] {
+                CRSSerializer.toProjString(original),
+                CRSSerializer.toWkt1(original),
+                CRSSerializer.toWkt2(original),
+                CRSSerializer.toProjJson(original)}) {
+            Proj reimported = new Proj(serialized); // must not throw
+            for (double[] c : coords) {
+                Point want = original.forward(new Point(c[0] * Math.PI / 180, c[1] * Math.PI / 180));
+                Point got = reimported.forward(new Point(c[0] * Math.PI / 180, c[1] * Math.PI / 180));
+                assertEquals(want.x, got.x, 1e-4, "easting after re-import of " + serialized);
+                assertEquals(want.y, got.y, 1e-4, "northing after re-import of " + serialized);
+            }
+        }
     }
 
     private void check(String def, double lon, double lat, double east, double north, double xyTol) {
