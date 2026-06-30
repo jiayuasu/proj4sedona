@@ -167,4 +167,54 @@ class PolyconicTest {
         assertEquals(5000000.0, f.x, METERS);
         assertEquals(10000000.0, f.y, METERS);
     }
+
+    // ===== Spherical Polyconic =====
+    // Same definition as EPSG:5880 but on an authalic sphere (a == b), which forces
+    // poly.js's spherical branch. Reference values from proj4js 2.20.9.
+
+    private static final String SPHERE_POLY =
+        "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000 "
+            + "+a=6370997 +b=6370997 +units=m +no_defs";
+
+    @Test
+    void testSphericalForwardKnownValues() {
+        Proj poly = new Proj(SPHERE_POLY);
+
+        double[][] cases = {
+            {-54, -15, 5000000.000000, 8332076.885730},
+            {-47.9, -15.8, 5652570.219821, 8233661.860367},
+            {-60, -2, 4333238.660049, 9776391.854825},
+            {-54, 0, 5000000.000000, 10000000.000000},
+            {-43.2, -22.9, 6105264.163383, 7413084.662878},
+        };
+
+        for (double[] c : cases) {
+            Point f = poly.forward(new Point(c[0] * Values.D2R, c[1] * Values.D2R));
+            assertNotNull(f, "forward null for " + c[0] + "," + c[1]);
+            assertEquals(c[2], f.x, METERS, "easting for " + c[0] + "," + c[1]);
+            assertEquals(c[3], f.y, METERS, "northing for " + c[0] + "," + c[1]);
+        }
+    }
+
+    @Test
+    void testSphericalRoundTrip() {
+        Proj poly = new Proj(SPHERE_POLY);
+
+        double[][] coords = {
+            {-54, -15}, {-47.9, -15.8}, {-60, -2}, {-54, 0}, {-43.2, -22.9}, {-38, -3.7},
+        };
+
+        for (double[] coord : coords) {
+            double lon = coord[0] * Values.D2R;
+            double lat = coord[1] * Values.D2R;
+
+            Point forward = poly.forward(new Point(lon, lat));
+            assertNotNull(forward, "forward null for " + coord[0] + "," + coord[1]);
+
+            Point inverse = poly.inverse(forward.copy());
+            assertNotNull(inverse, "inverse null for " + coord[0] + "," + coord[1]);
+            assertEquals(lon, inverse.x, RADIANS, "lon for " + coord[0]);
+            assertEquals(lat, inverse.y, RADIANS, "lat for " + coord[1]);
+        }
+    }
 }
