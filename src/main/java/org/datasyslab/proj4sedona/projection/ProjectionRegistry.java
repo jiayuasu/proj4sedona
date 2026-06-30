@@ -157,7 +157,8 @@ public final class ProjectionRegistry {
         add(LambertConformalConic::new);
         add(AlbersEqualArea::new);
         add(EquidistantConic::new);
-        
+        add(Polyconic::new);
+
         // Azimuthal projections
         add(Stereographic::new);
         add(LambertAzimuthalEqualArea::new);
