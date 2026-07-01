@@ -22,7 +22,7 @@ public class Krovak implements Projection {
         "Krovak Modified (North Orientated)", "krovak"
     };
 
-    private double a, e, e2, lat0, long0, k0;
+    private double a, e, e2, lat0, long0, k0, x0, y0;
     private double s45, s0, alfa, k, n0, n, ro0, ad;
     // proj4js never sets the czech (orientation) flag, so it is always false and the
     // south-west negated orientation is used for every Krovak alias. Kept as a field to
@@ -48,10 +48,17 @@ public class Krovak implements Projection {
         if (this.long0 == 0) {
             this.long0 = 0.7417649320975901 - 0.308341501185665;
         }
+        // Krovak's scale factor is 0.9999. proj4js defaults it when +k is omitted;
+        // ProjectionParams cannot distinguish "omitted" from "k=1" (both surface as the
+        // 1.0 default), and k=1 is not a real Krovak definition, so treat 1.0/0 as unset.
         this.k0 = params.k0;
-        if (this.k0 == 0) {
+        if (this.k0 == 0 || this.k0 == 1.0) {
             this.k0 = 0.9999;
         }
+        // proj4js's krovak ignores +x_0/+y_0; this codebase applies offsets in the
+        // projection (Transform does not), and PROJ/pyproj apply them, so apply them here.
+        this.x0 = params.x0;
+        this.y0 = params.y0;
         this.over = params.over;
 
         this.s45 = 0.785398163397448; // 45 degrees
@@ -89,13 +96,14 @@ public class Krovak implements Projection {
             y *= -1;
             x *= -1;
         }
-        return new Point(x, y, p.z);
+        return new Point(x + x0, y + y0, p.z);
     }
 
     @Override
     public Point inverse(Point p) {
-        double px = p.y; // revert x, y
-        double py = p.x;
+        // Remove false easting/northing, then revert x, y (as proj4js does).
+        double px = (p.y - y0);
+        double py = (p.x - x0);
         if (!czech) {
             py *= -1;
             px *= -1;

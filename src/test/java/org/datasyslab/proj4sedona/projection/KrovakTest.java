@@ -72,6 +72,32 @@ class KrovakTest {
     }
 
     @Test
+    void testFalseEastingNorthingApplied() {
+        // proj4js's krovak ignores +x_0/+y_0; this port applies them (matching PROJ and
+        // the codebase convention). A 500000 offset must shift the zero-offset result.
+        Converter conv = Proj4.proj4(BESSEL_LL, KROVAK
+            .replace("+x_0=0 +y_0=0", "+x_0=500000 +y_0=500000"));
+        Point xy = conv.forward(new Point(14.42, 50.08));
+        assertEquals(-743101.013895 + 500000, xy.x, XY_EPSLN, "easting with offset");
+        assertEquals(-1043898.660356 + 500000, xy.y, XY_EPSLN, "northing with offset");
+        Point ll = conv.inverse(new Point(xy.x, xy.y));
+        assertEquals(14.42, ll.x, LL_EPSLN);
+        assertEquals(50.08, ll.y, LL_EPSLN);
+    }
+
+    @Test
+    void testDefaultScaleFactor() {
+        // With +k omitted, Krovak's 0.9999 scale factor must be used (as in proj4js),
+        // not the generic 1.0 default.
+        Converter conv = Proj4.proj4(BESSEL_LL,
+            "+proj=krovak +lat_0=49.5 +lon_0=24.83333333333333 +ellps=bessel "
+                + "+pm=greenwich +units=m +no_defs");
+        Point xy = conv.forward(new Point(14.42, 50.08));
+        assertEquals(-743101.013895, xy.x, XY_EPSLN, "easting with default k0");
+        assertEquals(-1043898.660356, xy.y, XY_EPSLN, "northing with default k0");
+    }
+
+    @Test
     void testSerializationRoundTrip() {
         Proj original = new Proj(KROVAK);
         double[][] coords = {{14.42, 50.08}, {16.6, 49.2}};
