@@ -91,10 +91,11 @@ public class CassiniSoldner implements Projection {
             double nl1 = ProjMath.gN(a, e, Math.sin(phi1));
 
             double rl1 = nl1 * nl1 * nl1 / a / a * (1 - es);
-            double tl1 = Math.pow(Math.tan(phi1), 2);
+            double tanPhi1 = Math.tan(phi1);
+            double tl1 = tanPhi1 * tanPhi1;
             double dl = x * a / nl1;
             double dsq = dl * dl;
-            phi = phi1 - nl1 * Math.tan(phi1) / rl1 * dl * dl * (0.5 - (1 + 3 * tl1) * dl * dl / 24);
+            phi = phi1 - nl1 * tanPhi1 / rl1 * dl * dl * (0.5 - (1 + 3 * tl1) * dl * dl / 24);
             lam = dl * (1 - dsq * (tl1 / 3 + (1 + 3 * tl1) * tl1 * dsq / 15)) / Math.cos(phi1);
         }
 
