@@ -161,6 +161,7 @@ public final class ProjectionRegistry {
         add(AlbersEqualArea::new);
         add(EquidistantConic::new);
         add(Polyconic::new);
+        add(Krovak::new);
 
         // Azimuthal projections
         add(Stereographic::new);
