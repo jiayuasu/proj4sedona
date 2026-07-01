@@ -197,7 +197,8 @@ public final class CRSSerializer {
         }
 
         StringBuilder sb = new StringBuilder();
-        boolean isOmerc = "omerc".equals(normalizeProjName(params.projName));
+        String normProj = normalizeProjName(params.projName);
+        boolean isOmerc = "omerc".equals(normProj);
 
         // Projection name
         String projName = params.projName;
@@ -230,8 +231,9 @@ public final class CRSSerializer {
             sb.append(" +lon_0=").append(formatAngle(params.long0 * RAD_TO_DEG));
         }
 
-        // Standard parallels (for conic projections; omerc uses lonc/alpha/gamma instead)
-        if (!isOmerc) {
+        // Standard parallels: only projections that actually use them (conics). Other
+        // projections can carry a lat1 defaulted from lat0, which must not be emitted.
+        if (usesStandardParallels(normProj)) {
             if (params.lat1 != null) {
                 sb.append(" +lat_1=").append(formatAngle(params.lat1 * RAD_TO_DEG));
             }
@@ -485,7 +487,7 @@ public final class CRSSerializer {
             // Projections using latTs: emit it as standard_parallel_1
             sb.append(",PARAMETER[\"standard_parallel_1\",");
             sb.append(formatAngle(params.latTs * RAD_TO_DEG)).append("]");
-        } else {
+        } else if (usesStandardParallels(proj)) {
             if (params.lat1 != null) {
                 sb.append(",PARAMETER[\"standard_parallel_1\",");
                 sb.append(formatAngle(params.lat1 * RAD_TO_DEG)).append("]");

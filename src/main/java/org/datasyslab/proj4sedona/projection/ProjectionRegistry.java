@@ -154,6 +154,7 @@ public final class ProjectionRegistry {
         add(CylindricalEqualArea::new);
         add(SwissObliqueMercator::new);
         add(ObliqueMercator::new);
+        add(CassiniSoldner::new);
 
         // Conic projections
         add(LambertConformalConic::new);
