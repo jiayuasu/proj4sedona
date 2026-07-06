@@ -155,6 +155,7 @@ public final class ProjectionRegistry {
         add(SwissObliqueMercator::new);
         add(ObliqueMercator::new);
         add(CassiniSoldner::new);
+        add(MillerCylindrical::new);
 
         // Conic projections
         add(LambertConformalConic::new);
@@ -168,7 +169,9 @@ public final class ProjectionRegistry {
         add(StereographicAlternative::new);
         add(LambertAzimuthalEqualArea::new);
         add(AzimuthalEquidistant::new);
-        
+        add(Gnomonic::new);
+        add(Orthographic::new);
+
         // Pseudocylindrical projections
         add(Sinusoidal::new);
         add(Mollweide::new);
