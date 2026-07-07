@@ -52,8 +52,10 @@ public class Gnomonic implements Projection {
         double x, y;
 
         if (g > 0 || Math.abs(g) <= Values.EPSLN) {
-            x = x0 + a * cosphi * Math.sin(dlon) / g;
-            y = y0 + a * (cosP14 * sinphi - sinP14 * cosphi * coslon) / g;
+            // proj4js uses ksp=1 (ignores k0) in forward while its inverse divides by k0,
+            // so a +k_0 CRS would not round-trip. Apply k0 here to match the inverse.
+            x = x0 + a * k0 * cosphi * Math.sin(dlon) / g;
+            y = y0 + a * k0 * (cosP14 * sinphi - sinP14 * cosphi * coslon) / g;
         } else {
             // Opposing hemisphere: project toward infinity on the equivalent bearing.
             x = x0 + infinityDist * cosphi * Math.sin(dlon);

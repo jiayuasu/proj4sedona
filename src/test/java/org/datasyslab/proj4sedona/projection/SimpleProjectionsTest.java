@@ -71,6 +71,20 @@ class SimpleProjectionsTest {
     }
 
     @Test
+    void testGnomonicScaleFactorRoundTrip() {
+        // proj4js's gnom applies k0 only in the inverse; this port applies it in the
+        // forward too, so a +k_0 CRS round-trips. Verify forward->inverse identity.
+        Converter conv = Proj4.proj4(WGS84,
+            "+proj=gnom +lat_0=45 +lon_0=0 +k_0=0.9 +x_0=0 +y_0=0 +ellps=WGS84 +units=m +no_defs");
+        for (double[] c : new double[][] {{5, 50}, {-3, 44}}) {
+            Point xy = conv.forward(new Point(c[0], c[1]));
+            Point ll = conv.inverse(new Point(xy.x, xy.y));
+            assertEquals(c[0], ll.x, LL_EPSLN, "lng for " + c[0]);
+            assertEquals(c[1], ll.y, LL_EPSLN, "lat for " + c[1]);
+        }
+    }
+
+    @Test
     void testOrthographicFarHemisphereIsNull() {
         // A point on the far side of the projection center is unprojectable (proj4js
         // likewise yields null here).
