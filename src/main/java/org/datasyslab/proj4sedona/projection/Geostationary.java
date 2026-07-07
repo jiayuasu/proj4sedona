@@ -10,6 +10,12 @@ import org.datasyslab.proj4sedona.core.Point;
  * height above the ellipsoid ({@code +h}); the scan {@code +sweep} axis ('x' or 'y',
  * default 'y') selects the instrument sweep convention. Supports spherical and
  * ellipsoidal forms; points not visible from the satellite are unprojectable (null).</p>
+ *
+ * <p>proj4js's geos only scales by {@code a} and never applies {@code +x_0/+y_0}. This
+ * port applies them (in {@code forward}/{@code inverse}) to match PROJ and this
+ * codebase's convention that projections apply offsets themselves ({@code Transform}
+ * does not) — an intentional divergence from proj4js. Standard geos CRSs use
+ * {@code x_0=y_0=0}, so their output is unchanged.</p>
  */
 public class Geostationary implements Projection {
 
@@ -70,14 +76,19 @@ public class Geostationary implements Projection {
             vx = r * Math.cos(lon) * Math.cos(lat);
             vy = r * Math.sin(lon) * Math.cos(lat);
             vz = r * Math.sin(lat);
-            if (((radiusG - vx) * vx - vy * vy - vz * vz * radiusPInv2) < 0.0) {
-                return null;
-            }
         } else {
             tmp = Math.cos(lat);
             vx = Math.cos(lon) * tmp;
             vy = Math.sin(lon) * tmp;
             vz = Math.sin(lat);
+        }
+
+        // Visibility check for both branches (radiusPInv2 == 1 for the sphere). proj4js
+        // only guards the ellipsoidal path; guard the sphere too, so far-side points are
+        // unprojectable (null) rather than projecting to finite garbage, consistent with
+        // the inverse (which returns null when the point is off-disk).
+        if (((radiusG - vx) * vx - vy * vy - vz * vz * radiusPInv2) < 0.0) {
+            return null;
         }
 
         tmp = radiusG - vx;

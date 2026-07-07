@@ -82,10 +82,36 @@ class EqualEarthGeosTest {
     }
 
     @Test
+    void testGeostationaryFalseEastingNorthing() {
+        // Intentional divergence from proj4js (which ignores +x_0/+y_0 for geos): this
+        // port applies them, matching PROJ and the codebase convention. A 1000/2000
+        // offset must shift the zero-offset result and round-trip.
+        Converter base = Proj4.proj4(WGS84, GEOS_Y);
+        Converter off = Proj4.proj4(WGS84, GEOS_Y.replace("+lon_0=0", "+lon_0=0 +x_0=1000 +y_0=2000"));
+        Point b = base.forward(new Point(10, -5));
+        Point o = off.forward(new Point(10, -5));
+        assertEquals(b.x + 1000, o.x, XY_EPSLN, "x_0 applied in forward");
+        assertEquals(b.y + 2000, o.y, XY_EPSLN, "y_0 applied in forward");
+        Point ll = off.inverse(new Point(o.x, o.y));
+        assertEquals(10, ll.x, LL_EPSLN);
+        assertEquals(-5, ll.y, LL_EPSLN);
+    }
+
+    @Test
     void testGeostationaryFarSideIsNull() {
         // A point on the far side of the globe from the sub-satellite point is not visible.
         Converter conv = Proj4.proj4(WGS84, GEOS_Y);
         assertNull(conv.forward(new Point(180, 0)));
+    }
+
+    @Test
+    void testGeostationarySphereFarSideIsNull() {
+        // The spherical branch must also reject far-side points (proj4js only guards the
+        // ellipsoidal path).
+        Converter conv = Proj4.proj4(WGS84,
+            "+proj=geos +lon_0=0 +h=35785831 +a=6378137 +b=6378137 +units=m +no_defs");
+        assertNull(conv.forward(new Point(180, 0)));
+        assertNotNull(conv.forward(new Point(5, 5)), "near-side point must still project");
     }
 
     @Test

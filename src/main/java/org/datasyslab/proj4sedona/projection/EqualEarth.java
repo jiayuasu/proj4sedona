@@ -96,7 +96,9 @@ public class EqualEarth implements Projection {
         paramLatPow6 = paramLatSq * paramLatSq * paramLatSq;
         double lon = M * px * (A1 + 3 * A2 * paramLatSq + paramLatPow6 * (7 * A3 + 9 * A4 * paramLatSq))
             / Math.cos(paramLat);
-        double lat = Math.asin(Math.sin(paramLat) / M);
+        // asinz (clamped) guards against the Newton result drifting sin(paramLat)/M
+        // slightly outside [-1, 1] near the latitude limit, which would give NaN.
+        double lat = ProjMath.asinz(Math.sin(paramLat) / M);
 
         if (es != 0) {
             lat = ProjMath.authlat(lat, apa);
