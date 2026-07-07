@@ -138,6 +138,12 @@ public class ProjectionParams {
     /** Oblique Mercator without rectification rotation (+no_rot) */
     public Boolean noRot;
 
+    /** Satellite height in meters (+h) - used by the Geostationary projection */
+    public Double h;
+
+    /** Sweep axis "x" or "y" (+sweep) - used by the Geostationary projection */
+    public String sweep;
+
     // ==================== Original Definition ====================
     
     /** Original SRS code or PROJ string */

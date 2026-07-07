@@ -178,6 +178,10 @@ public final class ProjectionRegistry {
         add(Mollweide::new);
         add(Robinson::new);
         add(VanDerGrinten::new);
+        add(EqualEarth::new);
+
+        // Miscellaneous projections
+        add(Geostationary::new);
     }
 
     /**

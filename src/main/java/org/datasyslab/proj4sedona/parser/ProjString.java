@@ -173,6 +173,12 @@ public final class ProjString {
             case "no_rot":
                 def.setNoRot(true);
                 break;
+            case "h":
+                def.setH(parseDouble(paramVal));
+                break;
+            case "sweep":
+                def.setSweep(paramVal);
+                break;
 
             // towgs84 parameters
             case "towgs84":

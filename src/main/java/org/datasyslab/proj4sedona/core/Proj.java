@@ -295,6 +295,8 @@ public class Proj {
         p.rectifiedGridAngle = def.getRectifiedGridAngle();
         p.noUoff = def.getNoUoff();
         p.noRot = def.getNoRot();
+        p.h = def.getH();
+        p.sweep = def.getSweep();
 
         // Scale and offsets
         p.k0 = def.getK0() != null ? def.getK0() : 1.0;
