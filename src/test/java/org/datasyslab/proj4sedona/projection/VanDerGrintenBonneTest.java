@@ -65,6 +65,19 @@ class VanDerGrintenBonneTest {
     }
 
     @Test
+    void testVanDerGrintenCenter() {
+        // The projection center maps to (x0,y0); its inverse would hit a 0/0 in the
+        // cubic solve (NaN) without the origin guard. Verify it round-trips to (lon_0,0).
+        Converter conv = Proj4.proj4(WGS84, VANDG);
+        Point xy = conv.forward(new Point(0, 0));
+        assertEquals(0, xy.x, XY_EPSLN, "center easting");
+        assertEquals(0, xy.y, XY_EPSLN, "center northing");
+        Point ll = conv.inverse(new Point(0, 0));
+        assertEquals(0, ll.x, 1e-6, "center lng");
+        assertEquals(0, ll.y, 1e-6, "center lat");
+    }
+
+    @Test
     void testBonneEllipsoid() {
         assertForward(BONNE_E, new double[][] {
             {5, 45, 394029.1105, 566425.3996},

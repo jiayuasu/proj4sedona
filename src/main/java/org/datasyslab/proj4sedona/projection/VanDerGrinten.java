@@ -81,6 +81,13 @@ public class VanDerGrinten implements Projection {
         double con = Math.PI * R;
         double xx = (p.x - x0) / con;
         double yy = (p.y - y0) / con;
+
+        // Projection center: the cubic solve below is 0/0 (NaN) at the origin, as in
+        // proj4js. Return the center (long0, 0) directly so it round-trips.
+        if (Math.abs(xx) <= Values.EPSLN && Math.abs(yy) <= Values.EPSLN) {
+            return new Point(long0, 0, p.z);
+        }
+
         double xys = xx * xx + yy * yy;
         double c1 = -Math.abs(yy) * (1 + xys);
         double c2 = c1 - 2 * yy * yy + xx * xx;
