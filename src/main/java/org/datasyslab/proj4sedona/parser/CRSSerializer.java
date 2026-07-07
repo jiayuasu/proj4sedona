@@ -355,7 +355,10 @@ public final class CRSSerializer {
         } else if (params.a > 0) {
             // Use explicit a/b or a/rf
             sb.append(" +a=").append(params.a);
-            if (params.b > 0 && params.b != params.a) {
+            // Emit +b whenever it is known (including the sphere case a==b): "+a" alone
+            // is not recognized as a sphere on re-import, so sphere-branching projections
+            // (sinu, bonne, ortho, ...) would otherwise take the ellipsoidal path.
+            if (params.b > 0) {
                 sb.append(" +b=").append(params.b);
             } else if (params.rf > 0) {
                 sb.append(" +rf=").append(params.rf);

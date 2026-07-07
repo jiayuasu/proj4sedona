@@ -163,6 +163,7 @@ public final class ProjectionRegistry {
         add(EquidistantConic::new);
         add(Polyconic::new);
         add(Krovak::new);
+        add(Bonne::new);
 
         // Azimuthal projections
         add(Stereographic::new);
@@ -176,6 +177,7 @@ public final class ProjectionRegistry {
         add(Sinusoidal::new);
         add(Mollweide::new);
         add(Robinson::new);
+        add(VanDerGrinten::new);
         add(EqualEarth::new);
 
         // Miscellaneous projections
