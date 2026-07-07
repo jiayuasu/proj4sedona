@@ -167,6 +167,45 @@ public final class ProjMath {
         return 2 * sinphi;
     }
 
+    /**
+     * Coefficients for the authalic latitude series.
+     * Mirrors: lib/common/authset.js
+     *
+     * @param es Eccentricity squared
+     * @return three-element coefficient array (APA)
+     */
+    public static double[] authset(double es) {
+        final double P00 = 0.33333333333333333333;
+        final double P01 = 0.17222222222222222222;
+        final double P02 = 0.10257936507936507936;
+        final double P10 = 0.06388888888888888888;
+        final double P11 = 0.06640211640211640211;
+        final double P20 = 0.01641501294219154443;
+        double[] apa = new double[3];
+        apa[0] = es * P00;
+        double t = es * es;
+        apa[0] += t * P01;
+        apa[1] = t * P10;
+        t *= es;
+        apa[0] += t * P02;
+        apa[1] += t * P11;
+        apa[2] = t * P20;
+        return apa;
+    }
+
+    /**
+     * Convert authalic latitude to geodetic latitude using the series coefficients.
+     * Mirrors: lib/common/authlat.js
+     *
+     * @param beta Authalic latitude
+     * @param apa Coefficients from {@link #authset(double)}
+     * @return Geodetic latitude
+     */
+    public static double authlat(double beta, double[] apa) {
+        double t = beta + beta;
+        return beta + apa[0] * Math.sin(t) + apa[1] * Math.sin(t + t) + apa[2] * Math.sin(t + t + t);
+    }
+
     // ==================== Meridional Distance Functions ====================
     // These functions calculate the meridional distance from the equator to a 
     // given latitude on an ellipsoid.

@@ -296,6 +296,14 @@ public final class CRSSerializer {
             }
         }
 
+        // Geostationary (geos) defining parameters
+        if (params.h != null) {
+            sb.append(" +h=").append(params.h);
+        }
+        if (params.sweep != null) {
+            sb.append(" +sweep=").append(params.sweep);
+        }
+
         // Ellipsoid parameters
         appendEllipsoidParams(sb, params);
 

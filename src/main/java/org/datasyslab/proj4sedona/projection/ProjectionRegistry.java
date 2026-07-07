@@ -176,6 +176,10 @@ public final class ProjectionRegistry {
         add(Sinusoidal::new);
         add(Mollweide::new);
         add(Robinson::new);
+        add(EqualEarth::new);
+
+        // Miscellaneous projections
+        add(Geostationary::new);
     }
 
     /**
