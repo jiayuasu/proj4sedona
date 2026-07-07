@@ -176,6 +176,25 @@ class AllProjectionsTest {
     }
 
     @Test
+    void testSinusoidalFalseEastingNorthing() {
+        // Regression: sinu forward must apply +x_0/+y_0 (it previously omitted them
+        // while the inverse subtracted them, so offset CRSs did not round-trip).
+        Converter noOff = Proj4.proj4("+proj=longlat +datum=WGS84",
+            "+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +units=m +no_defs");
+        Converter withOff = Proj4.proj4("+proj=longlat +datum=WGS84",
+            "+proj=sinu +lon_0=0 +x_0=1000000 +y_0=2000000 +ellps=WGS84 +units=m +no_defs");
+
+        Point base = noOff.forward(new Point(20, 10));
+        Point off = withOff.forward(new Point(20, 10));
+        assertEquals(base.x + 1000000, off.x, 0.01, "x_0 applied in forward");
+        assertEquals(base.y + 2000000, off.y, 0.01, "y_0 applied in forward");
+
+        Point restored = withOff.inverse(new Point(off.x, off.y));
+        assertEquals(20, restored.x, DEGREE_TOLERANCE);
+        assertEquals(10, restored.y, DEGREE_TOLERANCE);
+    }
+
+    @Test
     void testMollweideRoundTrip() {
         Converter conv = Proj4.proj4(
             "+proj=longlat +datum=WGS84",
