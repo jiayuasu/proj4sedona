@@ -3,6 +3,7 @@ package org.datasyslab.proj4sedona.parser;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
+import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
 
@@ -52,6 +53,23 @@ class CRSSerializerTest {
         assertNotNull(result);
         assertTrue(result.contains("+proj=merc"));
         assertTrue(result.contains("+a=6378137"));
+    }
+
+    @Test
+    @DisplayName("toProjString: sphere (a==b) round-trips with sphere preserved (#78)")
+    void testToProjStringSphereRoundTrip() {
+        // Sinusoidal branches on sphere vs ellipsoid; a sphere must survive the round trip.
+        Proj sphere = new Proj("+proj=sinu +lon_0=0 +a=6371007 +b=6371007 +units=m +no_defs");
+        String projString = CRSSerializer.toProjString(sphere);
+        assertTrue(projString.contains("+b="), "sphere proj string must emit +b: " + projString);
+
+        Proj reimported = new Proj(projString);
+        assertTrue(reimported.getParams().sphere, "re-imported CRS must still be a sphere");
+
+        Point want = sphere.forward(new Point(20 * Math.PI / 180, 10 * Math.PI / 180));
+        Point got = reimported.forward(new Point(20 * Math.PI / 180, 10 * Math.PI / 180));
+        assertEquals(want.x, got.x, 0.01, "easting after round trip");
+        assertEquals(want.y, got.y, 0.01, "northing after round trip");
     }
 
     @Test

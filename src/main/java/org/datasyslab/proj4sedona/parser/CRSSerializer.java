@@ -349,6 +349,11 @@ public final class CRSSerializer {
             sb.append(" +a=").append(params.a);
             if (params.b > 0 && params.b != params.a) {
                 sb.append(" +b=").append(params.b);
+            } else if (params.b > 0 && params.b == params.a) {
+                // Sphere: emit +b so the sphere is preserved on re-import. Without it,
+                // "+a" alone is not recognized as a sphere and sphere-branching
+                // projections (sinu, bonne, ortho, ...) take the ellipsoidal path.
+                sb.append(" +b=").append(params.b);
             } else if (params.rf > 0) {
                 sb.append(" +rf=").append(params.rf);
             }
