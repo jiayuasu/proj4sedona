@@ -82,4 +82,36 @@ class Proj4jsBackportsTest {
         assertEquals(100000, center.x, 0.01, "center easting = x_0");
         assertEquals(200000, center.y, 0.01, "center northing = y_0");
     }
+
+    @Test
+    @DisplayName("proj4js c5bb8e1: enforceAxis respects the vertical axis (enu -> ned)")
+    void testEnforceAxisVertical() {
+        Point r = org.datasyslab.proj4sedona.transform.Transform.transform(
+            new Proj("+proj=longlat +ellps=WGS84 +datum=WGS84 +axis=enu"),
+            new Proj("+proj=longlat +ellps=WGS84 +datum=WGS84 +axis=ned"),
+            new Point(10, 20, 30), true);
+        assertEquals(20, r.x, 1e-9, "first (north) is input y");
+        assertEquals(10, r.y, 1e-9, "second (east) is input x");
+        assertEquals(-30, r.z, 1e-9, "third (down) negates input z");
+    }
+
+    @Test
+    @DisplayName("proj4js c5bb8e1: enforceAxis handles arbitrary axis orders (neu -> uen)")
+    void testEnforceAxisArbitraryOrder() {
+        Point r1 = org.datasyslab.proj4sedona.transform.Transform.transform(
+            new Proj("+proj=longlat +axis=neu"),
+            new Proj("+proj=longlat +axis=uen"),
+            new Point(10, 20, 30), true);
+        assertEquals(30, r1.x, 1e-9, "neu->uen: first (up) is input up");
+        assertEquals(20, r1.y, 1e-9, "neu->uen: second (east) is input east");
+        assertEquals(10, r1.z, 1e-6, "neu->uen: third (north) is input north");
+
+        Point r2 = org.datasyslab.proj4sedona.transform.Transform.transform(
+            new Proj("+proj=longlat +axis=uen"),
+            new Proj("+proj=longlat +axis=uen"),
+            new Point(10, 20, 30), true);
+        assertEquals(10, r2.x, 1e-9, "uen->uen: round-trip preserves first");
+        assertEquals(20, r2.y, 1e-9, "uen->uen: round-trip preserves second");
+        assertEquals(30, r2.z, 1e-6, "uen->uen: round-trip preserves third");
+    }
 }

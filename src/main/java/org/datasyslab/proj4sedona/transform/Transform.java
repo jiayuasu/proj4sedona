@@ -143,7 +143,7 @@ public final class Transform {
 
         // Step 2: Adjust for source axis order (e.g., "neu" to "enu")
         if (enforceAxis && srcParams.axis != null && !"enu".equals(srcParams.axis)) {
-            p = AdjustAxis.adjust(srcParams.axis, false, p, hasZ);
+            p = AdjustAxis.adjustAxisToEnu(srcParams.axis, p, hasZ);
             if (p == null) {
                 return null;
             }
@@ -203,7 +203,7 @@ public final class Transform {
 
         // Step 8: Adjust for destination axis order (e.g., "enu" to "neu")
         if (enforceAxis && destParams.axis != null && !"enu".equals(destParams.axis)) {
-            p = AdjustAxis.adjust(destParams.axis, true, p, hasZ);
+            p = AdjustAxis.adjustAxisFromEnu(destParams.axis, p, hasZ);
         }
 
         // Reset z if it wasn't in the original input
