@@ -60,4 +60,26 @@ class Proj4jsBackportsTest {
         assertEquals(90, ll.x, 1e-6, "lng round-trip");
         assertEquals(-70, ll.y, 1e-6, "lat round-trip");
     }
+
+    @Test
+    @DisplayName("proj4js 04bd414: aeqd applies x_0/y_0 in the ellipsoidal general case")
+    void testAeqdFalseEastingNorthing() {
+        // The general (Vincenty) branch omitted x0/y0 while the inverse subtracted
+        // them, so offset aeqd CRSs were shifted and did not round-trip.
+        // Reference from proj4js testData (matches pyproj).
+        Converter conv = Proj4.proj4(WGS84,
+            "+proj=aeqd +lat_0=51.5 +lon_0=0 +x_0=100000 +y_0=200000 +datum=WGS84 +units=m +no_defs");
+        Point xy = conv.forward(new Point(2, 48));
+        assertEquals(249325.62485355, xy.x, 0.01, "easting");
+        assertEquals(-187277.841415147, xy.y, 0.01, "northing");
+
+        Point ll = conv.inverse(new Point(xy.x, xy.y));
+        assertEquals(2, ll.x, 1e-6, "lng round-trip");
+        assertEquals(48, ll.y, 1e-6, "lat round-trip");
+
+        // Projection center maps to the false origin.
+        Point center = conv.forward(new Point(0, 51.5));
+        assertEquals(100000, center.x, 0.01, "center easting = x_0");
+        assertEquals(200000, center.y, 0.01, "center northing = y_0");
+    }
 }
