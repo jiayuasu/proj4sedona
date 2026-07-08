@@ -47,6 +47,9 @@ public class Geostationary implements Projection {
         this.flipAxis = "x".equals(params.sweep)
             || (params.sweep == null && params.projName != null
                 && params.projName.toLowerCase().contains("sweep x"));
+        // Persist the resolved sweep so re-serialization keeps it (otherwise a CRS
+        // parsed from a Sweep X method name would re-export as the default Sweep Y).
+        params.sweep = flipAxis ? "x" : "y";
         if (params.h == null) {
             throw new IllegalArgumentException("Geostationary projection requires satellite height (+h)");
         }

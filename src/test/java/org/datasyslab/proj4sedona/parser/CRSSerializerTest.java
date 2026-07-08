@@ -1102,6 +1102,28 @@ class CRSSerializerTest {
     }
 
     @Test
+    @DisplayName("Issue #83: geos Sweep X survives a serialize -> parse -> re-serialize chain")
+    void testGeosSweepXSurvivesReserialization() {
+        // The sweep axis lives only in the method name in WKT2/PROJJSON; the resolved
+        // sweep must be persisted on parse so the second serialization keeps Sweep X.
+        Proj original = new Proj("+proj=geos +h=35785831 +sweep=x +lon_0=0 +ellps=WGS84 +units=m +no_defs");
+        Proj hop1 = new Proj(CRSSerializer.toWkt2(original));
+        assertTrue(CRSSerializer.toWkt2(hop1).contains("(Sweep X)"),
+            "second WKT2 serialization keeps Sweep X");
+        assertTrue(CRSSerializer.toProjString(hop1).contains("+sweep=x"),
+            "proj string re-export keeps +sweep=x");
+
+        double lon = 10 * Math.PI / 180, lat = -5 * Math.PI / 180;
+        org.datasyslab.proj4sedona.core.Point want =
+            original.forward(new org.datasyslab.proj4sedona.core.Point(lon, lat));
+        Proj hop2 = new Proj(CRSSerializer.toWkt2(hop1));
+        org.datasyslab.proj4sedona.core.Point got =
+            hop2.forward(new org.datasyslab.proj4sedona.core.Point(lon, lat));
+        assertEquals(want.x, got.x, 0.01, "easting after two hops");
+        assertEquals(want.y, got.y, 0.01, "northing after two hops");
+    }
+
+    @Test
     @DisplayName("Issue #83: external WKT2 method name re-exports to a valid proj string")
     void testExternalWkt2MethodNameReExport() {
         // A CRS whose projName is the WKT2 method name must re-export with the PROJ
