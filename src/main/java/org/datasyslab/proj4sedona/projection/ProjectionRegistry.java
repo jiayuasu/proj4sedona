@@ -179,6 +179,7 @@ public final class ProjectionRegistry {
         add(Robinson::new);
         add(VanDerGrinten::new);
         add(EqualEarth::new);
+        add(EckertVI::new);
 
         // Miscellaneous projections
         add(Geostationary::new);
