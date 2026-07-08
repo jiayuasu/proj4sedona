@@ -43,4 +43,21 @@ class Proj4jsBackportsTest {
         assertEquals(Values.PJD_WGS84, wgs.getParams().datum.getDatumType(),
             "+datum=WGS84 must stay WGS84");
     }
+
+    @Test
+    @DisplayName("proj4js 8c538fc: south-polar LCC (lat_0=-90) no longer yields Infinity")
+    void testPolarLccSouthPole() {
+        // With the polar guard on ts0 instead of rh, ns < 0 made pow(0, ns) infinite
+        // and every transform returned Infinity/NaN. Reference from pyproj.
+        Converter conv = Proj4.proj4(WGS84,
+            "+proj=lcc +lat_0=-90.0 +lon_0=81.0 +lat_1=-72.66666666666674 "
+                + "+lat_2=-75.3333333333334 +x_0=0.0 +y_0=0.0 +ellps=GRS80 +no_defs");
+        Point xy = conv.forward(new Point(90, -70));
+        assertEquals(343065.915037, xy.x, 0.01, "easting");
+        assertEquals(2254539.657076, xy.y, 0.01, "northing");
+
+        Point ll = conv.inverse(new Point(xy.x, xy.y));
+        assertEquals(90, ll.x, 1e-6, "lng round-trip");
+        assertEquals(-70, ll.y, 1e-6, "lat round-trip");
+    }
 }
