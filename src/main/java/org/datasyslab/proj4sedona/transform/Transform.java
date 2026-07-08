@@ -212,8 +212,11 @@ public final class Transform {
             p = AdjustAxis.adjustAxisFromEnu(destParams.axis, p, hasZ);
         }
 
-        // Reset z if it wasn't in the original input
-        if (p != null && !hasZ) {
+        // Reset z if it wasn't in the original input — except when the destination is
+        // geocentric, where z is a computed coordinate even for 2D input (proj4js
+        // 0ee1202). Inert until the geocent projection is ported, but guarded now so a
+        // future port does not silently zero the computed Z.
+        if (p != null && !hasZ && !"geocent".equals(destParams.projName)) {
             p.z = 0;
         }
 
