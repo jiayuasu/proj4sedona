@@ -5,6 +5,7 @@ import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.datum.DatumTransform;
+import org.datasyslab.proj4sedona.common.ProjMath;
 import org.datasyslab.proj4sedona.projection.ProjectionParams;
 
 /**
@@ -186,6 +187,11 @@ public final class Transform {
 
         // Step 7: Transform geodetic to destination coordinates
         if ("longlat".equals(destParams.projName)) {
+            // Wrap longitude into the range centered on longWrap, if requested
+            // (+lon_wrap). Mirrors lib/transform.js (proj4js bad16a6 + 39e7abc).
+            if (destParams.longWrap != null) {
+                p.x = destParams.longWrap + ProjMath.adjustLon(p.x - destParams.longWrap);
+            }
             // Convert radians to degrees
             p = new Point(p.x * Values.R2D, p.y * Values.R2D, p.z);
             p.m = point.m;

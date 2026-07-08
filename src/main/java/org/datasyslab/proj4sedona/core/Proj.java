@@ -296,6 +296,7 @@ public class Proj {
         p.noUoff = def.getNoUoff();
         p.noRot = def.getNoRot();
         p.h = def.getH();
+        p.longWrap = def.getLongWrap();
         p.sweep = def.getSweep();
 
         // Scale and offsets

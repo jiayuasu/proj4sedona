@@ -60,6 +60,7 @@ public class ProjectionDef {
     private Boolean over;          // Allow longitude wrapping
     private Boolean noUoff;        // no_uoff / no_off: Oblique Mercator without origin offset (variant A)
     private Boolean noRot;         // no_rot: Oblique Mercator without rectification rotation
+    private Double longWrap;       // lon_wrap: center of longitude wrapping range
     private Double h;              // h: satellite height (Geostationary)
     private String sweep;          // sweep: sweep axis 'x' or 'y' (Geostationary)
 
@@ -183,6 +184,9 @@ public class ProjectionDef {
 
     public Boolean getNoRot() { return noRot; }
     public void setNoRot(Boolean noRot) { this.noRot = noRot; }
+
+    public Double getLongWrap() { return longWrap; }
+    public void setLongWrap(Double longWrap) { this.longWrap = longWrap; }
 
     public Double getH() { return h; }
     public void setH(Double h) { this.h = h; }

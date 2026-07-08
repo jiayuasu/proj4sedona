@@ -114,4 +114,20 @@ class Proj4jsBackportsTest {
         assertEquals(20, r2.y, 1e-9, "uen->uen: round-trip preserves second");
         assertEquals(30, r2.z, 1e-6, "uen->uen: round-trip preserves third");
     }
+
+    @Test
+    @DisplayName("proj4js bad16a6/39e7abc: +lon_wrap wraps output longitude")
+    void testLonWrap() {
+        // +lon_wrap=180 requests the 0..360 longitude range (common for global
+        // climate/ocean datasets). Mirrors the upstream test: -170 -> 190.
+        Converter wrapped = Proj4.proj4(WGS84,
+            "+proj=longlat +datum=WGS84 +lon_wrap=180 +no_defs");
+        assertEquals(190, wrapped.forward(new Point(-170, 40)).x, 1e-9, "-170 wraps to 190");
+        assertEquals(180, wrapped.forward(new Point(-180, 10)).x, 1e-9, "-180 wraps to 180");
+        assertEquals(10, wrapped.forward(new Point(10, 10)).x, 1e-9, "10 stays 10");
+
+        // Without lon_wrap, longitudes stay in -180..180.
+        Converter plain = Proj4.proj4(WGS84, "+proj=longlat +datum=WGS84 +no_defs");
+        assertEquals(-170, plain.forward(new Point(-170, 40)).x, 1e-9, "-170 stays -170");
+    }
 }

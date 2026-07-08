@@ -117,6 +117,9 @@ public final class ProjString {
             case "gamma":
                 def.setRectifiedGridAngle(parseDouble(paramVal) * Values.D2R);
                 break;
+            case "lon_wrap":
+                def.setLongWrap(parseDouble(paramVal) * Values.D2R);
+                break;
             case "lonc":
                 def.setLongc(parseDouble(paramVal) * Values.D2R);
                 break;
