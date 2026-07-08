@@ -53,11 +53,13 @@ class EckertVITest {
     void testNonzeroCenterAndOffset() {
         // Exercises lon_0, x_0 and y_0 (all zero in the other cases). Also guards the
         // deliberate x0/y0 fix: reverting forward to proj4js (which omits x0/y0) fails here.
+        // References are from pyproj/PROJ, which applies the offsets — proj4js does not, so
+        // proj4js's numbers here are short by exactly (x_0, y_0).
         String def = "+proj=eck6 +lon_0=-90 +x_0=500000 +y_0=1000000 "
             + "+a=6371007 +b=6371007 +units=m +no_defs";
         assertForward(def, new double[][] {
-            {-80, 35, 840758.8709, 4354477.7051},
-            {-120, -15, -2860126.2903, -1887125.7501},
+            {-80, 35, 1340758.8709, 5354477.7051},
+            {-120, -15, -2360126.2903, -887125.7501},
         });
         assertRoundTrip(def, new double[][] {{-80, 35}, {-120, -15}, {-90, 0}});
     }
