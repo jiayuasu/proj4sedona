@@ -130,4 +130,35 @@ class Proj4jsBackportsTest {
         Converter plain = Proj4.proj4(WGS84, "+proj=longlat +datum=WGS84 +no_defs");
         assertEquals(-170, plain.forward(new Point(-170, 40)).x, 1e-9, "-170 stays -170");
     }
+
+    @Test
+    @DisplayName("proj4js 1a3b130: Defs.set accepts PROJJSON (and WKT) definitions")
+    void testDefsProjJsonRegistration() {
+        // Mirrors upstream test/test.js: registering a PROJJSON geographic CRS under a
+        // code must parse it (projName longlat), not store/reject the raw document.
+        String projjson = "{\"$schema\":\"https://proj.org/schemas/v0.7/projjson.schema.json\","
+            + "\"type\":\"GeographicCRS\",\"name\":\"NAD83\","
+            + "\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"North American Datum 1983\","
+            + "\"ellipsoid\":{\"name\":\"GRS 1980\",\"semi_major_axis\":6378137,\"inverse_flattening\":298.257222101}},"
+            + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":["
+            + "{\"name\":\"Geodetic latitude\",\"abbreviation\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
+            + "{\"name\":\"Geodetic longitude\",\"abbreviation\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"}]},"
+            + "\"id\":{\"authority\":\"EPSG\",\"code\":4269}}";
+        try {
+            org.datasyslab.proj4sedona.defs.Defs.set("TEST:PROJJSON", projjson);
+            org.datasyslab.proj4sedona.core.ProjectionDef def =
+                org.datasyslab.proj4sedona.defs.Defs.get("TEST:PROJJSON");
+            assertNotNull(def, "PROJJSON definition registered");
+            assertEquals("longlat", def.getProjName(), "PROJJSON parsed to longlat");
+
+            // WKT registration through the same entry point.
+            org.datasyslab.proj4sedona.defs.Defs.set("TEST:WKT",
+                "GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563]],"
+                    + "PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433]]");
+            assertNotNull(org.datasyslab.proj4sedona.defs.Defs.get("TEST:WKT"), "WKT definition registered");
+        } finally {
+            org.datasyslab.proj4sedona.defs.Defs.set("TEST:PROJJSON", (String) null);
+            org.datasyslab.proj4sedona.defs.Defs.set("TEST:WKT", (String) null);
+        }
+    }
 }

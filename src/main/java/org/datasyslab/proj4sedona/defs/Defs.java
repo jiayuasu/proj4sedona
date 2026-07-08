@@ -169,26 +169,53 @@ public final class Defs {
     /**
      * Set (register) a projection definition by name.
      *
-     * <p>If the definition is a PROJ string (starting with "+"), it will be
-     * automatically parsed into a ProjectionDef object.</p>
+     * <p>Accepts a PROJ string (starting with "+"), a PROJJSON document (starting
+     * with "{"), or a WKT string — mirroring proj4js {@code defs(code, definition)}
+     * (incl. proj4js 1a3b130, which fixed PROJJSON registration).</p>
      *
      * @param name The name/code to register the definition under (e.g., "EPSG:4326")
-     * @param projString The PROJ string definition (must start with "+")
+     * @param definition The PROJ string, PROJJSON, or WKT definition
      */
-    public static void set(String name, String projString) {
-        if (projString == null || projString.isEmpty()) {
+    public static void set(String name, String definition) {
+        if (definition == null || definition.isEmpty()) {
             definitions.remove(name);
             return;
         }
 
-        if (projString.charAt(0) == '+') {
-            ProjectionDef def = ProjString.parse(projString);
-            def.setSrsCode(name);
-            definitions.put(name, def);
+        String trimmed = definition.trim();
+        ProjectionDef def;
+        if (trimmed.charAt(0) == '+') {
+            def = ProjString.parse(trimmed);
+        } else if (trimmed.charAt(0) == '{') {
+            // PROJJSON
+            @SuppressWarnings("unchecked")
+            Map<String, Object> json = GSON.fromJson(trimmed, Map.class);
+            def = WktParser.parse(json);
         } else {
-            throw new IllegalArgumentException(
-                "Unsupported definition format for Defs.set(name, String). Only PROJ strings (starting with '+') are supported by this method.");
+            // WKT1 / WKT2
+            def = WktParser.parse(trimmed);
         }
+        // The registered code identifies the definition (parsers may have set srsCode
+        // to the raw definition or its embedded name).
+        def.setSrsCode(name);
+        definitions.put(name, def);
+    }
+
+    /**
+     * Set (register) a PROJJSON definition by name.
+     * Mirrors proj4js {@code defs(code, projjsonObject)} (proj4js 1a3b130).
+     *
+     * @param name The name/code to register the definition under
+     * @param projjson The PROJJSON document as a parsed Map
+     */
+    public static void set(String name, Map<String, Object> projjson) {
+        if (projjson == null) {
+            definitions.remove(name);
+            return;
+        }
+        ProjectionDef def = WktParser.parse(projjson);
+        def.setSrsCode(name);
+        definitions.put(name, def);
     }
 
     /**
