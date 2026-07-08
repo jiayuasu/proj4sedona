@@ -52,6 +52,9 @@ public class SpeedBenchmark {
     
     // Error statistics by category
     private final Map<String, ErrorStats> errorStatsByCategory = new LinkedHashMap<>();
+    // Per-projection correctness vs pyproj (reference cases named proj_*), rendered
+    // as a dedicated report table so each projection's agreement is visible.
+    private final Map<String, ErrorStats> perProjectionStats = new LinkedHashMap<>();
     private final List<String> skippedTests = new ArrayList<>();
 
     public static void main(String[] args) throws Exception {
@@ -286,7 +289,18 @@ public class SpeedBenchmark {
             
             JsonArray transforms = tc.getAsJsonArray("transformations");
             boolean isProjected = isProjectedCrs(toCrs);
-            ErrorStats stats = isProjected ? projectedErrors : geographicErrors;
+
+            // Per-projection coverage cases (proj_*) get their own stats bucket and
+            // report table; they are kept out of the generic category aggregates so a
+            // documented per-projection difference does not distort those rows.
+            ErrorStats stats;
+            if (name.startsWith("proj_")) {
+                String desc = tc.get("description") != null && !tc.get("description").isJsonNull()
+                    ? tc.get("description").getAsString() : name;
+                stats = perProjectionStats.computeIfAbsent(name, k -> new ErrorStats(desc, "m"));
+            } else {
+                stats = isProjected ? projectedErrors : geographicErrors;
+            }
             
             for (JsonElement tElem : transforms) {
                 JsonObject t = tElem.getAsJsonObject();
@@ -322,8 +336,11 @@ public class SpeedBenchmark {
             errorStatsByCategory.put("Projected transforms", projectedErrors);
         }
         
-        System.out.println("   Transform correctness: " + 
-            (geographicErrors.count + projectedErrors.count) + " comparisons");
+        int perProjectionCount = perProjectionStats.values().stream().mapToInt(s -> s.count).sum();
+        System.out.println("   Transform correctness: "
+            + (geographicErrors.count + projectedErrors.count) + " comparisons, "
+            + perProjectionCount + " per-projection comparisons across "
+            + perProjectionStats.size() + " projections");
     }
 
     private void runGridCorrectness() throws IOException {
@@ -584,6 +601,24 @@ public class SpeedBenchmark {
                 tolerance));
         }
         
+        // Per-projection correctness table
+        if (!perProjectionStats.isEmpty()) {
+            sb.append("\n### Per-projection correctness (vs pyproj)\n\n");
+            sb.append("| Projection | Points | Max Error | Avg Error |\n");
+            sb.append("|------------|-------:|----------:|----------:|\n");
+            for (Map.Entry<String, ErrorStats> e : perProjectionStats.entrySet()) {
+                ErrorStats stats = e.getValue();
+                if (stats.count == 0) {
+                    continue;
+                }
+                sb.append(String.format("| %s | %d | %s | %s |\n",
+                    stats.name,
+                    stats.count,
+                    formatError(stats.max, stats.unit),
+                    formatError(stats.sum / stats.count, stats.unit)));
+            }
+        }
+
         // Skipped tests
         if (!skippedTests.isEmpty()) {
             sb.append("\n### Skipped Tests\n\n");
