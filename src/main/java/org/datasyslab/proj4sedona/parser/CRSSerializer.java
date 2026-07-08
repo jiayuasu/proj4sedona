@@ -71,6 +71,11 @@ public final class CRSSerializer {
         PROJ_TO_WKT_METHOD.put("robin", "Robinson");
         PROJ_TO_WKT_METHOD.put("etmerc", "Transverse Mercator");
         PROJ_TO_WKT_METHOD.put("gstmerc", "Gauss Schreiber Transverse Mercator");
+        PROJ_TO_WKT_METHOD.put("eck6", "Eckert VI");
+        PROJ_TO_WKT_METHOD.put("eqearth", "Equal Earth");
+        PROJ_TO_WKT_METHOD.put("bonne", "Bonne");
+        // Base geos name; getWktMethodName(proj, params) selects the sweep variant.
+        PROJ_TO_WKT_METHOD.put("geos", "Geostationary Satellite (Sweep Y)");
     }
 
     // Reverse mapping: WKT/PROJJSON method name -> PROJ short name
@@ -112,6 +117,8 @@ public final class CRSSerializer {
         WKT_TO_PROJ_METHOD.put("krovak (north orientated)", "krovak");
         WKT_TO_PROJ_METHOD.put("krovak modified", "krovak");
         WKT_TO_PROJ_METHOD.put("krovak modified (north orientated)", "krovak");
+        WKT_TO_PROJ_METHOD.put("geostationary satellite (sweep x)", "geos");
+        WKT_TO_PROJ_METHOD.put("geostationary satellite", "geos");  // ESRI WKT1 name
         WKT_TO_PROJ_METHOD.put("american polyconic", "poly");
         WKT_TO_PROJ_METHOD.put("equidistant cylindrical", "eqc");
         WKT_TO_PROJ_METHOD.put("equirectangular", "eqc");
@@ -509,6 +516,11 @@ public final class CRSSerializer {
             }
         }
 
+        // Geostationary satellite height
+        if ("geos".equals(proj) && params.h != null) {
+            sb.append(",PARAMETER[\"satellite_height\",").append(params.h).append("]");
+        }
+
         // Scale factor
         if (params.k0 != 1.0) {
             sb.append(",PARAMETER[\"scale_factor\",").append(params.k0).append("]");
@@ -721,6 +733,13 @@ public final class CRSSerializer {
                 sb.append(formatAngle(params.lat2 * RAD_TO_DEG));
                 sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
             }
+        }
+
+        // Geostationary satellite height (name matches PROJ's WKT2 output)
+        if ("geos".equals(proj) && params.h != null) {
+            sb.append(",PARAMETER[\"Satellite Height\",");
+            sb.append(params.h);
+            sb.append(",LENGTHUNIT[\"metre\",1]]");
         }
 
         // Scale factor
@@ -959,9 +978,12 @@ public final class CRSSerializer {
                     params.lat1 * RAD_TO_DEG, "degree"));
             }
             if (params.lat2 != null) {
-                parameters.add(buildProjJsonParam("Latitude of 2nd standard parallel", 
+                parameters.add(buildProjJsonParam("Latitude of 2nd standard parallel",
                     params.lat2 * RAD_TO_DEG, "degree"));
             }
+        }
+        if ("geos".equals(proj) && params.h != null) {
+            parameters.add(buildProjJsonParam("Satellite Height", params.h, "metre"));
         }
         if (params.k0 != 1.0) {
             parameters.add(buildProjJsonParam("Scale factor at natural origin", params.k0, null));
@@ -1497,6 +1519,12 @@ public final class CRSSerializer {
             return omercIsTypeA(params)
                 ? "Hotine Oblique Mercator (variant A)"
                 : "Hotine Oblique Mercator (variant B)";
+        }
+        if ("geos".equals(proj)) {
+            // PROJ encodes the sweep axis in the method name.
+            return "x".equals(params.sweep)
+                ? "Geostationary Satellite (Sweep X)"
+                : "Geostationary Satellite (Sweep Y)";
         }
         return getWktMethodName(proj);
     }

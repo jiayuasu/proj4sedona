@@ -489,6 +489,9 @@ public final class ProjJsonTransformer {
             case "angle_from_rectified_to_skew_grid":
                 def.setRectifiedGridAngle(value);
                 break;
+            case "satellite_height":
+                def.setH(value);
+                break;
             default:
                 // Unknown parameters are ignored
                 break;

@@ -401,6 +401,8 @@ public final class WktUtils {
             {"lat2", "standard_parallel_2", (Function<Double, Double>) WktUtils::d2r},
             {"azimuth", "Azimuth", null},
             {"alpha", "azimuth", (Function<Double, Double>) WktUtils::d2r},
+            {"h", "satellite_height", null},
+            {"h", "Satellite_Height", null},
             {"srsCode", "name", null}
         };
 
@@ -477,6 +479,7 @@ public final class WktUtils {
         setDoubleIfPresent(wkt, "alpha", def::setAlpha);
         setDoubleIfPresent(wkt, "longc", def::setLongc);
         setDoubleIfPresent(wkt, "rectified_grid_angle", def::setRectifiedGridAngle);
+        setDoubleIfPresent(wkt, "h", def::setH);
 
         // Scale and offsets
         setDoubleIfPresent(wkt, "k0", def::setK0);
