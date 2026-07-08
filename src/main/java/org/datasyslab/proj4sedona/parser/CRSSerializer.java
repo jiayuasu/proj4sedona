@@ -238,6 +238,11 @@ public final class CRSSerializer {
             sb.append(" +lon_0=").append(formatAngle(params.long0 * RAD_TO_DEG));
         }
 
+        // Longitude wrapping (+lon_wrap); PROJ-string-only, no WKT/PROJJSON equivalent
+        if (params.longWrap != null) {
+            sb.append(" +lon_wrap=").append(formatAngle(params.longWrap * RAD_TO_DEG));
+        }
+
         // Standard parallels: only projections that actually use them (conics). Other
         // projections can carry a lat1 defaulted from lat0, which must not be emitted.
         if (usesStandardParallels(normProj)) {

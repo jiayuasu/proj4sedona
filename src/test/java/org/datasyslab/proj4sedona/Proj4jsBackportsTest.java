@@ -129,6 +129,15 @@ class Proj4jsBackportsTest {
         // Without lon_wrap, longitudes stay in -180..180.
         Converter plain = Proj4.proj4(WGS84, "+proj=longlat +datum=WGS84 +no_defs");
         assertEquals(-170, plain.forward(new Point(-170, 40)).x, 1e-9, "-170 stays -170");
+
+        // +lon_wrap must survive proj-string serialization: re-importing the
+        // serialized CRS keeps the wrapping behavior.
+        String serialized = org.datasyslab.proj4sedona.parser.CRSSerializer.toProjString(
+            new Proj("+proj=longlat +datum=WGS84 +lon_wrap=180 +no_defs"));
+        assertTrue(serialized.contains("+lon_wrap=180"), "serialized keeps +lon_wrap: " + serialized);
+        Converter reimported = Proj4.proj4(WGS84, serialized);
+        assertEquals(190, reimported.forward(new Point(-170, 40)).x, 1e-9,
+            "wrap behavior preserved after serialize/re-import");
     }
 
     @Test
