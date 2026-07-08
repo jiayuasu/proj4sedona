@@ -42,15 +42,15 @@ public class DatumParams {
         this.es = es;
         this.ep2 = ep2;
 
-        // Determine datum type based on inputs
-        // Mirrors logic from lib/datum.js
-        if (datumCode == null || "none".equalsIgnoreCase(datumCode)) {
-            this.datumType = Values.PJD_NODATUM;
-        } else {
-            this.datumType = Values.PJD_WGS84;
-        }
+        // Determine datum type based on inputs.
+        // Mirrors lib/datum.js (proj4js 61689a9, "Fix unknown datum handling to match
+        // PROJ behavior"): an unknown/unnamed datum with no towgs84 is NODATUM (no
+        // shift applied), not WGS84. Known datums (incl. +datum=WGS84) carry towgs84
+        // parameters from the registry, which sets WGS84/3PARAM/7PARAM below.
+        this.datumType = Values.PJD_NODATUM;
 
         if (datumParamsArray != null) {
+            this.datumType = Values.PJD_WGS84;
             this.datumParams = datumParamsArray.clone();
             
             // Check if any translation params are non-zero
