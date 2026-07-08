@@ -19,8 +19,11 @@ import org.datasyslab.proj4sedona.core.Point;
  */
 public class Geostationary implements Projection {
 
+    // The sweep-variant names are PROJ's WKT2/PROJJSON method names (PROJ encodes the
+    // sweep axis in the method name); registered so serialized CRSs re-import.
     private static final String[] NAMES = {
-        "Geostationary Satellite View", "Geostationary_Satellite", "geos"
+        "Geostationary Satellite View", "Geostationary_Satellite",
+        "Geostationary Satellite (Sweep X)", "Geostationary Satellite (Sweep Y)", "geos"
     };
 
     private double a, es, long0, x0, y0;
@@ -39,7 +42,11 @@ public class Geostationary implements Projection {
         this.x0 = params.x0;
         this.y0 = params.y0;
 
-        this.flipAxis = "x".equals(params.sweep);
+        // Sweep comes from +sweep, or — for CRSs parsed from WKT2/PROJJSON, where PROJ
+        // encodes it in the method name — from the projection name.
+        this.flipAxis = "x".equals(params.sweep)
+            || (params.sweep == null && params.projName != null
+                && params.projName.toLowerCase().contains("sweep x"));
         if (params.h == null) {
             throw new IllegalArgumentException("Geostationary projection requires satellite height (+h)");
         }

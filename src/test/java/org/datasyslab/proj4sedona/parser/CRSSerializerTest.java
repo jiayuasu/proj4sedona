@@ -1056,4 +1056,59 @@ class CRSSerializerTest {
         assertEquals(-71 * Math.PI / 180, reimported.getParams().latTs, 1e-10,
                 "latTs should be preserved through WKT2 round-trip");
     }
+
+    // ==================== Issue #83: standard WKT method names ====================
+
+    @Test
+    @DisplayName("Issue #83: eck6/eqearth/bonne/geos serialize with standard method names")
+    void testStandardWktMethodNames() {
+        assertTrue(CRSSerializer.toWkt2(new Proj(
+            "+proj=eck6 +lon_0=0 +a=6371007 +b=6371007 +units=m +no_defs"))
+            .contains("METHOD[\"Eckert VI\"]"), "eck6 method name");
+        assertTrue(CRSSerializer.toWkt2(new Proj(
+            "+proj=eqearth +lon_0=0 +datum=WGS84 +units=m +no_defs"))
+            .contains("METHOD[\"Equal Earth\"]"), "eqearth method name");
+        assertTrue(CRSSerializer.toWkt2(new Proj(
+            "+proj=bonne +lat_1=40 +lon_0=0 +datum=WGS84 +units=m +no_defs"))
+            .contains("METHOD[\"Bonne\"]"), "bonne method name");
+        assertTrue(CRSSerializer.toWkt2(new Proj(
+            "+proj=geos +h=35785831 +sweep=y +lon_0=0 +datum=WGS84 +units=m +no_defs"))
+            .contains("METHOD[\"Geostationary Satellite (Sweep Y)\"]"), "geos sweep-y method name");
+        assertTrue(CRSSerializer.toWkt2(new Proj(
+            "+proj=geos +h=35785831 +sweep=x +lon_0=0 +datum=WGS84 +units=m +no_defs"))
+            .contains("METHOD[\"Geostationary Satellite (Sweep X)\"]"), "geos sweep-x method name");
+    }
+
+    @Test
+    @DisplayName("Issue #83: geos round-trips through WKT2/PROJJSON (Satellite Height + sweep)")
+    void testGeosWktRoundTrip() {
+        for (String sweep : new String[] {"x", "y"}) {
+            Proj original = new Proj("+proj=geos +h=35785831 +sweep=" + sweep
+                + " +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +units=m +no_defs");
+            double lon = 10 * Math.PI / 180, lat = -5 * Math.PI / 180;
+            org.datasyslab.proj4sedona.core.Point want =
+                original.forward(new org.datasyslab.proj4sedona.core.Point(lon, lat));
+            for (String serialized : new String[] {
+                    CRSSerializer.toWkt1(original),
+                    CRSSerializer.toWkt2(original),
+                    CRSSerializer.toProjJson(original)}) {
+                Proj reimported = new Proj(serialized);
+                org.datasyslab.proj4sedona.core.Point got =
+                    reimported.forward(new org.datasyslab.proj4sedona.core.Point(lon, lat));
+                assertEquals(want.x, got.x, 0.01, "easting (sweep " + sweep + ") after re-import");
+                assertEquals(want.y, got.y, 0.01, "northing (sweep " + sweep + ") after re-import");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("Issue #83: external WKT2 method name re-exports to a valid proj string")
+    void testExternalWkt2MethodNameReExport() {
+        // A CRS whose projName is the WKT2 method name must re-export with the PROJ
+        // short code, not the method name (e.g. not "+proj=Eckert VI").
+        Proj ext = new Proj(CRSSerializer.toWkt2(
+            new Proj("+proj=eck6 +lon_0=0 +a=6371007 +b=6371007 +no_defs")));
+        String projString = CRSSerializer.toProjString(ext);
+        assertTrue(projString.contains("+proj=eck6"), "re-export uses short code: " + projString);
+    }
 }

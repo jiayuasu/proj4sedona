@@ -87,6 +87,66 @@ double[] result = Proj4.proj4(
 );
 ```
 
+### Miller Cylindrical
+
+Compromise cylindrical projection related to Mercator but showing the poles.
+
+- PROJ name: `mill`
+- Aliases: `Miller_Cylindrical`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=mill +lon_0=0 +a=6378137 +b=6378137 +units=m",
+    new double[]{-77.0, 38.9}
+);
+```
+
+### Cassini-Soldner
+
+Transverse cylindrical projection, true to scale along the central meridian. Used by older national and cadastral grids (e.g. EPSG:2066).
+
+- PROJ name: `cass`
+- Aliases: `Cassini`, `Cassini_Soldner`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=cass +lat_0=11.25 +lon_0=-60.69 +x_0=187500 +y_0=180000 +datum=WGS84 +units=m",
+    new double[]{-60.7, 11.25}
+);
+```
+
+### Swiss Oblique Mercator
+
+Oblique conformal cylindrical projection used by the Swiss national grids (EPSG:21781 LV03, EPSG:2056 LV95).
+
+- PROJ name: `somerc`
+- Aliases: `Swiss_Oblique_Mercator`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=somerc +lat_0=46.9524055555 +lon_0=7.4395833333 +k_0=1 +x_0=2600000 +y_0=1200000 +ellps=bessel +towgs84=674.374,15.056,405.346 +units=m",
+    new double[]{8.55, 47.37}
+);
+```
+
+### Hotine Oblique Mercator
+
+Oblique Mercator with an arbitrary central line (EPSG:3375 RSO Malaysia, Alaska zone 1). Supports the azimuth/rectified-grid-angle parameterization (variants A and B via `+no_uoff`) and the two-point form.
+
+- PROJ name: `omerc`
+- Aliases: `Hotine_Oblique_Mercator`, `Oblique_Mercator`, `Hotine_Oblique_Mercator_Azimuth_Center`, and variants
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=omerc +lat_0=4 +lonc=102.25 +alpha=323.0257964667 +k=0.99984 +x_0=804671 +y_0=0 +no_uoff +gamma=323.1301023611 +ellps=GRS80 +units=m",
+    new double[]{102.5, 4.2}
+);
+```
+
 ## Pseudocylindrical Projections
 
 ### Sinusoidal
@@ -130,6 +190,51 @@ Compromise pseudocylindrical projection designed for visual appeal.
 double[] result = Proj4.proj4(
     "+proj=longlat +datum=WGS84",
     "+proj=robin +lon_0=0 +datum=WGS84 +units=m",
+    new double[]{-77.0, 38.9}
+);
+```
+
+### Equal Earth
+
+Equal-area pseudocylindrical world projection (Savric, Patterson & Jenny, 2018). Spherical and ellipsoidal (authalic) forms.
+
+- PROJ name: `eqearth`
+- Aliases: `Equal Earth`, `Equal_Earth`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=eqearth +lon_0=0 +datum=WGS84 +units=m",
+    new double[]{-77.0, 38.9}
+);
+```
+
+### Eckert VI
+
+Equal-area pseudocylindrical world projection; always computed spherically.
+
+- PROJ name: `eck6`
+- Aliases: `Eckert_VI`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=eck6 +lon_0=0 +a=6371007 +b=6371007 +units=m",
+    new double[]{-77.0, 38.9}
+);
+```
+
+### Van der Grinten
+
+Projects the world into a circle; computed on a sphere of radius `a`.
+
+- PROJ name: `vandg`
+- Aliases: `Van_der_Grinten_I`, `VanDerGrinten`, `Van_der_Grinten`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=vandg +lon_0=0 +a=6371007 +b=6371007 +units=m",
     new double[]{-77.0, 38.9}
 );
 ```
@@ -182,6 +287,51 @@ double[] result = Proj4.proj4(
 );
 ```
 
+### Polyconic
+
+American Polyconic: each parallel has its own cone, true to scale along the central meridian and every parallel. Used by EPSG:5880 / EPSG:29101 (Brazil Polyconic).
+
+- PROJ name: `poly`
+- Aliases: `Polyconic`, `American_Polyconic`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000 +ellps=GRS80 +units=m",
+    new double[]{-47.9, -15.8}
+);
+```
+
+### Krovak
+
+Oblique conformal conic used by the Czech and Slovak national grids (EPSG:5514 / EPSG:2065, S-JTSK). Always on the Bessel 1841 ellipsoid; output is south-west oriented (negative), as in proj4js.
+
+- PROJ name: `krovak`
+- Aliases: `Krovak`, `Krovak Modified`, `Krovak (North Orientated)`, `Krovak Modified (North Orientated)`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +ellps=bessel",
+    "+proj=krovak +lat_0=49.5 +lon_0=24.8333333333 +alpha=30.2881397222 +k=0.9999 +ellps=bessel +units=m",
+    new double[]{14.42, 50.08}
+);
+```
+
+### Bonne
+
+Pseudoconic equal-area projection; true to scale along the central meridian and every parallel. Requires a non-zero standard parallel (`+lat_1`).
+
+- PROJ name: `bonne`
+- Aliases: `Bonne (Werner lat_1=90)`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=bonne +lat_1=40 +lon_0=0 +datum=WGS84 +units=m",
+    new double[]{10.0, 50.0}
+);
+```
+
 ## Azimuthal Projections
 
 ### Lambert Azimuthal Equal Area
@@ -230,6 +380,51 @@ double[] result = Proj4.proj4(
 );
 ```
 
+### Oblique Stereographic Alternative
+
+Double Stereographic (EPSG method 9809): maps the ellipsoid to a conformal sphere first, then applies the spherical stereographic. Used by EPSG:28992 (Amersfoort / RD New) and EPSG:2036 (New Brunswick). Distinct from the Snyder `stere`.
+
+- PROJ name: `sterea`
+- Aliases: `Oblique_Stereographic`, `Double_Stereographic`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=sterea +lat_0=52.1561605556 +lon_0=5.3876388889 +k=0.9999079 +x_0=155000 +y_0=463000 +ellps=bessel +towgs84=565.417,50.3319,465.552,-0.398957,0.343988,-1.8774,4.0725 +units=m",
+    new double[]{5.2, 52.25}
+);
+```
+
+### Gnomonic
+
+Azimuthal projection from the center of the sphere; every great circle maps to a straight line.
+
+- PROJ name: `gnom`
+- Aliases: `Gnomonic`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=gnom +lat_0=45 +lon_0=0 +a=6378137 +b=6378137 +units=m",
+    new double[]{5.0, 50.0}
+);
+```
+
+### Orthographic
+
+View of the globe from infinite distance; only the near hemisphere is projectable (far-side points return null).
+
+- PROJ name: `ortho`
+- Aliases: `Orthographic`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=ortho +lat_0=45 +lon_0=0 +a=6378137 +b=6378137 +units=m",
+    new double[]{5.0, 50.0}
+);
+```
+
 ## Other Projections
 
 ### Identity (Longitude/Latitude)
@@ -243,6 +438,21 @@ Passes coordinates through without projection. Used to represent geographic (unp
 Proj wgs84 = new Proj("+proj=longlat +datum=WGS84");
 ```
 
+### Geostationary Satellite
+
+The view of the Earth from a geostationary satellite. Requires the satellite height (`+h`); the `+sweep` axis (x/y) selects the instrument sweep convention. Far-side points return null.
+
+- PROJ name: `geos`
+- Aliases: `Geostationary_Satellite`, `Geostationary Satellite (Sweep X)`, `Geostationary Satellite (Sweep Y)`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=geos +h=35785831 +sweep=y +lon_0=0 +datum=WGS84 +units=m",
+    new double[]{10.0, -5.0}
+);
+```
+
 ## Projection Summary Table
 
 | Category | Projection | PROJ Name | Properties |
@@ -252,15 +462,29 @@ Proj wgs84 = new Proj("+proj=longlat +datum=WGS84");
 | Cylindrical | UTM | `utm` | Conformal |
 | Cylindrical | Equidistant Cylindrical | `eqc` | Equidistant |
 | Cylindrical | Cylindrical Equal Area | `cea` | Equal-area |
+| Cylindrical | Miller Cylindrical | `mill` | Compromise |
+| Cylindrical | Cassini-Soldner | `cass` | Equidistant (central meridian) |
+| Cylindrical | Swiss Oblique Mercator | `somerc` | Conformal |
+| Cylindrical | Hotine Oblique Mercator | `omerc` | Conformal |
 | Pseudocylindrical | Sinusoidal | `sinu` | Equal-area |
 | Pseudocylindrical | Mollweide | `moll` | Equal-area |
 | Pseudocylindrical | Robinson | `robin` | Compromise |
+| Pseudocylindrical | Equal Earth | `eqearth` | Equal-area |
+| Pseudocylindrical | Eckert VI | `eck6` | Equal-area |
+| Pseudocylindrical | Van der Grinten | `vandg` | Compromise |
 | Conic | Lambert Conformal Conic | `lcc` | Conformal |
 | Conic | Albers Equal Area | `aea` | Equal-area |
 | Conic | Equidistant Conic | `eqdc` | Equidistant |
+| Conic | Polyconic | `poly` | Compromise |
+| Conic | Krovak | `krovak` | Conformal |
+| Conic | Bonne | `bonne` | Equal-area |
 | Azimuthal | Lambert Azimuthal Equal Area | `laea` | Equal-area |
 | Azimuthal | Stereographic | `stere` | Conformal |
 | Azimuthal | Azimuthal Equidistant | `aeqd` | Equidistant |
+| Azimuthal | Oblique Stereographic Alternative | `sterea` | Conformal |
+| Azimuthal | Gnomonic | `gnom` | Gnomonic |
+| Azimuthal | Orthographic | `ortho` | Perspective |
+| Other | Geostationary Satellite | `geos` | Perspective |
 | Other | Identity | `longlat` | None |
 
 ## See Also

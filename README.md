@@ -9,7 +9,7 @@ Proj4Sedona provides coordinate system transformations, datum conversions, and p
 **Key Features:**
 - High-performance: faster than Python's pyproj
 - Format support: PROJ strings, WKT1/WKT2, PROJJSON, EPSG codes
-- 15 map projections (Mercator, UTM, Lambert, Albers, Sinusoidal, Robinson, etc.)
+- 30 map projections (Mercator, UTM, Lambert, Albers, Krovak, Oblique Mercator, Equal Earth, etc.)
 - MGRS coordinate conversion
 - GeoTIFF datum grids with PROJ CDN integration
 - JTS geometry transformation support
@@ -210,12 +210,12 @@ CompletableFuture<GridData> future = GridCdnFetcher.fetchAndLoadAsync("ca_nrc_nt
 
 ## Supported Projections
 
-21 map projections including:
-- **Cylindrical**: Mercator, Transverse Mercator, UTM, Miller, Equirectangular, Cylindrical Equal Area
-- **Pseudocylindrical**: Sinusoidal, Mollweide, Robinson, Equal Earth
-- **Conic**: Lambert Conformal Conic, Albers Equal Area, Equidistant Conic
-- **Azimuthal**: Lambert Azimuthal Equal Area, Stereographic, Azimuthal Equidistant, Orthographic, Gnomonic
-- **Other**: Van der Grinten, Hotine Oblique Mercator
+30 map projections:
+- **Cylindrical**: Mercator, Transverse Mercator, UTM, Miller, Equirectangular, Cylindrical Equal Area, Cassini-Soldner, Swiss Oblique Mercator, Hotine Oblique Mercator
+- **Pseudocylindrical**: Sinusoidal, Mollweide, Robinson, Equal Earth, Eckert VI, Van der Grinten
+- **Conic**: Lambert Conformal Conic, Albers Equal Area, Equidistant Conic, Polyconic, Krovak, Bonne
+- **Azimuthal**: Lambert Azimuthal Equal Area, Stereographic, Oblique Stereographic Alternative, Azimuthal Equidistant, Orthographic, Gnomonic
+- **Other**: Geostationary Satellite, Identity (longlat)
 
 ## Building
 
