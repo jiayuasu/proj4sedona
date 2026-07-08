@@ -12,6 +12,11 @@ import org.datasyslab.proj4sedona.core.Point;
  * spherical sinusoidal family with {@code m = 1}, {@code n = 1 + pi/2} (and always forces
  * spherical computation); this class inlines that form so it does not depend on the
  * Sinusoidal implementation.</p>
+ *
+ * <p>Deviation from proj4js: its forward omits {@code +x_0/+y_0} while its inverse
+ * subtracts them; this port applies them in both directions so offset CRSs round-trip
+ * (see {@code forward}). Standard eck6 CRSs use {@code x_0=y_0=0}, so their output is
+ * unchanged.</p>
  */
 public class EckertVI implements Projection {
 
@@ -56,6 +61,10 @@ public class EckertVI implements Projection {
         double x = a * cx * lon * (M + Math.cos(lat));
         double y = a * cy * lat;
 
+        // proj4js's eck6 forward (via the generalized sinu) omits x0/y0 while its inverse
+        // subtracts them, so an offset CRS would not round-trip. Apply them here (the
+        // inverse already reverses them). Standard eck6 CRSs use x_0=y_0=0, so their
+        // output is unchanged.
         return new Point(x + x0, y + y0, p.z);
     }
 
