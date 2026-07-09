@@ -158,7 +158,11 @@ public final class Transform {
         } else {
             // Apply unit conversion if needed
             if (srcParams.toMeter != null && srcParams.toMeter != 0 && srcParams.toMeter != 1) {
-                p = new Point(p.x * srcParams.toMeter, p.y * srcParams.toMeter, p.z);
+                // Geocentric CRSs carry the linear unit on all three axes (as in PROJ;
+                // proj4js leaves z unscaled, producing mixed units).
+                double zIn = "geocent".equals(srcParams.projName)
+                    ? p.z * srcParams.toMeter : p.z;
+                p = new Point(p.x * srcParams.toMeter, p.y * srcParams.toMeter, zIn);
                 p.m = point.m;
             }
             // Inverse projection: projected → geodetic
@@ -203,7 +207,10 @@ public final class Transform {
             }
             // Apply inverse unit conversion if needed
             if (destParams.toMeter != null && destParams.toMeter != 0 && destParams.toMeter != 1) {
-                p = new Point(p.x / destParams.toMeter, p.y / destParams.toMeter, p.z);
+                // Geocentric CRSs carry the linear unit on all three axes (as in PROJ).
+                double zOut = "geocent".equals(destParams.projName)
+                    ? p.z / destParams.toMeter : p.z;
+                p = new Point(p.x / destParams.toMeter, p.y / destParams.toMeter, zOut);
             }
         }
 

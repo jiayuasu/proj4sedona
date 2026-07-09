@@ -77,6 +77,23 @@ class GeocentricTest {
     }
 
     @Test
+    void testNonMeterUnitsScaleAllAxes() {
+        // A geocentric CRS carries its linear unit on all three axes. PROJ scales
+        // X/Y/Z uniformly (reference below); proj4js scales only x/y, leaving z in
+        // meters — this port follows PROJ. Reference from pyproj/PROJ 9.5.1.
+        Converter conv = Proj4.proj4(WGS84, "+proj=geocent +datum=WGS84 +units=us-ft +no_defs");
+        Point xyz = conv.forward(new Point(2.35, 48.85, 100));
+        assertEquals(13784550.5068, xyz.x, 0.001, "X in US feet");
+        assertEquals(565693.8601, xyz.y, 0.001, "Y in US feet");
+        assertEquals(15681312.7958, xyz.z, 0.001, "Z in US feet (not meters)");
+
+        Point ll = conv.inverse(new Point(xyz.x, xyz.y, xyz.z));
+        assertEquals(2.35, ll.x, 1e-9);
+        assertEquals(48.85, ll.y, 1e-9);
+        assertEquals(100, ll.z, 1e-5, "height round-trips through the unit scaling");
+    }
+
+    @Test
     void testSerializationRoundTrip() {
         // Proj-string only: geocentric CRSs use GEOCCS/GeodeticCRS WKT structures the
         // serializer does not emit (it writes projected-CRS WKT).
