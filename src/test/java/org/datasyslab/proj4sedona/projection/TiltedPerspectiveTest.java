@@ -90,6 +90,32 @@ class TiltedPerspectiveTest {
     }
 
     @Test
+    void testFarSideIsNull() {
+        // Points beyond the camera's horizon are unprojectable. PROJ returns inf;
+        // proj4js returns finite garbage — this port returns null (like ortho/geos).
+        Converter obliq = Proj4.proj4(WGS84, OBLIQ);
+        assertNull(obliq.forward(new Point(80, -40)), "antipodal-ish point not visible");
+        Converter npole = Proj4.proj4(WGS84, NPOLE);
+        assertNull(npole.forward(new Point(0, -60)), "southern point not visible from north polar view");
+        assertNotNull(obliq.forward(new Point(-95, 42)), "near-side point still projects");
+    }
+
+    @Test
+    void testFalseEastingNorthing() {
+        // proj4js ignores +x_0/+y_0 for tpers; this port applies them (PROJ does too).
+        Converter base = Proj4.proj4(WGS84, OBLIQ);
+        Converter off = Proj4.proj4(WGS84,
+            OBLIQ.replace("+a=", "+x_0=100000 +y_0=200000 +a="));
+        Point b = base.forward(new Point(-95, 42));
+        Point o = off.forward(new Point(-95, 42));
+        assertEquals(b.x + 100000, o.x, XY_EPSLN, "x_0 applied (PROJ reference: 395919.9979)");
+        assertEquals(b.y + 200000, o.y, XY_EPSLN, "y_0 applied (PROJ reference: 600765.3992)");
+        Point ll = off.inverse(new Point(o.x, o.y));
+        assertEquals(-95, ll.x, LL_EPSLN);
+        assertEquals(42, ll.y, LL_EPSLN);
+    }
+
+    @Test
     void testSerializationRoundTrip() {
         // tpers is proj-string-only in practice (no standard WKT method); verify
         // +h/+tilt/+azi survive toProjString and re-import identically.
