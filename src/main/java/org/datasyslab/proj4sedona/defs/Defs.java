@@ -177,12 +177,15 @@ public final class Defs {
      * @param definition The PROJ string, PROJJSON, or WKT definition
      */
     public static void set(String name, String definition) {
-        if (definition == null || definition.isEmpty()) {
-            definitions.remove(name);
+        // Normalize like get()/has()/remove(), so set("epsg:4326", ...) is
+        // retrievable via get("EPSG:4326") instead of silently shadowed by providers.
+        String key = CRSUtils.normalizeAuthorityCode(name);
+        String trimmed = definition == null ? "" : definition.trim();
+        if (trimmed.isEmpty()) {
+            definitions.remove(key);
             return;
         }
 
-        String trimmed = definition.trim();
         ProjectionDef def;
         if (trimmed.charAt(0) == '+') {
             def = ProjString.parse(trimmed);
@@ -197,8 +200,8 @@ public final class Defs {
         }
         // The registered code identifies the definition (parsers may have set srsCode
         // to the raw definition or its embedded name).
-        def.setSrsCode(name);
-        definitions.put(name, def);
+        def.setSrsCode(key);
+        definitions.put(key, def);
     }
 
     /**
@@ -209,13 +212,14 @@ public final class Defs {
      * @param projjson The PROJJSON document as a parsed Map
      */
     public static void set(String name, Map<String, Object> projjson) {
+        String key = CRSUtils.normalizeAuthorityCode(name);
         if (projjson == null) {
-            definitions.remove(name);
+            definitions.remove(key);
             return;
         }
         ProjectionDef def = WktParser.parse(projjson);
-        def.setSrsCode(name);
-        definitions.put(name, def);
+        def.setSrsCode(key);
+        definitions.put(key, def);
     }
 
     /**
@@ -225,13 +229,14 @@ public final class Defs {
      * @param def The ProjectionDef object
      */
     public static void set(String name, ProjectionDef def) {
+        String key = CRSUtils.normalizeAuthorityCode(name);
         if (def == null) {
-            definitions.remove(name);
+            definitions.remove(key);
         } else {
             if (def.getSrsCode() == null) {
-                def.setSrsCode(name);
+                def.setSrsCode(key);
             }
-            definitions.put(name, def);
+            definitions.put(key, def);
         }
     }
 

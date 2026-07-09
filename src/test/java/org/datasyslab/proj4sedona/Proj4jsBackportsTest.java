@@ -170,4 +170,24 @@ class Proj4jsBackportsTest {
             org.datasyslab.proj4sedona.defs.Defs.set("TEST:WKT", (String) null);
         }
     }
+
+    @Test
+    @DisplayName("Defs.set normalizes authority codes and tolerates blank definitions")
+    void testDefsSetNormalization() {
+        try {
+            // set with a lowercase authority must be retrievable via the normalized code
+            // (get()/has()/remove() normalize; set() must match or providers shadow it).
+            org.datasyslab.proj4sedona.defs.Defs.set("test:norm86",
+                "+proj=longlat +datum=WGS84 +no_defs");
+            assertNotNull(org.datasyslab.proj4sedona.defs.Defs.get("TEST:norm86"),
+                "lowercase-authority registration found via normalized code");
+
+            // Whitespace-only definition behaves like empty (delete), not an exception.
+            org.datasyslab.proj4sedona.defs.Defs.set("TEST:norm86", "   ");
+            assertFalse(org.datasyslab.proj4sedona.defs.Defs.has("TEST:norm86"),
+                "whitespace-only definition removes the entry");
+        } finally {
+            org.datasyslab.proj4sedona.defs.Defs.set("TEST:norm86", (String) null);
+        }
+    }
 }
