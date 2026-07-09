@@ -32,7 +32,7 @@ public class Converter {
      * @return Output coordinates in destination CRS
      */
     public Point forward(Point point) {
-        return Transform.transform(from, to, point, false);
+        return forward(point, false);
     }
 
     /**
@@ -43,7 +43,13 @@ public class Converter {
      * @return Output coordinates in destination CRS
      */
     public Point forward(Point point, boolean enforceAxis) {
-        return Transform.transform(from, to, point, enforceAxis);
+        Point result = Transform.transform(from, to, point, enforceAxis);
+        // Preserve the input measure, like proj4js's transformer adapter copies
+        // extra keys (m) back onto the output.
+        if (result != null && !Double.isNaN(point.m)) {
+            result.m = point.m;
+        }
+        return result;
     }
 
     /**
@@ -55,10 +61,7 @@ public class Converter {
     public double[] forward(double[] coords) {
         Point p = new Point(coords);
         Point result = forward(p);
-        if (result == null) {
-            return new double[]{Double.NaN, Double.NaN};
-        }
-        return result.toArray();
+        return adaptArray(coords, result);
     }
 
     /**
@@ -68,7 +71,7 @@ public class Converter {
      * @return Output coordinates in source CRS
      */
     public Point inverse(Point point) {
-        return Transform.transform(to, from, point, false);
+        return inverse(point, false);
     }
 
     /**
@@ -79,7 +82,11 @@ public class Converter {
      * @return Output coordinates in source CRS
      */
     public Point inverse(Point point, boolean enforceAxis) {
-        return Transform.transform(to, from, point, enforceAxis);
+        Point result = Transform.transform(to, from, point, enforceAxis);
+        if (result != null && !Double.isNaN(point.m)) {
+            result.m = point.m;
+        }
+        return result;
     }
 
     /**
@@ -91,10 +98,35 @@ public class Converter {
     public double[] inverse(double[] coords) {
         Point p = new Point(coords);
         Point result = inverse(p);
+        return adaptArray(coords, result);
+    }
+
+    /**
+     * Shape the array result like proj4js's transformer adapter (lib/core.js):
+     * when either CRS is geocentric, a 3-component input keeps its third component
+     * (the computed z), instead of Point.toArray() collapsing z == 0 to two
+     * components. Also preserves the input measure (m) for 4-component input.
+     */
+    private double[] adaptArray(double[] coords, Point result) {
         if (result == null) {
             return new double[]{Double.NaN, Double.NaN};
         }
+        if (coords.length > 2 && (isGeocent(from) || isGeocent(to))) {
+            if (coords.length > 3) {
+                return new double[]{result.x, result.y, result.z, coords[3]};
+            }
+            return new double[]{result.x, result.y, result.z};
+        }
         return result.toArray();
+    }
+
+    private static boolean isGeocent(Proj proj) {
+        String n = proj.getParams().projName;
+        if (n == null) {
+            return false;
+        }
+        n = n.toLowerCase();
+        return "geocent".equals(n) || "geocentric".equals(n);
     }
 
     /**

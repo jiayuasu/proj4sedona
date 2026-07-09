@@ -71,6 +71,19 @@ public final class Transform {
      * @param dest Destination projection parameters
      * @return true if WGS84 intermediate transformation is needed
      */
+    /**
+     * Canonical geocentric identity: matches any registered alias of the Geocentric
+     * projection (geocent/geocentric/Geocent/Geocentric), not just the raw "geocent"
+     * spelling (mirrors proj4js, whose geocent init sets a canonical name).
+     */
+    private static boolean isGeocent(ProjectionParams params) {
+        if (params.projName == null) {
+            return false;
+        }
+        String n = params.projName.toLowerCase();
+        return "geocent".equals(n) || "geocentric".equals(n);
+    }
+
     private static boolean checkNotWGS(ProjectionParams source, ProjectionParams dest) {
         DatumParams srcDatum = source.datum;
         DatumParams destDatum = dest.datum;
@@ -160,7 +173,7 @@ public final class Transform {
             if (srcParams.toMeter != null && srcParams.toMeter != 0 && srcParams.toMeter != 1) {
                 // Geocentric CRSs carry the linear unit on all three axes (as in PROJ;
                 // proj4js leaves z unscaled, producing mixed units).
-                double zIn = "geocent".equals(srcParams.projName)
+                double zIn = isGeocent(srcParams)
                     ? p.z * srcParams.toMeter : p.z;
                 p = new Point(p.x * srcParams.toMeter, p.y * srcParams.toMeter, zIn);
                 p.m = point.m;
@@ -208,7 +221,7 @@ public final class Transform {
             // Apply inverse unit conversion if needed
             if (destParams.toMeter != null && destParams.toMeter != 0 && destParams.toMeter != 1) {
                 // Geocentric CRSs carry the linear unit on all three axes (as in PROJ).
-                double zOut = "geocent".equals(destParams.projName)
+                double zOut = isGeocent(destParams)
                     ? p.z / destParams.toMeter : p.z;
                 p = new Point(p.x / destParams.toMeter, p.y / destParams.toMeter, zOut);
             }
@@ -216,14 +229,14 @@ public final class Transform {
 
         // Step 8: Adjust for destination axis order (e.g., "enu" to "neu")
         if (enforceAxis && destParams.axis != null && !"enu".equals(destParams.axis)) {
-            p = AdjustAxis.adjustAxisFromEnu(destParams.axis, p, hasZ);
+            p = AdjustAxis.adjustAxisFromEnu(destParams.axis, p, hasZ || isGeocent(destParams));
         }
 
         // Reset z if it wasn't in the original input — except when the destination is
         // geocentric, where z is a computed coordinate even for 2D input (proj4js
         // 0ee1202). Inert until the geocent projection is ported, but guarded now so a
         // future port does not silently zero the computed Z.
-        if (p != null && !hasZ && !"geocent".equals(destParams.projName)) {
+        if (p != null && !hasZ && !isGeocent(destParams)) {
             p.z = 0;
         }
 

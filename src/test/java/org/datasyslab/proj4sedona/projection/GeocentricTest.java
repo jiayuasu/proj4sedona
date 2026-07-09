@@ -94,6 +94,46 @@ class GeocentricTest {
     }
 
     @Test
+    void testGeocentAliasKeepsComputedZ() {
+        // The z handling must key on the canonical geocentric identity, not the raw
+        // "geocent" spelling: a registered alias (+proj=Geocentric) computes Z for
+        // 2D input too.
+        Converter conv = Proj4.proj4(WGS84, "+proj=Geocentric +datum=WGS84 +units=m +no_defs");
+        Point xyz = conv.forward(new Point(-7.56, 55.95));
+        assertEquals(5261327.157452, xyz.z, M_EPSLN, "alias keeps computed Z");
+    }
+
+    @Test
+    void testAxisEnforcementKeepsComputedZ() {
+        // 2D input to +proj=geocent +axis=neu with enforceAxis: the destination-axis
+        // reordering must see the computed Z (post-projection), not the input's
+        // 2D-ness — otherwise the third coordinate is zeroed.
+        Converter conv = Proj4.proj4(WGS84, "+proj=geocent +datum=WGS84 +axis=neu +units=m +no_defs");
+        Point r = conv.forward(new Point(-7.56, 55.95), true);
+        assertEquals(-470928.890965, r.x, M_EPSLN, "first (north) = ECEF Y");
+        assertEquals(3548342.473034, r.y, M_EPSLN, "second (east) = ECEF X");
+        assertEquals(5261327.157452, r.z, M_EPSLN, "third (up) = computed ECEF Z, not 0");
+    }
+
+    @Test
+    void testMeasureAndArrayArityPreserved() {
+        // Mirrors proj4js's transformer adapter (lib/core.js): the measure survives,
+        // and a 3-component array through a geocentric CRS keeps 3 components even
+        // when a coordinate is 0 (Point.toArray would collapse z == 0).
+        Converter conv = Proj4.proj4(WGS84, GEOCENT);
+        Point in = new Point(-7.56, 55.95, 0);
+        in.m = 999;
+        Point out = conv.forward(in);
+        assertEquals(999, out.m, 0, "measure preserved");
+
+        double[] arr = conv.inverse(new double[] {6378137, 0, 0});
+        assertEquals(3, arr.length, "3-component array keeps arity through geocent");
+        assertEquals(0, arr[0], 1e-9, "lon");
+        assertEquals(0, arr[1], 1e-9, "lat");
+        assertEquals(0, arr[2], 1e-6, "height 0 kept as third component");
+    }
+
+    @Test
     void testSerializationRoundTrip() {
         // Proj-string only: geocentric CRSs use GEOCCS/GeodeticCRS WKT structures the
         // serializer does not emit (it writes projected-CRS WKT).
