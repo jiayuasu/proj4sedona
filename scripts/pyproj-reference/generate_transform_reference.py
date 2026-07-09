@@ -109,6 +109,15 @@ def get_projection_coverage_pairs() -> List[Dict[str, Any]]:
             "test_points": _pts((102.25, 4.0), (102.5, 4.2), (101.7, 3.06), (103.5, 5.5)),
         },
         {
+            # Gauss Laborde Reunion; international ellipsoid source keeps the
+            # comparison pure projection math (no datum leg).
+            "name": "proj_gstmerc",
+            "from_crs": "+proj=longlat +ellps=intl +no_defs",
+            "to_crs": "+proj=gstmerc +lat_0=-21.116666667 +lon_0=55.53333333 +k_0=1 +x_0=160000 +y_0=50000 +ellps=intl +units=m +no_defs",
+            "desc": "Gauss-Schreiber Transverse Mercator (Reunion)",
+            "test_points": _pts((55.53333333, -21.116666667), (55.5, -21.1), (55.7, -21.3), (55.3, -20.9)),
+        },
+        {
             "name": "proj_cass",
             "from_crs": "EPSG:4326",
             "to_crs": "+proj=cass +lat_0=11.25217861111111 +lon_0=-60.68600888888889 +x_0=187500 +y_0=180000 +datum=WGS84 +units=m +no_defs",
