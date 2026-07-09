@@ -61,6 +61,19 @@ public final class Transform {
     }
 
     /**
+     * Canonical geocentric identity: matches any registered alias of the Geocentric
+     * projection (geocent/geocentric/Geocent/Geocentric), not just the raw "geocent"
+     * spelling (mirrors proj4js, whose geocent init sets a canonical name).
+     */
+    private static boolean isGeocent(ProjectionParams params) {
+        if (params.projName == null) {
+            return false;
+        }
+        String n = params.projName.toLowerCase(java.util.Locale.ROOT);
+        return "geocent".equals(n) || "geocentric".equals(n);
+    }
+
+    /**
      * Check if transformation through WGS84 is needed for datum shift.
      * 
      * <p>This is required when both source and destination have datum shift
@@ -71,19 +84,6 @@ public final class Transform {
      * @param dest Destination projection parameters
      * @return true if WGS84 intermediate transformation is needed
      */
-    /**
-     * Canonical geocentric identity: matches any registered alias of the Geocentric
-     * projection (geocent/geocentric/Geocent/Geocentric), not just the raw "geocent"
-     * spelling (mirrors proj4js, whose geocent init sets a canonical name).
-     */
-    private static boolean isGeocent(ProjectionParams params) {
-        if (params.projName == null) {
-            return false;
-        }
-        String n = params.projName.toLowerCase();
-        return "geocent".equals(n) || "geocentric".equals(n);
-    }
-
     private static boolean checkNotWGS(ProjectionParams source, ProjectionParams dest) {
         DatumParams srcDatum = source.datum;
         DatumParams destDatum = dest.datum;
@@ -234,8 +234,7 @@ public final class Transform {
 
         // Reset z if it wasn't in the original input — except when the destination is
         // geocentric, where z is a computed coordinate even for 2D input (proj4js
-        // 0ee1202). Inert until the geocent projection is ported, but guarded now so a
-        // future port does not silently zero the computed Z.
+        // 0ee1202).
         if (p != null && !hasZ && !isGeocent(destParams)) {
             p.z = 0;
         }

@@ -125,7 +125,7 @@ public class Converter {
         if (n == null) {
             return false;
         }
-        n = n.toLowerCase();
+        n = n.toLowerCase(java.util.Locale.ROOT);
         return "geocent".equals(n) || "geocentric".equals(n);
     }
 
