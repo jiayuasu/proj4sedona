@@ -127,6 +127,63 @@ public final class ProjMath {
     }
 
     /**
+     * Compute the isometric latitude.
+     * Mirrors: lib/common/latiso.js
+     *
+     * @param eccent Eccentricity of the ellipsoid (0 for the sphere form)
+     * @param phi Latitude in radians
+     * @param sinphi Sine of the latitude
+     * @return Isometric latitude (NaN beyond ±90°, ±Infinity at the poles)
+     */
+    public static double latiso(double eccent, double phi, double sinphi) {
+        if (Math.abs(phi) > Values.HALF_PI) {
+            return Double.NaN;
+        }
+        if (phi == Values.HALF_PI) {
+            return Double.POSITIVE_INFINITY;
+        }
+        if (phi == -Values.HALF_PI) {
+            return Double.NEGATIVE_INFINITY;
+        }
+
+        double con = eccent * sinphi;
+        return Math.log(Math.tan((Values.HALF_PI + phi) / 2))
+            + eccent * Math.log((1 - con) / (1 + con)) / 2;
+    }
+
+    /**
+     * Latitude from isometric latitude, single step.
+     * Mirrors: lib/common/fL.js
+     *
+     * @param x Multiplier
+     * @param L Isometric latitude
+     * @return Latitude in radians
+     */
+    public static double fL(double x, double L) {
+        return 2 * Math.atan(x * Math.exp(L)) - Values.HALF_PI;
+    }
+
+    /**
+     * Invert the isometric latitude iteratively.
+     * Mirrors: lib/common/invlatiso.js
+     *
+     * @param eccent Eccentricity of the ellipsoid
+     * @param ts Isometric latitude
+     * @return Latitude in radians
+     */
+    public static double invlatiso(double eccent, double ts) {
+        double phi = fL(1, ts);
+        double iPhi;
+        double con;
+        do {
+            iPhi = phi;
+            con = eccent * Math.sin(iPhi);
+            phi = fL(Math.exp(eccent * Math.log((1 + con) / (1 - con)) / 2), ts);
+        } while (Math.abs(phi - iPhi) > 1.0e-12);
+        return phi;
+    }
+
+    /**
      * Compute the latitude angle, phi2, for the inverse of various projections.
      * Mirrors: lib/common/phi2z.js
      *

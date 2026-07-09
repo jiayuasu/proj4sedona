@@ -156,6 +156,7 @@ public final class ProjectionRegistry {
         add(ObliqueMercator::new);
         add(CassiniSoldner::new);
         add(MillerCylindrical::new);
+        add(GaussSchreiberTransverseMercator::new);
 
         // Conic projections
         add(LambertConformalConic::new);
