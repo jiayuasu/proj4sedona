@@ -281,6 +281,15 @@ def get_projection_coverage_pairs() -> List[Dict[str, Any]]:
         },
         # --- Miscellaneous ---
         {
+            # ECEF X/Y compared (the shared reference format is 2D; Z is covered by
+            # unit tests). 2D input -> geocentric requires keeping the computed Z.
+            "name": "proj_geocent",
+            "from_crs": "EPSG:4326",
+            "to_crs": "+proj=geocent +datum=WGS84 +units=m +no_defs",
+            "desc": "Geocentric (ECEF)",
+            "test_points": _pts((-7.56, 55.95), (2.35, 48.85), (139.69, 35.69)),
+        },
+        {
             "name": "proj_geos_y",
             "from_crs": "EPSG:4326",
             "to_crs": "+proj=geos +h=35785831 +sweep=y +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs",
