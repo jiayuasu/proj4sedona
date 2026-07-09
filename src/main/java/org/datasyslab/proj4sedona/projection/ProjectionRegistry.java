@@ -185,6 +185,7 @@ public final class ProjectionRegistry {
 
         // Miscellaneous projections
         add(Geostationary::new);
+        add(NewZealandMapGrid::new);
     }
 
     /**

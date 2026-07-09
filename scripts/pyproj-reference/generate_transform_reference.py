@@ -271,6 +271,14 @@ def get_projection_coverage_pairs() -> List[Dict[str, Any]]:
             "to_crs": "+proj=eck6 +lon_0=0 +x_0=0 +y_0=0 +a=6371007 +b=6371007 +units=m +no_defs",
             "desc": "Eckert VI (sphere)",
         },
+        {
+            # International-ellipsoid source keeps the comparison pure projection math.
+            "name": "proj_nzmg",
+            "from_crs": "+proj=longlat +ellps=intl +no_defs",
+            "to_crs": "+proj=nzmg +lat_0=-41 +lon_0=173 +x_0=2510000 +y_0=6023150 +ellps=intl +units=m +no_defs",
+            "desc": "New Zealand Map Grid",
+            "test_points": _pts((173.0, -41.0), (174.7645, -36.8509), (170.5036, -45.8742), (172.6362, -43.5321)),
+        },
         # --- Miscellaneous ---
         {
             "name": "proj_geos_y",
