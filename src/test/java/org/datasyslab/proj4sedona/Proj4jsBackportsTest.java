@@ -1,0 +1,193 @@
+package org.datasyslab.proj4sedona;
+
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.datasyslab.proj4sedona.constants.Values;
+import org.datasyslab.proj4sedona.core.Point;
+import org.datasyslab.proj4sedona.core.Proj;
+import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
+import org.datasyslab.proj4sedona.transform.Converter;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Regression tests for patches backported from proj4js (one test per upstream
+ * commit; reference values verified against pyproj/PROJ 9.5.1).
+ */
+class Proj4jsBackportsTest {
+
+    private static final String WGS84 = "+proj=longlat +datum=WGS84 +no_defs";
+
+    @BeforeAll
+    static void setup() {
+        ProjectionRegistry.start();
+    }
+
+    @Test
+    @DisplayName("proj4js 61689a9: unknown datum is NODATUM, not WGS84")
+    void testUnknownDatumHandling() {
+        // A sphere CRS with no datum/towgs84 (ESRI 53003-style) must not receive a
+        // spurious datum shift. Reference from pyproj (matches upstream post-patch).
+        Converter conv = Proj4.proj4(WGS84,
+            "+proj=mill +lon_0=0 +x_0=0 +y_0=0 +a=6371000 +b=6371000 +units=m +no_defs");
+        Point xy = conv.forward(new Point(-1.3973289073953, 12.649176474268513));
+        assertEquals(-155375.885356, xy.x, 0.01, "easting");
+        assertEquals(1413894.115522, xy.y, 0.01, "northing");
+
+        // Datum types: unknown/unnamed -> NODATUM; +datum=WGS84 (towgs84 0,0,0) -> WGS84
+        Proj unknown = new Proj("+proj=mill +lon_0=0 +a=6371000 +b=6371000 +units=m +no_defs");
+        assertEquals(Values.PJD_NODATUM, unknown.getParams().datum.getDatumType(),
+            "unknown datum must be NODATUM");
+        Proj wgs = new Proj("+proj=merc +datum=WGS84 +no_defs");
+        assertEquals(Values.PJD_WGS84, wgs.getParams().datum.getDatumType(),
+            "+datum=WGS84 must stay WGS84");
+    }
+
+    @Test
+    @DisplayName("proj4js 8c538fc: south-polar LCC (lat_0=-90) no longer yields Infinity")
+    void testPolarLccSouthPole() {
+        // With the polar guard on ts0 instead of rh, ns < 0 made pow(0, ns) infinite
+        // and every transform returned Infinity/NaN. Reference from pyproj.
+        Converter conv = Proj4.proj4(WGS84,
+            "+proj=lcc +lat_0=-90.0 +lon_0=81.0 +lat_1=-72.66666666666674 "
+                + "+lat_2=-75.3333333333334 +x_0=0.0 +y_0=0.0 +ellps=GRS80 +no_defs");
+        Point xy = conv.forward(new Point(90, -70));
+        assertEquals(343065.915037, xy.x, 0.01, "easting");
+        assertEquals(2254539.657076, xy.y, 0.01, "northing");
+
+        Point ll = conv.inverse(new Point(xy.x, xy.y));
+        assertEquals(90, ll.x, 1e-6, "lng round-trip");
+        assertEquals(-70, ll.y, 1e-6, "lat round-trip");
+    }
+
+    @Test
+    @DisplayName("proj4js 04bd414: aeqd applies x_0/y_0 in the ellipsoidal general case")
+    void testAeqdFalseEastingNorthing() {
+        // The general (Vincenty) branch omitted x0/y0 while the inverse subtracted
+        // them, so offset aeqd CRSs were shifted and did not round-trip.
+        // Reference from proj4js testData (matches pyproj).
+        Converter conv = Proj4.proj4(WGS84,
+            "+proj=aeqd +lat_0=51.5 +lon_0=0 +x_0=100000 +y_0=200000 +datum=WGS84 +units=m +no_defs");
+        Point xy = conv.forward(new Point(2, 48));
+        assertEquals(249325.62485355, xy.x, 0.01, "easting");
+        assertEquals(-187277.841415147, xy.y, 0.01, "northing");
+
+        Point ll = conv.inverse(new Point(xy.x, xy.y));
+        assertEquals(2, ll.x, 1e-6, "lng round-trip");
+        assertEquals(48, ll.y, 1e-6, "lat round-trip");
+
+        // Projection center maps to the false origin.
+        Point center = conv.forward(new Point(0, 51.5));
+        assertEquals(100000, center.x, 0.01, "center easting = x_0");
+        assertEquals(200000, center.y, 0.01, "center northing = y_0");
+    }
+
+    @Test
+    @DisplayName("proj4js c5bb8e1: enforceAxis respects the vertical axis (enu -> ned)")
+    void testEnforceAxisVertical() {
+        Point r = org.datasyslab.proj4sedona.transform.Transform.transform(
+            new Proj("+proj=longlat +ellps=WGS84 +datum=WGS84 +axis=enu"),
+            new Proj("+proj=longlat +ellps=WGS84 +datum=WGS84 +axis=ned"),
+            new Point(10, 20, 30), true);
+        assertEquals(20, r.x, 1e-9, "first (north) is input y");
+        assertEquals(10, r.y, 1e-9, "second (east) is input x");
+        assertEquals(-30, r.z, 1e-9, "third (down) negates input z");
+    }
+
+    @Test
+    @DisplayName("proj4js c5bb8e1: enforceAxis handles arbitrary axis orders (neu -> uen)")
+    void testEnforceAxisArbitraryOrder() {
+        Point r1 = org.datasyslab.proj4sedona.transform.Transform.transform(
+            new Proj("+proj=longlat +axis=neu"),
+            new Proj("+proj=longlat +axis=uen"),
+            new Point(10, 20, 30), true);
+        assertEquals(30, r1.x, 1e-9, "neu->uen: first (up) is input up");
+        assertEquals(20, r1.y, 1e-9, "neu->uen: second (east) is input east");
+        assertEquals(10, r1.z, 1e-6, "neu->uen: third (north) is input north");
+
+        Point r2 = org.datasyslab.proj4sedona.transform.Transform.transform(
+            new Proj("+proj=longlat +axis=uen"),
+            new Proj("+proj=longlat +axis=uen"),
+            new Point(10, 20, 30), true);
+        assertEquals(10, r2.x, 1e-9, "uen->uen: round-trip preserves first");
+        assertEquals(20, r2.y, 1e-9, "uen->uen: round-trip preserves second");
+        assertEquals(30, r2.z, 1e-6, "uen->uen: round-trip preserves third");
+    }
+
+    @Test
+    @DisplayName("proj4js bad16a6/39e7abc: +lon_wrap wraps output longitude")
+    void testLonWrap() {
+        // +lon_wrap=180 requests the 0..360 longitude range (common for global
+        // climate/ocean datasets). Mirrors the upstream test: -170 -> 190.
+        Converter wrapped = Proj4.proj4(WGS84,
+            "+proj=longlat +datum=WGS84 +lon_wrap=180 +no_defs");
+        assertEquals(190, wrapped.forward(new Point(-170, 40)).x, 1e-9, "-170 wraps to 190");
+        assertEquals(180, wrapped.forward(new Point(-180, 10)).x, 1e-9, "-180 wraps to 180");
+        assertEquals(10, wrapped.forward(new Point(10, 10)).x, 1e-9, "10 stays 10");
+
+        // Without lon_wrap, longitudes stay in -180..180.
+        Converter plain = Proj4.proj4(WGS84, "+proj=longlat +datum=WGS84 +no_defs");
+        assertEquals(-170, plain.forward(new Point(-170, 40)).x, 1e-9, "-170 stays -170");
+
+        // +lon_wrap must survive proj-string serialization: re-importing the
+        // serialized CRS keeps the wrapping behavior.
+        String serialized = org.datasyslab.proj4sedona.parser.CRSSerializer.toProjString(
+            new Proj("+proj=longlat +datum=WGS84 +lon_wrap=180 +no_defs"));
+        assertTrue(serialized.contains("+lon_wrap=180"), "serialized keeps +lon_wrap: " + serialized);
+        Converter reimported = Proj4.proj4(WGS84, serialized);
+        assertEquals(190, reimported.forward(new Point(-170, 40)).x, 1e-9,
+            "wrap behavior preserved after serialize/re-import");
+    }
+
+    @Test
+    @DisplayName("proj4js 1a3b130: Defs.set accepts PROJJSON (and WKT) definitions")
+    void testDefsProjJsonRegistration() {
+        // Mirrors upstream test/test.js: registering a PROJJSON geographic CRS under a
+        // code must parse it (projName longlat), not store/reject the raw document.
+        String projjson = "{\"$schema\":\"https://proj.org/schemas/v0.7/projjson.schema.json\","
+            + "\"type\":\"GeographicCRS\",\"name\":\"NAD83\","
+            + "\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"North American Datum 1983\","
+            + "\"ellipsoid\":{\"name\":\"GRS 1980\",\"semi_major_axis\":6378137,\"inverse_flattening\":298.257222101}},"
+            + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":["
+            + "{\"name\":\"Geodetic latitude\",\"abbreviation\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
+            + "{\"name\":\"Geodetic longitude\",\"abbreviation\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"}]},"
+            + "\"id\":{\"authority\":\"EPSG\",\"code\":4269}}";
+        try {
+            org.datasyslab.proj4sedona.defs.Defs.set("TEST:PROJJSON", projjson);
+            org.datasyslab.proj4sedona.core.ProjectionDef def =
+                org.datasyslab.proj4sedona.defs.Defs.get("TEST:PROJJSON");
+            assertNotNull(def, "PROJJSON definition registered");
+            assertEquals("longlat", def.getProjName(), "PROJJSON parsed to longlat");
+
+            // WKT registration through the same entry point.
+            org.datasyslab.proj4sedona.defs.Defs.set("TEST:WKT",
+                "GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563]],"
+                    + "PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433]]");
+            assertNotNull(org.datasyslab.proj4sedona.defs.Defs.get("TEST:WKT"), "WKT definition registered");
+        } finally {
+            org.datasyslab.proj4sedona.defs.Defs.set("TEST:PROJJSON", (String) null);
+            org.datasyslab.proj4sedona.defs.Defs.set("TEST:WKT", (String) null);
+        }
+    }
+
+    @Test
+    @DisplayName("Defs.set normalizes authority codes and tolerates blank definitions")
+    void testDefsSetNormalization() {
+        try {
+            // set with a lowercase authority must be retrievable via the normalized code
+            // (get()/has()/remove() normalize; set() must match or providers shadow it).
+            org.datasyslab.proj4sedona.defs.Defs.set("test:norm86",
+                "+proj=longlat +datum=WGS84 +no_defs");
+            assertNotNull(org.datasyslab.proj4sedona.defs.Defs.get("TEST:norm86"),
+                "lowercase-authority registration found via normalized code");
+
+            // Whitespace-only definition behaves like empty (delete), not an exception.
+            org.datasyslab.proj4sedona.defs.Defs.set("TEST:norm86", "   ");
+            assertFalse(org.datasyslab.proj4sedona.defs.Defs.has("TEST:norm86"),
+                "whitespace-only definition removes the entry");
+        } finally {
+            org.datasyslab.proj4sedona.defs.Defs.set("TEST:norm86", (String) null);
+        }
+    }
+}

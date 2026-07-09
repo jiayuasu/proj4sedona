@@ -138,6 +138,9 @@ public class ProjectionParams {
     /** Oblique Mercator without rectification rotation (+no_rot) */
     public Boolean noRot;
 
+    /** Center of the longitude wrapping range in radians (+lon_wrap) */
+    public Double longWrap;
+
     /** Satellite height in meters (+h) - used by the Geostationary projection */
     public Double h;
 

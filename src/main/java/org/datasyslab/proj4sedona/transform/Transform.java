@@ -5,6 +5,7 @@ import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.datum.DatumTransform;
+import org.datasyslab.proj4sedona.common.ProjMath;
 import org.datasyslab.proj4sedona.projection.ProjectionParams;
 
 /**
@@ -143,7 +144,7 @@ public final class Transform {
 
         // Step 2: Adjust for source axis order (e.g., "neu" to "enu")
         if (enforceAxis && srcParams.axis != null && !"enu".equals(srcParams.axis)) {
-            p = AdjustAxis.adjust(srcParams.axis, false, p, hasZ);
+            p = AdjustAxis.adjustAxisToEnu(srcParams.axis, p, hasZ);
             if (p == null) {
                 return null;
             }
@@ -186,6 +187,11 @@ public final class Transform {
 
         // Step 7: Transform geodetic to destination coordinates
         if ("longlat".equals(destParams.projName)) {
+            // Wrap longitude into the range centered on longWrap, if requested
+            // (+lon_wrap). Mirrors lib/transform.js (proj4js bad16a6 + 39e7abc).
+            if (destParams.longWrap != null) {
+                p.x = destParams.longWrap + ProjMath.adjustLon(p.x - destParams.longWrap);
+            }
             // Convert radians to degrees
             p = new Point(p.x * Values.R2D, p.y * Values.R2D, p.z);
             p.m = point.m;
@@ -203,11 +209,14 @@ public final class Transform {
 
         // Step 8: Adjust for destination axis order (e.g., "enu" to "neu")
         if (enforceAxis && destParams.axis != null && !"enu".equals(destParams.axis)) {
-            p = AdjustAxis.adjust(destParams.axis, true, p, hasZ);
+            p = AdjustAxis.adjustAxisFromEnu(destParams.axis, p, hasZ);
         }
 
-        // Reset z if it wasn't in the original input
-        if (p != null && !hasZ) {
+        // Reset z if it wasn't in the original input — except when the destination is
+        // geocentric, where z is a computed coordinate even for 2D input (proj4js
+        // 0ee1202). Inert until the geocent projection is ported, but guarded now so a
+        // future port does not silently zero the computed Z.
+        if (p != null && !hasZ && !"geocent".equals(destParams.projName)) {
             p.z = 0;
         }
 
