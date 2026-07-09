@@ -141,8 +141,14 @@ public class ProjectionParams {
     /** Center of the longitude wrapping range in radians (+lon_wrap) */
     public Double longWrap;
 
-    /** Satellite height in meters (+h) - used by the Geostationary projection */
+    /** Satellite/view height in meters (+h) - Geostationary, Tilted Perspective */
     public Double h;
+
+    /** Camera tilt from nadir in radians (+tilt) - Tilted Perspective */
+    public Double tilt;
+
+    /** Camera azimuth from north in radians (+azi) - Tilted Perspective */
+    public Double azi;
 
     /** Sweep axis "x" or "y" (+sweep) - used by the Geostationary projection */
     public String sweep;

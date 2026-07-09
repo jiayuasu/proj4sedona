@@ -61,7 +61,9 @@ public class ProjectionDef {
     private Boolean noUoff;        // no_uoff / no_off: Oblique Mercator without origin offset (variant A)
     private Boolean noRot;         // no_rot: Oblique Mercator without rectification rotation
     private Double longWrap;       // lon_wrap: center of longitude wrapping range
-    private Double h;              // h: satellite height (Geostationary)
+    private Double h;              // h: satellite/view height (Geostationary, Tilted Perspective)
+    private Double tilt;           // tilt: camera tilt from nadir (Tilted Perspective)
+    private Double azi;            // azi: camera azimuth from north (Tilted Perspective)
     private String sweep;          // sweep: sweep axis 'x' or 'y' (Geostationary)
 
     // Datum object (populated after parsing)
@@ -190,6 +192,12 @@ public class ProjectionDef {
 
     public Double getH() { return h; }
     public void setH(Double h) { this.h = h; }
+
+    public Double getTilt() { return tilt; }
+    public void setTilt(Double tilt) { this.tilt = tilt; }
+
+    public Double getAzi() { return azi; }
+    public void setAzi(Double azi) { this.azi = azi; }
 
     public String getSweep() { return sweep; }
     public void setSweep(String sweep) { this.sweep = sweep; }

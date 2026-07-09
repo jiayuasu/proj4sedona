@@ -173,6 +173,7 @@ public final class ProjectionRegistry {
         add(AzimuthalEquidistant::new);
         add(Gnomonic::new);
         add(Orthographic::new);
+        add(TiltedPerspective::new);
 
         // Pseudocylindrical projections
         add(Sinusoidal::new);
