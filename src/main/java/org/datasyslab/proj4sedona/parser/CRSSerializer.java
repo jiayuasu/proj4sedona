@@ -315,6 +315,13 @@ public final class CRSSerializer {
         if (params.sweep != null) {
             sb.append(" +sweep=").append(params.sweep);
         }
+        // Tilted Perspective (tpers) defining parameters
+        if (params.tilt != null) {
+            sb.append(" +tilt=").append(formatAngle(params.tilt * RAD_TO_DEG));
+        }
+        if (params.azi != null) {
+            sb.append(" +azi=").append(formatAngle(params.azi * RAD_TO_DEG));
+        }
 
         // Ellipsoid parameters
         appendEllipsoidParams(sb, params);

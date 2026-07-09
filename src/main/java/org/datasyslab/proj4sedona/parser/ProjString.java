@@ -179,6 +179,12 @@ public final class ProjString {
             case "h":
                 def.setH(parseDouble(paramVal));
                 break;
+            case "tilt":
+                def.setTilt(parseDouble(paramVal) * Values.D2R);
+                break;
+            case "azi":
+                def.setAzi(parseDouble(paramVal) * Values.D2R);
+                break;
             case "sweep":
                 def.setSweep(paramVal);
                 break;

@@ -296,6 +296,8 @@ public class Proj {
         p.noUoff = def.getNoUoff();
         p.noRot = def.getNoRot();
         p.h = def.getH();
+        p.tilt = def.getTilt();
+        p.azi = def.getAzi();
         p.longWrap = def.getLongWrap();
         p.sweep = def.getSweep();
 

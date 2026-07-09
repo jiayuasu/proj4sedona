@@ -224,6 +224,13 @@ def get_projection_coverage_pairs() -> List[Dict[str, Any]]:
             "desc": "Orthographic (sphere)",
             "test_points": _pts((5.0, 50.0), (-3.0, 44.0), (2.0, 47.0), (10.0, 40.0)),
         },
+        {
+            "name": "proj_tpers",
+            "from_crs": "EPSG:4326",
+            "to_crs": "+proj=tpers +lat_0=40 +lon_0=-100 +h=5500000 +tilt=30 +azi=20 +a=6378137 +b=6378137 +units=m +no_defs",
+            "desc": "Tilted Perspective (oblique, sphere)",
+            "test_points": _pts((-100.0, 40.0), (-95.0, 42.0), (-105.0, 35.0)),
+        },
         # --- Pseudocylindrical / world ---
         {
             "name": "proj_sinu",
