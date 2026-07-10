@@ -369,11 +369,26 @@ public final class CRSSerializer {
             }
         }
 
-        // Units
-        if (params.units != null && !"m".equals(params.units)) {
-            sb.append(" +units=").append(params.units);
-        } else if (params.toMeter != null && params.toMeter != 1.0) {
-            sb.append(" +to_meter=").append(params.toMeter);
+        // Units. Mirrors PROJ's CRS export (crs.cpp / UnitOfMeasure::exportToPROJString),
+        // which branches on the unit's kind; the CRS kind is the reliable proxy here.
+        // A geographic CRS's unit is angular by definition and implicit in
+        // +proj=longlat — PROJ emits no unit token for any angular unit (degree,
+        // grad, microradian, ...) and drops even an explicit +units= on longlat;
+        // only a bare +to_meter= override is preserved verbatim. For projected and
+        // geocentric CRSs +units= takes only pj_units short codes, so WKT/PROJJSON
+        // authority unit names resolve by conversion factor against the unit table,
+        // and an unmatched linear factor falls back to +to_meter=.
+        if ("longlat".equals(normProj)) {
+            if (params.units == null && params.toMeter != null && params.toMeter != 1.0) {
+                sb.append(" +to_meter=").append(params.toMeter);
+            }
+        } else {
+            String unitCode = toProjUnitCode(params.units, params.toMeter);
+            if (unitCode != null && !"m".equals(unitCode)) {
+                sb.append(" +units=").append(unitCode);
+            } else if (unitCode == null && params.toMeter != null && params.toMeter != 1.0) {
+                sb.append(" +to_meter=").append(params.toMeter);
+            }
         }
 
         // Prime meridian offset
@@ -1651,11 +1666,34 @@ public final class CRSSerializer {
                 || "bonne".equals(proj);
     }
 
+    /**
+     * Resolve a stored unit to a PROJ +units= short code, as PROJ's CRS export does:
+     * known short codes pass through, metre spellings fold to "m", and other linear
+     * units are matched by conversion factor (1e-10 relative) against the unit table.
+     * Returns null when no short code applies. Only meaningful for projected and
+     * geocentric CRSs — geographic CRS units are angular and never emitted.
+     */
+    private static String toProjUnitCode(String units, Double toMeter) {
+        if (units != null) {
+            if (Units.contains(units)) {
+                return units;
+            }
+            if ("meter".equals(units) || "metre".equals(units)) {
+                return "m";
+            }
+        }
+        if (toMeter != null) {
+            return Units.fromToMeter(toMeter);
+        }
+        return null;
+    }
+
     private static String getUnitName(String unitCode) {
         if (unitCode == null) return "metre";
         
         switch (unitCode) {
             case "m": return "metre";
+            case "meter": return "metre";
             case "ft": return "foot";
             case "us-ft": return "US survey foot";
             case "km": return "kilometre";
