@@ -144,6 +144,31 @@ public class ProjectionParams {
     /** Satellite/view height in meters (+h) - Geostationary, Tilted Perspective */
     public Double h;
 
+    /** Full original PROJ string, when the CRS was parsed from one (else null) */
+    public String projStr;
+
+    /** Inner projection name (+o_proj) - General Oblique Transformation */
+    public String oProj;
+
+    /** New pole latitude in radians (+o_lat_p) - ob_tran */
+    public Double oLatP;
+    /** New pole longitude in radians (+o_lon_p) - ob_tran */
+    public Double oLonP;
+    /** Rotation angle in radians (+o_alpha) - ob_tran */
+    public Double oAlpha;
+    /** Rotation center longitude in radians (+o_lon_c) - ob_tran */
+    public Double oLonC;
+    /** Rotation center latitude in radians (+o_lat_c) - ob_tran */
+    public Double oLatC;
+    /** First new-equator point longitude in radians (+o_lon_1) - ob_tran */
+    public Double oLon1;
+    /** First new-equator point latitude in radians (+o_lat_1) - ob_tran */
+    public Double oLat1;
+    /** Second new-equator point longitude in radians (+o_lon_2) - ob_tran */
+    public Double oLon2;
+    /** Second new-equator point latitude in radians (+o_lat_2) - ob_tran */
+    public Double oLat2;
+
     /** Camera tilt from nadir in radians (+tilt) - Tilted Perspective */
     public Double tilt;
 

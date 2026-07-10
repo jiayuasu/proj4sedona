@@ -188,6 +188,7 @@ public final class ProjectionRegistry {
         add(NewZealandMapGrid::new);
         add(Geocentric::new);
         add(QuadrilateralizedSphericalCube::new);
+        add(GeneralObliqueTransformation::new);
     }
 
     /**

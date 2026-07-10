@@ -290,6 +290,15 @@ def get_projection_coverage_pairs() -> List[Dict[str, Any]]:
             "test_points": _pts((-7.56, 55.95), (2.35, 48.85), (139.69, 35.69)),
         },
         {
+            # Meta-projection wrapping Mollweide (the o_proj=longlat identity mode is
+            # excluded: proj4js/proj4sedona output degrees there, PROJ outputs radians).
+            "name": "proj_ob_tran",
+            "from_crs": "EPSG:4326",
+            "to_crs": "+proj=ob_tran +o_proj=moll +o_lat_p=45 +o_lon_p=-90 +datum=WGS84 +no_defs",
+            "desc": "General Oblique Transformation (moll inner)",
+            "test_points": _pts((-2.0, -1.0), (20.0, 11.0), (-105.0, 40.0)),
+        },
+        {
             "name": "proj_qsc_front",
             "from_crs": "EPSG:4326",
             "to_crs": "+proj=qsc +lat_0=0 +lon_0=0 +units=m +datum=WGS84 +no_defs",

@@ -48,6 +48,9 @@ public class Krovak implements Projection {
         if (this.long0 == 0) {
             this.long0 = 0.7417649320975901 - 0.308341501185665;
         }
+        // Persist the resolved central meridian (like UTM's zone-derived long0), so
+        // wrappers such as ob_tran can compensate for it.
+        params.long0 = this.long0;
         // Krovak's scale factor is 0.9999. proj4js defaults it when +k is omitted;
         // ProjectionParams cannot distinguish "omitted" from "k=1" (both surface as the
         // 1.0 default), and k=1 is not a real Krovak definition, so treat 1.0/0 as unset.

@@ -315,6 +315,37 @@ public final class CRSSerializer {
         if (params.sweep != null) {
             sb.append(" +sweep=").append(params.sweep);
         }
+        // General Oblique Transformation (ob_tran) defining parameters
+        if (params.oProj != null) {
+            sb.append(" +o_proj=").append(params.oProj);
+        }
+        if (params.oLatP != null) {
+            sb.append(" +o_lat_p=").append(formatAngle(params.oLatP * RAD_TO_DEG));
+        }
+        if (params.oLonP != null) {
+            sb.append(" +o_lon_p=").append(formatAngle(params.oLonP * RAD_TO_DEG));
+        }
+        if (params.oAlpha != null) {
+            sb.append(" +o_alpha=").append(formatAngle(params.oAlpha * RAD_TO_DEG));
+        }
+        if (params.oLonC != null) {
+            sb.append(" +o_lon_c=").append(formatAngle(params.oLonC * RAD_TO_DEG));
+        }
+        if (params.oLatC != null) {
+            sb.append(" +o_lat_c=").append(formatAngle(params.oLatC * RAD_TO_DEG));
+        }
+        if (params.oLon1 != null) {
+            sb.append(" +o_lon_1=").append(formatAngle(params.oLon1 * RAD_TO_DEG));
+        }
+        if (params.oLat1 != null) {
+            sb.append(" +o_lat_1=").append(formatAngle(params.oLat1 * RAD_TO_DEG));
+        }
+        if (params.oLon2 != null) {
+            sb.append(" +o_lon_2=").append(formatAngle(params.oLon2 * RAD_TO_DEG));
+        }
+        if (params.oLat2 != null) {
+            sb.append(" +o_lat_2=").append(formatAngle(params.oLat2 * RAD_TO_DEG));
+        }
         // Tilted Perspective (tpers) defining parameters
         if (params.tilt != null) {
             sb.append(" +tilt=").append(formatAngle(params.tilt * RAD_TO_DEG));
@@ -406,6 +437,10 @@ public final class CRSSerializer {
     public static String toWkt1(ProjectionParams params) {
         if (params == null) {
             return null;
+        }
+        if ("ob_tran".equals(params.projName)) {
+            throw new UnsupportedOperationException(
+                "ob_tran has no standard WKT1 representation; use toProjString instead");
         }
 
         StringBuilder sb = new StringBuilder();
@@ -600,6 +635,10 @@ public final class CRSSerializer {
     public static String toWkt2(ProjectionParams params) {
         if (params == null) {
             return null;
+        }
+        if ("ob_tran".equals(params.projName)) {
+            throw new UnsupportedOperationException(
+                "ob_tran has no standard WKT2 representation; use toProjString instead");
         }
 
         StringBuilder sb = new StringBuilder();
@@ -841,6 +880,10 @@ public final class CRSSerializer {
     public static String toProjJson(ProjectionParams params, boolean prettyPrint) {
         if (params == null) {
             return null;
+        }
+        if ("ob_tran".equals(params.projName)) {
+            throw new UnsupportedOperationException(
+                "ob_tran has no standard PROJJSON representation; use toProjString instead");
         }
 
         Map<String, Object> json = toProjJsonMap(params);

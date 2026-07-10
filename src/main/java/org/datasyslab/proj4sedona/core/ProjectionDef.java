@@ -62,6 +62,17 @@ public class ProjectionDef {
     private Boolean noRot;         // no_rot: Oblique Mercator without rectification rotation
     private Double longWrap;       // lon_wrap: center of longitude wrapping range
     private Double h;              // h: satellite/view height (Geostationary, Tilted Perspective)
+    private String projStr;        // full original PROJ string (when parsed from one)
+    private String oProj;          // o_proj: inner projection (General Oblique Transformation)
+    private Double oLatP;          // o_lat_p: latitude of new pole (ob_tran)
+    private Double oLonP;          // o_lon_p: longitude of new pole (ob_tran)
+    private Double oAlpha;         // o_alpha: rotation angle (ob_tran)
+    private Double oLonC;          // o_lon_c: rotation center longitude (ob_tran)
+    private Double oLatC;          // o_lat_c: rotation center latitude (ob_tran)
+    private Double oLon1;          // o_lon_1: first new-equator point longitude (ob_tran)
+    private Double oLat1;          // o_lat_1: first new-equator point latitude (ob_tran)
+    private Double oLon2;          // o_lon_2: second new-equator point longitude (ob_tran)
+    private Double oLat2;          // o_lat_2: second new-equator point latitude (ob_tran)
     private Double tilt;           // tilt: camera tilt from nadir (Tilted Perspective)
     private Double azi;            // azi: camera azimuth from north (Tilted Perspective)
     private String sweep;          // sweep: sweep axis 'x' or 'y' (Geostationary)
@@ -192,6 +203,31 @@ public class ProjectionDef {
 
     public Double getH() { return h; }
     public void setH(Double h) { this.h = h; }
+
+    public String getProjStr() { return projStr; }
+    public void setProjStr(String projStr) { this.projStr = projStr; }
+
+    public String getOProj() { return oProj; }
+    public void setOProj(String oProj) { this.oProj = oProj; }
+
+    public Double getOLatP() { return oLatP; }
+    public void setOLatP(Double v) { this.oLatP = v; }
+    public Double getOLonP() { return oLonP; }
+    public void setOLonP(Double v) { this.oLonP = v; }
+    public Double getOAlpha() { return oAlpha; }
+    public void setOAlpha(Double v) { this.oAlpha = v; }
+    public Double getOLonC() { return oLonC; }
+    public void setOLonC(Double v) { this.oLonC = v; }
+    public Double getOLatC() { return oLatC; }
+    public void setOLatC(Double v) { this.oLatC = v; }
+    public Double getOLon1() { return oLon1; }
+    public void setOLon1(Double v) { this.oLon1 = v; }
+    public Double getOLat1() { return oLat1; }
+    public void setOLat1(Double v) { this.oLat1 = v; }
+    public Double getOLon2() { return oLon2; }
+    public void setOLon2(Double v) { this.oLon2 = v; }
+    public Double getOLat2() { return oLat2; }
+    public void setOLat2(Double v) { this.oLat2 = v; }
 
     public Double getTilt() { return tilt; }
     public void setTilt(Double tilt) { this.tilt = tilt; }

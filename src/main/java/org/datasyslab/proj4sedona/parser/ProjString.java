@@ -37,6 +37,9 @@ public final class ProjString {
 
         ProjectionDef def = new ProjectionDef();
         def.setSrsCode(defData);
+        // Keep the full original PROJ string; srsCode may be repointed to a registry
+        // key by Defs.set, but meta-projections (ob_tran) need the raw definition.
+        def.setProjStr(defData);
 
         // Split by '+', trim, filter empty, create key-value pairs
         // Mirrors: lib/projString.js lines 13-23
@@ -178,6 +181,36 @@ public final class ProjString {
                 break;
             case "h":
                 def.setH(parseDouble(paramVal));
+                break;
+            case "o_proj":
+                def.setOProj(paramVal);
+                break;
+            case "o_lat_p":
+                def.setOLatP(parseDouble(paramVal) * Values.D2R);
+                break;
+            case "o_lon_p":
+                def.setOLonP(parseDouble(paramVal) * Values.D2R);
+                break;
+            case "o_alpha":
+                def.setOAlpha(parseDouble(paramVal) * Values.D2R);
+                break;
+            case "o_lon_c":
+                def.setOLonC(parseDouble(paramVal) * Values.D2R);
+                break;
+            case "o_lat_c":
+                def.setOLatC(parseDouble(paramVal) * Values.D2R);
+                break;
+            case "o_lon_1":
+                def.setOLon1(parseDouble(paramVal) * Values.D2R);
+                break;
+            case "o_lat_1":
+                def.setOLat1(parseDouble(paramVal) * Values.D2R);
+                break;
+            case "o_lon_2":
+                def.setOLon2(parseDouble(paramVal) * Values.D2R);
+                break;
+            case "o_lat_2":
+                def.setOLat2(parseDouble(paramVal) * Values.D2R);
                 break;
             case "tilt":
                 def.setTilt(parseDouble(paramVal) * Values.D2R);

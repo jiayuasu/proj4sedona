@@ -296,6 +296,17 @@ public class Proj {
         p.noUoff = def.getNoUoff();
         p.noRot = def.getNoRot();
         p.h = def.getH();
+        p.projStr = def.getProjStr();
+        p.oProj = def.getOProj();
+        p.oLatP = def.getOLatP();
+        p.oLonP = def.getOLonP();
+        p.oAlpha = def.getOAlpha();
+        p.oLonC = def.getOLonC();
+        p.oLatC = def.getOLatC();
+        p.oLon1 = def.getOLon1();
+        p.oLat1 = def.getOLat1();
+        p.oLon2 = def.getOLon2();
+        p.oLat2 = def.getOLat2();
         p.tilt = def.getTilt();
         p.azi = def.getAzi();
         p.longWrap = def.getLongWrap();
