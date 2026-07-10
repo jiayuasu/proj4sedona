@@ -135,8 +135,8 @@ class GeocentricTest {
 
     @Test
     void testSerializationRoundTrip() {
-        // Proj-string only: geocentric CRSs use GEOCCS/GeodeticCRS WKT structures the
-        // serializer does not emit (it writes projected-CRS WKT).
+        // Proj string and PROJJSON (see below): geocentric CRSs use GEOCCS/GEODCRS WKT
+        // structures the WKT writers do not emit (they write projected-CRS WKT).
         Proj original = new Proj(GEOCENT);
         String serialized = CRSSerializer.toProjString(original);
         assertTrue(serialized.contains("+proj=geocent"), "serialized: " + serialized);
@@ -147,5 +147,106 @@ class GeocentricTest {
         assertEquals(want.x, got.x, M_EPSLN);
         assertEquals(want.y, got.y, M_EPSLN);
         assertEquals(want.z, got.z, M_EPSLN);
+    }
+
+    /** EPSG:4978 PROJJSON as emitted by PROJ 9.5.1 (datum ensemble members trimmed). */
+    private static final String EPSG_4978_PROJJSON = "{"
+        + "\"$schema\": \"https://proj.org/schemas/v0.7/projjson.schema.json\","
+        + "\"type\": \"GeodeticCRS\","
+        + "\"name\": \"WGS 84\","
+        + "\"datum_ensemble\": {"
+        + "  \"name\": \"World Geodetic System 1984 ensemble\","
+        + "  \"members\": ["
+        + "    {\"name\": \"World Geodetic System 1984 (Transit)\", \"id\": {\"authority\": \"EPSG\", \"code\": 1166}},"
+        + "    {\"name\": \"World Geodetic System 1984 (G2296)\", \"id\": {\"authority\": \"EPSG\", \"code\": 1383}}"
+        + "  ],"
+        + "  \"ellipsoid\": {\"name\": \"WGS 84\", \"semi_major_axis\": 6378137, \"inverse_flattening\": 298.257223563},"
+        + "  \"accuracy\": \"2.0\","
+        + "  \"id\": {\"authority\": \"EPSG\", \"code\": 6326}"
+        + "},"
+        + "\"coordinate_system\": {"
+        + "  \"subtype\": \"Cartesian\","
+        + "  \"axis\": ["
+        + "    {\"name\": \"Geocentric X\", \"abbreviation\": \"X\", \"direction\": \"geocentricX\", \"unit\": \"metre\"},"
+        + "    {\"name\": \"Geocentric Y\", \"abbreviation\": \"Y\", \"direction\": \"geocentricY\", \"unit\": \"metre\"},"
+        + "    {\"name\": \"Geocentric Z\", \"abbreviation\": \"Z\", \"direction\": \"geocentricZ\", \"unit\": \"metre\"}"
+        + "  ]"
+        + "},"
+        + "\"id\": {\"authority\": \"EPSG\", \"code\": 4978}"
+        + "}";
+
+    @Test
+    void testProjJsonGeocentricCrsParses() {
+        // GeodeticCRS + Cartesian coordinate system maps to geocent; the geocentric
+        // axis directions and the bare-string \"metre\" axis units must be accepted.
+        Proj proj = new Proj(EPSG_4978_PROJJSON);
+        assertEquals("geocent", proj.getParams().projName.toLowerCase(), "projName");
+        assertEquals("meter", proj.getParams().units, "string-form axis unit parsed");
+        assertEquals("enu", proj.getParams().axis,
+            "geocentric axis directions must not corrupt the axis order");
+        assertEquals("EPSG:4978", proj.toEpsgCode(), "id block parsed");
+        assertTrue(CRSSerializer.toProjJson(proj).contains("4978"),
+            "id survives re-export through the GeodeticCRS branch");
+        assertFalse(CRSSerializer.toProjString(proj).contains("+units="),
+            "\"meter\" from the string-form unit must not leak into +units= "
+                + "(PROJ's unit table keys metres as \"m\")");
+
+        // 2D input through the parsed CRS yields the computed ECEF Z (same reference
+        // values as testKnownValues3d — EPSG:4978 is geocent on WGS84).
+        Converter conv = Proj4.proj4(WGS84, EPSG_4978_PROJJSON);
+        Point xyz = conv.forward(new Point(-7.56, 55.95));
+        assertEquals(3548342.473034, xyz.x, M_EPSLN, "X");
+        assertEquals(-470928.890965, xyz.y, M_EPSLN, "Y");
+        assertEquals(5261327.157452, xyz.z, M_EPSLN, "computed ECEF Z");
+    }
+
+    @Test
+    void testProjJsonGeodeticCrsWithoutCartesianCsIsNotGeocent() {
+        // The GeodeticCRS mapping is conditional on subtype Cartesian: an ellipsoidal
+        // GeodeticCRS (allowed by the PROJJSON schema for geographic CRSs) must not be
+        // silently parsed as geocentric. No other handler claims it, so parsing fails.
+        String ellipsoidal = EPSG_4978_PROJJSON
+            .replace("\"subtype\": \"Cartesian\"", "\"subtype\": \"ellipsoidal\"");
+        assertThrows(IllegalArgumentException.class, () -> new Proj(ellipsoidal),
+            "GeodeticCRS + ellipsoidal must not map to geocent");
+    }
+
+    @Test
+    void testProjJsonSerializationRoundTrip() {
+        // Export must be GeodeticCRS + Cartesian (a ProjectedCRS with a conversion is
+        // not a valid PROJJSON representation of a geocentric CRS).
+        Proj original = new Proj(GEOCENT);
+        String json = CRSSerializer.toProjJson(original);
+        assertTrue(json.contains("\"GeodeticCRS\""), "type: " + json);
+        assertTrue(json.contains("\"Cartesian\""), "coordinate system subtype: " + json);
+        assertTrue(json.contains("\"geocentricX\""), "axis directions: " + json);
+        assertFalse(json.contains("\"conversion\""), "no conversion node: " + json);
+
+        Proj reimported = new Proj(json);
+        double lon = 2.35 * Math.PI / 180, lat = 48.85 * Math.PI / 180;
+        Point want = original.forward(new Point(lon, lat, 100));
+        Point got = reimported.forward(new Point(lon, lat, 100));
+        assertEquals(want.x, got.x, M_EPSLN, "X after PROJJSON re-import");
+        assertEquals(want.y, got.y, M_EPSLN, "Y after PROJJSON re-import");
+        assertEquals(want.z, got.z, M_EPSLN, "Z after PROJJSON re-import");
+    }
+
+    @Test
+    void testProjJsonRoundTripKeepsNonMeterUnits() {
+        // Non-metre units are carried on the axes with their to-metre factor; a
+        // round-trip must preserve the scaling instead of silently dropping it.
+        Proj original = new Proj("+proj=geocent +datum=WGS84 +units=us-ft +no_defs");
+        String json = CRSSerializer.toProjJson(original);
+        assertTrue(json.contains("conversion_factor"), "unit factor emitted: " + json);
+        Proj reimported = new Proj(json);
+        // Proj.forward is raw projection math (unit scaling happens in Transform), so
+        // the factor itself must be checked on the re-imported params.
+        assertEquals(1200.0 / 3937.0, reimported.getParams().toMeter, 1e-15,
+            "us-ft to-metre factor survives the round-trip");
+        double lon = 2.35 * Math.PI / 180, lat = 48.85 * Math.PI / 180;
+        Point want = original.forward(new Point(lon, lat, 100));
+        Point got = reimported.forward(new Point(lon, lat, 100));
+        assertEquals(want.x, got.x, M_EPSLN, "X in US feet after re-import");
+        assertEquals(want.z, got.z, M_EPSLN, "Z in US feet after re-import");
     }
 }

@@ -87,6 +87,16 @@ public final class ProjJsonTransformer {
             case "type":
                 if ("GeographicCRS".equals(value)) {
                     def.setProjName("longlat");
+                } else if ("GeodeticCRS".equals(value)) {
+                    // A GeodeticCRS with a Cartesian coordinate system is a geocentric
+                    // CRS (e.g. EPSG:4978) and maps to the geocent projection.
+                    Object coordSys = projjson.get("coordinate_system");
+                    if (coordSys instanceof Map) {
+                        Object subtype = ((Map<String, Object>) coordSys).get("subtype");
+                        if ("Cartesian".equals(subtype)) {
+                            def.setProjName("geocent");
+                        }
+                    }
                 } else if ("ProjectedCRS".equals(value)) {
                     // projName will be set from conversion.method.name
                     Object conversion = projjson.get("conversion");
@@ -159,21 +169,7 @@ public final class ProjJsonTransformer {
                 break;
 
             case "unit":
-                if (value instanceof Map) {
-                    Map<String, Object> unit = (Map<String, Object>) value;
-                    Object unitName = unit.get("name");
-                    if (unitName != null) {
-                        String units = unitName.toString().toLowerCase();
-                        if ("metre".equals(units)) {
-                            units = "meter";
-                        }
-                        def.setUnits(units);
-                    }
-                    Object convFactor = unit.get("conversion_factor");
-                    if (convFactor != null) {
-                        def.setToMeter(toDouble(convFactor));
-                    }
-                }
+                processUnit(value, def);
                 break;
 
             case "base_crs":
@@ -352,34 +348,49 @@ public final class ProjJsonTransformer {
 
             // Process units from coordinate system
             Object unit = coordSys.get("unit");
-            if (unit instanceof Map) {
-                processUnit((Map<String, Object>) unit, def);
+            if (unit != null) {
+                processUnit(unit, def);
             } else if (!axes.isEmpty()) {
                 // Try to get unit from first axis
                 Object axisUnit = axes.get(0).get("unit");
-                if (axisUnit instanceof Map) {
-                    processUnit((Map<String, Object>) axisUnit, def);
+                if (axisUnit != null) {
+                    processUnit(axisUnit, def);
                 }
             }
         }
     }
 
     /**
-     * Process unit info.
+     * Process unit info. PROJJSON units are either an object with name and
+     * conversion_factor, or a bare string for well-known units (e.g. the "metre"
+     * on EPSG:4978's geocentric axes).
      */
-    private static void processUnit(Map<String, Object> unit, ProjectionDef def) {
-        Object unitName = unit.get("name");
-        if (unitName != null) {
-            String units = unitName.toString().toLowerCase();
-            if ("metre".equals(units)) {
-                units = "meter";
-            }
-            def.setUnits(units);
+    @SuppressWarnings("unchecked")
+    private static void processUnit(Object unit, ProjectionDef def) {
+        if (unit instanceof String) {
+            setUnitsFromName(unit.toString(), def);
+            return;
         }
-        Object convFactor = unit.get("conversion_factor");
+        if (!(unit instanceof Map)) {
+            return;
+        }
+        Map<String, Object> unitMap = (Map<String, Object>) unit;
+        Object unitName = unitMap.get("name");
+        if (unitName != null) {
+            setUnitsFromName(unitName.toString(), def);
+        }
+        Object convFactor = unitMap.get("conversion_factor");
         if (convFactor != null) {
             def.setToMeter(toDouble(convFactor));
         }
+    }
+
+    private static void setUnitsFromName(String unitName, ProjectionDef def) {
+        String units = unitName.toLowerCase();
+        if ("metre".equals(units)) {
+            units = "meter";
+        }
+        def.setUnits(units);
     }
 
     /**

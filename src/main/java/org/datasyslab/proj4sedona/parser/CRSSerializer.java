@@ -919,7 +919,7 @@ public final class CRSSerializer {
         }
 
         Map<String, Object> json = new LinkedHashMap<>();
-        
+
         boolean isGeographic = "longlat".equals(params.projName);
 
         if (isGeographic) {
@@ -927,6 +927,13 @@ public final class CRSSerializer {
             json.put("name", getCrsName(params));
             json.put("datum", buildProjJsonDatum(params));
             json.put("coordinate_system", buildProjJsonGeogCS());
+        } else if (isGeocentric(params)) {
+            // Geocentric CRSs are a GeodeticCRS with a Cartesian coordinate system in
+            // PROJJSON (e.g. EPSG:4978), not a ProjectedCRS with a conversion.
+            json.put("type", "GeodeticCRS");
+            json.put("name", getCrsName(params));
+            json.put("datum", buildProjJsonDatum(params));
+            json.put("coordinate_system", buildProjJsonGeocentricCS(params));
         } else {
             json.put("type", "ProjectedCRS");
             json.put("name", getCrsName(params));
@@ -949,6 +956,51 @@ public final class CRSSerializer {
         }
 
         return json;
+    }
+
+    /**
+     * Canonical geocentric identity, as in Transform: matches any registered alias of
+     * the Geocentric projection, not just the raw "geocent" spelling.
+     */
+    private static boolean isGeocentric(ProjectionParams params) {
+        if (params.projName == null) {
+            return false;
+        }
+        String n = params.projName.toLowerCase(Locale.ROOT);
+        return "geocent".equals(n) || "geocentric".equals(n);
+    }
+
+    private static Map<String, Object> buildProjJsonGeocentricCS(ProjectionParams params) {
+        // The linear unit lives on each axis. Well-known metre is the bare-string
+        // form (as PROJ emits for EPSG:4978); other units carry their to-metre factor.
+        Object unit;
+        if (params.toMeter == null || params.toMeter == 1.0) {
+            unit = "metre";
+        } else {
+            Map<String, Object> unitMap = new LinkedHashMap<>();
+            unitMap.put("type", "LinearUnit");
+            unitMap.put("name", params.units != null ? params.units : "unknown");
+            unitMap.put("conversion_factor", params.toMeter);
+            unit = unitMap;
+        }
+        Map<String, Object> cs = new LinkedHashMap<>();
+        cs.put("subtype", "Cartesian");
+        List<Map<String, Object>> axes = new ArrayList<>();
+        axes.add(buildGeocentricAxis("Geocentric X", "X", "geocentricX", unit));
+        axes.add(buildGeocentricAxis("Geocentric Y", "Y", "geocentricY", unit));
+        axes.add(buildGeocentricAxis("Geocentric Z", "Z", "geocentricZ", unit));
+        cs.put("axis", axes);
+        return cs;
+    }
+
+    private static Map<String, Object> buildGeocentricAxis(
+            String name, String abbreviation, String direction, Object unit) {
+        Map<String, Object> axis = new LinkedHashMap<>();
+        axis.put("name", name);
+        axis.put("abbreviation", abbreviation);
+        axis.put("direction", direction);
+        axis.put("unit", unit);
+        return axis;
     }
 
     private static Map<String, Object> buildProjJsonDatum(ProjectionParams params) {

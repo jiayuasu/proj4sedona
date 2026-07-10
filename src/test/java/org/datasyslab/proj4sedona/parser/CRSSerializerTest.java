@@ -221,6 +221,27 @@ class CRSSerializerTest {
     }
 
     @Test
+    @DisplayName("toProjString: PROJJSON string-form units do not leak PROJ-invalid +units=")
+    void testToProjStringNormalizesStringFormUnits() {
+        // PROJ >= 6 emits bare-string axis units in PROJJSON ("degree", "metre").
+        // Parsing stores them on params.units, but PROJ's +units= table has no
+        // angular entries and keys metre as "m" — emitting the stored value verbatim
+        // (+units=degree / +units=meter) produces strings external PROJ rejects.
+        String json = "{\"type\": \"GeographicCRS\", \"name\": \"WGS 84\","
+            + "\"datum\": {\"type\": \"GeodeticReferenceFrame\", \"name\": \"World Geodetic System 1984\","
+            + "  \"ellipsoid\": {\"name\": \"WGS 84\", \"semi_major_axis\": 6378137, \"inverse_flattening\": 298.257223563}},"
+            + "\"coordinate_system\": {\"subtype\": \"ellipsoidal\", \"axis\": ["
+            + "  {\"name\": \"Geodetic latitude\", \"abbreviation\": \"Lat\", \"direction\": \"north\", \"unit\": \"degree\"},"
+            + "  {\"name\": \"Geodetic longitude\", \"abbreviation\": \"Lon\", \"direction\": \"east\", \"unit\": \"degree\"}]},"
+            + "\"id\": {\"authority\": \"EPSG\", \"code\": 4326}}";
+        Proj proj = new Proj(json);
+        assertEquals("degree", proj.getParams().units, "string-form axis unit parsed");
+        String projStr = CRSSerializer.toProjString(proj);
+        assertFalse(projStr.contains("+units="),
+            "angular unit must not become +units=: " + projStr);
+    }
+
+    @Test
     @DisplayName("toProjString: WGS84 Geographic")
     void testToProjStringWgs84() {
         Proj proj = new Proj("EPSG:4326");
