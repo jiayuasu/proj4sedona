@@ -154,6 +154,7 @@ public class QuadrilateralizedSphericalCube implements Projection {
         }
 
         // Compute mu and nu for the area of definition ([OL76] Eq. 3-21 / 3-38).
+        // Note: t below holds tan(nu), used directly as the radial scale.
         mu = Math.atan((12 / Values.SPI)
             * (theta + Math.acos(Math.sin(theta) * Math.cos(Values.FORTPI)) - Values.HALF_PI));
         t = Math.sqrt((1 - Math.cos(phi))
@@ -169,7 +170,7 @@ public class QuadrilateralizedSphericalCube implements Projection {
             mu += 1.5 * Values.SPI;
         }
 
-        // Now compute x, y from mu and nu
+        // Now compute x, y from mu and t = tan(nu)
         double x = t * Math.cos(mu) * a + x0;
         double y = t * Math.sin(mu) * a + y0;
         return new Point(x, y, p.z);
