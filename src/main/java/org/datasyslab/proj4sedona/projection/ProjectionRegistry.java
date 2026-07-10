@@ -187,6 +187,7 @@ public final class ProjectionRegistry {
         add(Geostationary::new);
         add(NewZealandMapGrid::new);
         add(Geocentric::new);
+        add(QuadrilateralizedSphericalCube::new);
     }
 
     /**
