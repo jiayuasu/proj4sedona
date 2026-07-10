@@ -438,7 +438,7 @@ public final class CRSSerializer {
         if (params == null) {
             return null;
         }
-        if (params.oProj != null) {
+        if ("ob_tran".equals(params.projName)) {
             throw new UnsupportedOperationException(
                 "ob_tran has no standard WKT1 representation; use toProjString instead");
         }
@@ -636,7 +636,7 @@ public final class CRSSerializer {
         if (params == null) {
             return null;
         }
-        if (params.oProj != null) {
+        if ("ob_tran".equals(params.projName)) {
             throw new UnsupportedOperationException(
                 "ob_tran has no standard WKT2 representation; use toProjString instead");
         }
@@ -881,7 +881,7 @@ public final class CRSSerializer {
         if (params == null) {
             return null;
         }
-        if (params.oProj != null) {
+        if ("ob_tran".equals(params.projName)) {
             throw new UnsupportedOperationException(
                 "ob_tran has no standard PROJJSON representation; use toProjString instead");
         }
