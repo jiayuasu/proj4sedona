@@ -21,6 +21,101 @@ class CRSSerializerTest {
 
     // ==================== PROJ String Export Tests ====================
 
+    /**
+     * Compact ProjectedCRS PROJJSON whose axis unit is substituted per test.
+     * PROJJSON/WKT carry authority unit names ("US survey foot"), not PROJ +units=
+     * short codes ("us-ft"); PROJ's own CRS export resolves the emitted code by
+     * conversion factor against its unit table (UnitOfMeasure::exportToPROJString)
+     * and falls back to +to_meter= for unmatched linear factors.
+     */
+    private static final String PROJECTED_CRS_TEMPLATE = "{"
+        + "\"type\": \"ProjectedCRS\", \"name\": \"unit test\","
+        + "\"base_crs\": {\"type\": \"GeographicCRS\", \"name\": \"WGS 84\","
+        + "  \"datum\": {\"type\": \"GeodeticReferenceFrame\", \"name\": \"World Geodetic System 1984\","
+        + "    \"ellipsoid\": {\"name\": \"WGS 84\", \"semi_major_axis\": 6378137, \"inverse_flattening\": 298.257223563}}},"
+        + "\"conversion\": {\"name\": \"unnamed\", \"method\": {\"name\": \"Transverse Mercator\"},"
+        + "  \"parameters\": ["
+        + "    {\"name\": \"Latitude of natural origin\", \"value\": 0, \"unit\": \"degree\"},"
+        + "    {\"name\": \"Longitude of natural origin\", \"value\": 15, \"unit\": \"degree\"},"
+        + "    {\"name\": \"Scale factor at natural origin\", \"value\": 0.9996, \"unit\": \"unity\"},"
+        + "    {\"name\": \"False easting\", \"value\": 500000, \"unit\": \"metre\"},"
+        + "    {\"name\": \"False northing\", \"value\": 0, \"unit\": \"metre\"}]},"
+        + "\"coordinate_system\": {\"subtype\": \"Cartesian\", \"axis\": ["
+        + "  {\"name\": \"Easting\", \"abbreviation\": \"E\", \"direction\": \"east\", \"unit\": UNIT},"
+        + "  {\"name\": \"Northing\", \"abbreviation\": \"N\", \"direction\": \"north\", \"unit\": UNIT}]}"
+        + "}";
+
+    private static String projectedCrsWithUnit(String unitJson) {
+        return PROJECTED_CRS_TEMPLATE.replace("UNIT", unitJson);
+    }
+
+    @Test
+    @DisplayName("toProjString: metre unit object folds into the m default")
+    void testToProjStringMetreObjectUnit() {
+        Proj proj = new Proj(projectedCrsWithUnit(
+            "{\"type\": \"LinearUnit\", \"name\": \"metre\", \"conversion_factor\": 1}"));
+        String result = CRSSerializer.toProjString(proj);
+        assertFalse(result.contains("+units="),
+            "\"meter\" must not be emitted (PROJ's unit table keys metres as \"m\"): " + result);
+        assertFalse(result.contains("+to_meter="), result);
+    }
+
+    @Test
+    @DisplayName("toProjString: authority unit name resolves to the +units= short code by factor")
+    void testToProjStringAuthorityUnitNameResolvesByFactor() {
+        // As in PROJ-emitted PROJJSON for EPSG:2225 (NAD83 / California zone 1, ftUS).
+        Proj proj = new Proj(projectedCrsWithUnit(
+            "{\"type\": \"LinearUnit\", \"name\": \"US survey foot\", \"conversion_factor\": 0.304800609601219}"));
+        String result = CRSSerializer.toProjString(proj);
+        assertTrue(result.contains("+units=us-ft"),
+            "factor 1200/3937 must resolve to the us-ft short code: " + result);
+        assertFalse(result.contains("+units=us survey foot"), result);
+        assertFalse(result.contains("+to_meter="), result);
+    }
+
+    @Test
+    @DisplayName("toProjString: unmatched linear factor falls back to +to_meter=")
+    void testToProjStringUnknownLinearUnitFallsBackToToMeter() {
+        Proj proj = new Proj(projectedCrsWithUnit(
+            "{\"type\": \"LinearUnit\", \"name\": \"local foot\", \"conversion_factor\": 0.31}"));
+        String result = CRSSerializer.toProjString(proj);
+        assertFalse(result.contains("+units="),
+            "no unit-table entry has factor 0.31; the name must not be emitted: " + result);
+        assertTrue(result.contains("+to_meter=0.31"), result);
+    }
+
+    @Test
+    @DisplayName("toProjString: angular unit objects emit neither +units= nor +to_meter=")
+    void testToProjStringAngularUnitObjectOmitted() {
+        // As in PROJ-emitted PROJJSON for EPSG:4807 (NTF (Paris), grads). +units= has
+        // no angular entries, and the angular factor must not leak into +to_meter=.
+        String json = "{\"type\": \"GeographicCRS\", \"name\": \"grads test\","
+            + "\"datum\": {\"type\": \"GeodeticReferenceFrame\", \"name\": \"World Geodetic System 1984\","
+            + "  \"ellipsoid\": {\"name\": \"WGS 84\", \"semi_major_axis\": 6378137, \"inverse_flattening\": 298.257223563}},"
+            + "\"coordinate_system\": {\"subtype\": \"ellipsoidal\", \"axis\": ["
+            + "  {\"name\": \"Geodetic latitude\", \"abbreviation\": \"Lat\", \"direction\": \"north\","
+            + "   \"unit\": {\"type\": \"AngularUnit\", \"name\": \"grad\", \"conversion_factor\": 0.0157079632679489}},"
+            + "  {\"name\": \"Geodetic longitude\", \"abbreviation\": \"Lon\", \"direction\": \"east\","
+            + "   \"unit\": {\"type\": \"AngularUnit\", \"name\": \"grad\", \"conversion_factor\": 0.0157079632679489}}]}"
+            + "}";
+        Proj proj = new Proj(json);
+        String result = CRSSerializer.toProjString(proj);
+        assertFalse(result.contains("+units="), result);
+        assertFalse(result.contains("+to_meter="),
+            "angular conversion factor must not become a linear +to_meter=: " + result);
+    }
+
+    @Test
+    @DisplayName("toWkt1: parsed \"meter\" spelling re-exports as EPSG-canonical \"metre\"")
+    void testWkt1MeterSpellingNormalized() {
+        Proj proj = new Proj(projectedCrsWithUnit(
+            "{\"type\": \"LinearUnit\", \"name\": \"metre\", \"conversion_factor\": 1}"));
+        String wkt = CRSSerializer.toWkt1(proj);
+        assertTrue(wkt.contains("UNIT[\"metre\""),
+            "unit name must round-trip to the canonical spelling: " + wkt);
+        assertFalse(wkt.contains("\"meter\""), wkt);
+    }
+
     @Test
     @DisplayName("toProjString: WGS84 Geographic")
     void testToProjStringWgs84() {
