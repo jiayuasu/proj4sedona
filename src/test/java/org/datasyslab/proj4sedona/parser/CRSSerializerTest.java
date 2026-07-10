@@ -105,6 +105,72 @@ class CRSSerializerTest {
             "angular conversion factor must not become a linear +to_meter=: " + result);
     }
 
+    // ---- Cases ported from PROJ's own test suite (test/unit/test_crs.cpp,
+    // test_io.cpp at 9.5.1). Inputs are PROJ's verbatim; assertions cover the
+    // unit tokens only — full-string equality would pin datum/ellipsoid name
+    // resolution that differs from PROJ's EPSG database and is out of scope here.
+
+    @Test
+    @DisplayName("PROJ crs.EPSG_2222: WKT2 foot CS unit exports +units=ft")
+    void testProjSuiteEpsg2222FootUnit() {
+        // PROJ expects "+proj=tmerc ... +x_0=213360 ... +units=ft": the CS unit name
+        // "foot" is not a +units= code; factor 0.3048 resolves to ft.
+        String wkt2 = "PROJCRS[\"NAD83 / Arizona East (ft)\",BASEGEODCRS[\"NAD83\","
+            + "DATUM[\"North American Datum 1983\","
+            + "ELLIPSOID[\"GRS 1980\",6378137,298.257222101,LENGTHUNIT[\"metre\",1.0]]]],"
+            + "CONVERSION[\"SPCS83 Arizona East zone (International feet)\","
+            + "METHOD[\"Transverse Mercator\",ID[\"EPSG\",9807]],"
+            + "PARAMETER[\"Latitude of natural origin\",31,ANGLEUNIT[\"degree\",0.01745329252]],"
+            + "PARAMETER[\"Longitude of natural origin\",-110.166666666667,ANGLEUNIT[\"degree\",0.01745329252]],"
+            + "PARAMETER[\"Scale factor at natural origin\",0.9999,SCALEUNIT[\"unity\",1.0]],"
+            + "PARAMETER[\"False easting\",700000,LENGTHUNIT[\"foot\",0.3048]],"
+            + "PARAMETER[\"False northing\",0,LENGTHUNIT[\"foot\",0.3048]]],"
+            + "CS[cartesian,2],AXIS[\"easting (X)\",east,ORDER[1]],AXIS[\"northing (Y)\",north,ORDER[2]],"
+            + "LENGTHUNIT[\"foot\",0.3048],ID[\"EPSG\",2222]]";
+        String result = CRSSerializer.toProjString(new Proj(wkt2));
+        assertTrue(result.contains("+units=ft"), result);
+        assertFalse(result.contains("+units=foot"), result);
+        assertFalse(result.contains("+to_meter="), result);
+    }
+
+    @Test
+    @DisplayName("PROJ crs.EPSG_4807_as_PROJ_string: grads CRS exports no unit token")
+    void testProjSuiteEpsg4807GradsNoUnitToken() {
+        // PROJ expects "+proj=longlat +ellps=clrk80ign +pm=paris +no_defs" — no
+        // +units=, no +to_meter=. Input is PROJ's WKT1_GDAL form of EPSG:4807
+        // (crs.EPSG_4807_as_WKT1_GDAL); the WKT2 GEODCRS keyword is not yet parsed.
+        String wkt1 = "GEOGCS[\"NTF (Paris)\",DATUM[\"Nouvelle_Triangulation_Francaise_Paris\","
+            + "SPHEROID[\"Clarke 1880 (IGN)\",6378249.2,293.466021293627,AUTHORITY[\"EPSG\",\"7011\"]],"
+            + "AUTHORITY[\"EPSG\",\"6807\"]],"
+            + "PRIMEM[\"Paris\",2.33722917,AUTHORITY[\"EPSG\",\"8903\"]],"
+            + "UNIT[\"grad\",0.015707963267949,AUTHORITY[\"EPSG\",\"9105\"]],"
+            + "AUTHORITY[\"EPSG\",\"4807\"]]";
+        String result = CRSSerializer.toProjString(new Proj(wkt1));
+        assertFalse(result.contains("+units="), result);
+        assertFalse(result.contains("+to_meter="), result);
+    }
+
+    @Test
+    @DisplayName("PROJ io.projparse_projected_to_meter_known: factor recognized as us-ft")
+    void testProjSuiteToMeterKnownFactor() {
+        // PROJ resolves to_meter=0.304800609601219 to the US survey foot; on
+        // proj-string re-export that is the us-ft code.
+        String result = CRSSerializer.toProjString(
+            new Proj("+proj=tmerc +to_meter=0.304800609601219"));
+        assertTrue(result.contains("+units=us-ft"), result);
+        assertFalse(result.contains("+to_meter="), result);
+    }
+
+    @Test
+    @DisplayName("PROJ io.projparse_projected_to_meter_unknown: factor preserved as +to_meter=")
+    void testProjSuiteToMeterUnknownFactor() {
+        // PROJ keeps an unrecognized factor as LENGTHUNIT["unknown",0.1234]; on
+        // proj-string re-export that is +to_meter=, never a made-up +units= token.
+        String result = CRSSerializer.toProjString(new Proj("+proj=tmerc +to_meter=0.1234"));
+        assertTrue(result.contains("+to_meter=0.1234"), result);
+        assertFalse(result.contains("+units="), result);
+    }
+
     @Test
     @DisplayName("toWkt1: parsed \"meter\" spelling re-exports as EPSG-canonical \"metre\"")
     void testWkt1MeterSpellingNormalized() {
