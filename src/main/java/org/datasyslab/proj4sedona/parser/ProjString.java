@@ -37,6 +37,9 @@ public final class ProjString {
 
         ProjectionDef def = new ProjectionDef();
         def.setSrsCode(defData);
+        // Keep the full original PROJ string; srsCode may be repointed to a registry
+        // key by Defs.set, but meta-projections (ob_tran) need the raw definition.
+        def.setProjStr(defData);
 
         // Split by '+', trim, filter empty, create key-value pairs
         // Mirrors: lib/projString.js lines 13-23

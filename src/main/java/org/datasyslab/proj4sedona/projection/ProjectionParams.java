@@ -144,6 +144,9 @@ public class ProjectionParams {
     /** Satellite/view height in meters (+h) - Geostationary, Tilted Perspective */
     public Double h;
 
+    /** Full original PROJ string, when the CRS was parsed from one (else null) */
+    public String projStr;
+
     /** Inner projection name (+o_proj) - General Oblique Transformation */
     public String oProj;
 

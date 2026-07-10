@@ -438,6 +438,10 @@ public final class CRSSerializer {
         if (params == null) {
             return null;
         }
+        if (params.oProj != null) {
+            throw new UnsupportedOperationException(
+                "ob_tran has no standard WKT1 representation; use toProjString instead");
+        }
 
         StringBuilder sb = new StringBuilder();
 
@@ -631,6 +635,10 @@ public final class CRSSerializer {
     public static String toWkt2(ProjectionParams params) {
         if (params == null) {
             return null;
+        }
+        if (params.oProj != null) {
+            throw new UnsupportedOperationException(
+                "ob_tran has no standard WKT2 representation; use toProjString instead");
         }
 
         StringBuilder sb = new StringBuilder();
@@ -872,6 +880,10 @@ public final class CRSSerializer {
     public static String toProjJson(ProjectionParams params, boolean prettyPrint) {
         if (params == null) {
             return null;
+        }
+        if (params.oProj != null) {
+            throw new UnsupportedOperationException(
+                "ob_tran has no standard PROJJSON representation; use toProjString instead");
         }
 
         Map<String, Object> json = toProjJsonMap(params);

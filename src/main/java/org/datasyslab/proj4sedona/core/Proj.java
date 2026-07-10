@@ -296,6 +296,7 @@ public class Proj {
         p.noUoff = def.getNoUoff();
         p.noRot = def.getNoRot();
         p.h = def.getH();
+        p.projStr = def.getProjStr();
         p.oProj = def.getOProj();
         p.oLatP = def.getOLatP();
         p.oLonP = def.getOLonP();

@@ -111,6 +111,64 @@ class GeneralObliqueTransformationTest {
     }
 
     @Test
+    void testInnerProjectionWithDerivedCentralMeridian() {
+        // The inner projection may derive its own long0 during init (UTM from +zone,
+        // Krovak's built-in meridian) even though ob_tran strips +lon_0. ob_tran must
+        // compensate — upstream proj4js zeroes oProj.long0 post-init.
+        // Reference from proj4js (lib). Note PROJ drops the inner projection's implicit
+        // false easting here (its ob_tran calls the raw inner forward), so pyproj's x is
+        // exactly 500000 lower; we follow proj4js and keep the inner x_0.
+        assertCase("+proj=ob_tran +o_proj=utm +zone=32 +o_lat_p=45 +o_lon_p=-90",
+            -2, -1, -4964159.25514968, -10307250.57058772, XY_EPSLN);
+        // Reference from pyproj 3.7.2/PROJ 9.5.1 (k0 defaults to Krovak's 0.9999, as in
+        // our standalone Krovak). proj4js differs here only because its global k0=1
+        // default shadows krovak.js's own 0.9999 fallback.
+        assertCase("+proj=ob_tran +o_proj=krovak +o_lat_p=45 +o_lon_p=-90 +ellps=bessel",
+            14, 50, -10366655.121237619, -1171101.8690256411, XY_EPSLN);
+    }
+
+    @Test
+    void testRegisteredDefinition() {
+        // Defs.set repoints srsCode to the registry key; ob_tran must still find the
+        // raw PROJ string (via ProjectionDef.projStr) to build the inner projection.
+        org.datasyslab.proj4sedona.defs.Defs.set("CUSTOM:ROT",
+            "+proj=ob_tran +o_proj=moll +o_lat_p=45 +o_lon_p=-90 +no_defs");
+        try {
+            Converter conv = Proj4.proj4(WGS84, "CUSTOM:ROT");
+            Point xy = conv.forward(new Point(-2, -1));
+            assertEquals(-7421459.08469763, xy.x, XY_EPSLN, "x via registered def");
+            assertEquals(-5444548.62238893, xy.y, XY_EPSLN, "y via registered def");
+        } finally {
+            org.datasyslab.proj4sedona.defs.Defs.set("CUSTOM:ROT", (String) null);
+        }
+    }
+
+    @Test
+    void testNaNRotationParametersRejected() {
+        // NaN parses as a Double in Java; without validation it silently selects the
+        // transverse branch. proj4js throws — so do we.
+        assertThrows(IllegalArgumentException.class,
+            () -> Proj4.proj4(WGS84, "+proj=ob_tran +o_proj=moll +o_lat_p=NaN +o_lon_p=-90")
+                .forward(new Point(0, 0)),
+            "NaN o_lat_p");
+        assertThrows(IllegalArgumentException.class,
+            () -> Proj4.proj4(WGS84,
+                    "+proj=ob_tran +o_proj=moll +o_alpha=5 +o_lon_c=NaN +o_lat_c=-10")
+                .forward(new Point(0, 0)),
+            "NaN o_lon_c");
+    }
+
+    @Test
+    void testWktExportsRejected() {
+        // ob_tran has no standard WKT/PROJJSON representation; exporting must fail
+        // loudly instead of emitting a definition that loses the o_* parameters.
+        Proj proj = new Proj("+proj=ob_tran +o_proj=moll +o_lat_p=45 +o_lon_p=-90 +no_defs");
+        assertThrows(UnsupportedOperationException.class, () -> CRSSerializer.toWkt1(proj));
+        assertThrows(UnsupportedOperationException.class, () -> CRSSerializer.toWkt2(proj));
+        assertThrows(UnsupportedOperationException.class, () -> CRSSerializer.toProjJson(proj));
+    }
+
+    @Test
     void testSerializationRoundTrip() {
         // Proj-string only (ob_tran has no standard WKT method).
         for (String def : new String[] {

@@ -41,6 +41,7 @@ public class GeneralObliqueTransformation implements Projection {
     private int type;
     private boolean isIdentity;
     private Proj obliqueProjection;
+    private double innerLong0;
     private Boolean over;
 
     @Override
@@ -65,7 +66,7 @@ public class GeneralObliqueTransformation implements Projection {
         // drop +proj=ob_tran and promote +o_proj to +proj. The inner projection must
         // see lon_0 = 0 (ob_tran applies long0 itself before/after the rotation);
         // upstream zeroes it post-init, we strip the token before construction.
-        String projStr = params.srsCode;
+        String projStr = params.projStr;
         if (projStr == null || !projStr.trim().startsWith("+")) {
             throw new IllegalArgumentException(
                 "ob_tran requires a PROJ string definition (to construct the inner +o_proj projection)");
@@ -76,6 +77,12 @@ public class GeneralObliqueTransformation implements Projection {
             .replaceAll("\\+lon_0=\\S+", "")
             .trim();
         this.obliqueProjection = new Proj(innerStr);
+        // The inner projection must not apply a central meridian of its own — ob_tran
+        // handles long0 before/after the rotation (upstream zeroes oProj.long0
+        // post-init). +lon_0 is stripped above, but some projections derive or default
+        // long0 during init (UTM from +zone, Krovak's built-in meridian); those persist
+        // the resolved value to params, and the forward/inverse below compensate.
+        this.innerLong0 = obliqueProjection.getParams().getLong0();
 
         // Select the rotation parameter set, in PROJ's order.
         double phip;
@@ -139,8 +146,13 @@ public class GeneralObliqueTransformation implements Projection {
 
     private static void requireAll(Object... valueNamePairs) {
         for (int i = 0; i < valueNamePairs.length; i += 2) {
-            if (valueNamePairs[i] == null) {
+            Object v = valueNamePairs[i];
+            if (v == null) {
                 throw new IllegalArgumentException("Missing parameter: " + valueNamePairs[i + 1] + ".");
+            }
+            if (v instanceof Double && ((Double) v).isNaN()) {
+                throw new IllegalArgumentException(
+                    "Invalid value for " + valueNamePairs[i + 1] + ": NaN");
             }
         }
     }
@@ -165,7 +177,9 @@ public class GeneralObliqueTransformation implements Projection {
             ry = Math.asin(-cosphi * coslam);
         }
 
-        Point result = obliqueProjection.forward(new Point(rx, ry, p.z));
+        // Compensate the inner projection's own central meridian (see init).
+        Point result = obliqueProjection.forward(
+            new Point(ProjMath.adjustLon(rx + innerLong0), ry, p.z));
         if (result == null) {
             return null;
         }
@@ -189,7 +203,8 @@ public class GeneralObliqueTransformation implements Projection {
         if (inner == null) {
             return null;
         }
-        double lam = inner.x;
+        double lam = inner.x < Double.MAX_VALUE
+            ? ProjMath.adjustLon(inner.x - innerLong0) : inner.x;
         double phi = inner.y;
         double rx = lam;
         double ry = phi;

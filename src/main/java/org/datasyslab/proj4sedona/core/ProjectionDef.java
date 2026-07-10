@@ -62,6 +62,7 @@ public class ProjectionDef {
     private Boolean noRot;         // no_rot: Oblique Mercator without rectification rotation
     private Double longWrap;       // lon_wrap: center of longitude wrapping range
     private Double h;              // h: satellite/view height (Geostationary, Tilted Perspective)
+    private String projStr;        // full original PROJ string (when parsed from one)
     private String oProj;          // o_proj: inner projection (General Oblique Transformation)
     private Double oLatP;          // o_lat_p: latitude of new pole (ob_tran)
     private Double oLonP;          // o_lon_p: longitude of new pole (ob_tran)
@@ -202,6 +203,9 @@ public class ProjectionDef {
 
     public Double getH() { return h; }
     public void setH(Double h) { this.h = h; }
+
+    public String getProjStr() { return projStr; }
+    public void setProjStr(String projStr) { this.projStr = projStr; }
 
     public String getOProj() { return oProj; }
     public void setOProj(String oProj) { this.oProj = oProj; }
