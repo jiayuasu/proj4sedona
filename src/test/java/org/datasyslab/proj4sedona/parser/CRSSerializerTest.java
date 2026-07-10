@@ -172,6 +172,44 @@ class CRSSerializerTest {
     }
 
     @Test
+    @DisplayName("toProjString: geographic CRS with any angular unit emits no unit token")
+    void testToProjStringGeographicAngularUnitNoToken() {
+        // PROJ branches on the unit's kind, not its name — a geographic CRS's unit is
+        // angular by definition, so no name list can be complete (microradian, gon,
+        // centesimal minute, ...). PROJ 9.5.1 exports this CRS as
+        // "+proj=longlat +datum=WGS84 +no_defs". Also pins that the WKT parser's
+        // internally derived to-metre artifact for angular units does not leak out
+        // (it produced +to_meter=6.378137 here: 1e-6 x semi-major axis).
+        String wkt = "GEOGCS[\"unknown\",DATUM[\"WGS_1984\","
+            + "SPHEROID[\"WGS 84\",6378137,298.257223563]],"
+            + "PRIMEM[\"Greenwich\",0],UNIT[\"microradian\",0.000001]]";
+        String result = CRSSerializer.toProjString(new Proj(wkt));
+        assertFalse(result.contains("+units="), result);
+        assertFalse(result.contains("+to_meter="), result);
+    }
+
+    @Test
+    @DisplayName("toProjString: explicit +to_meter= on longlat is preserved verbatim")
+    void testToProjStringLonglatExplicitToMeterPreserved() {
+        // PROJ parity: CRS.from_proj4("+proj=longlat +to_meter=0.3048").to_proj4()
+        // keeps +to_meter=0.3048 — the factor must not be rewritten into a linear
+        // +units= code on a geographic CRS.
+        String result = CRSSerializer.toProjString(new Proj("+proj=longlat +to_meter=0.3048"));
+        assertTrue(result.contains("+to_meter=0.3048"), result);
+        assertFalse(result.contains("+units="), result);
+    }
+
+    @Test
+    @DisplayName("toProjString: explicit +units= on longlat is dropped")
+    void testToProjStringLonglatLinearUnitsDropped() {
+        // PROJ parity: CRS.from_proj4("+proj=longlat +units=ft").to_proj4() drops the
+        // linear unit — it has no meaning on a geographic CRS.
+        String result = CRSSerializer.toProjString(new Proj("+proj=longlat +units=ft"));
+        assertFalse(result.contains("+units="), result);
+        assertFalse(result.contains("+to_meter="), result);
+    }
+
+    @Test
     @DisplayName("toWkt1: parsed \"meter\" spelling re-exports as EPSG-canonical \"metre\"")
     void testWkt1MeterSpellingNormalized() {
         Proj proj = new Proj(projectedCrsWithUnit(
