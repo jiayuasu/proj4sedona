@@ -290,6 +290,20 @@ def get_projection_coverage_pairs() -> List[Dict[str, Any]]:
             "test_points": _pts((-7.56, 55.95), (2.35, 48.85), (139.69, 35.69)),
         },
         {
+            "name": "proj_qsc_front",
+            "from_crs": "EPSG:4326",
+            "to_crs": "+proj=qsc +lat_0=0 +lon_0=0 +units=m +datum=WGS84 +no_defs",
+            "desc": "Quadrilateralized Spherical Cube (front face)",
+            "test_points": _pts((2.0, 1.0), (30.0, 20.0), (-25.0, -15.0)),
+        },
+        {
+            "name": "proj_qsc_top",
+            "from_crs": "EPSG:4326",
+            "to_crs": "+proj=qsc +lat_0=90 +lon_0=0 +units=m +datum=WGS84 +no_defs",
+            "desc": "Quadrilateralized Spherical Cube (top face)",
+            "test_points": _pts((2.0, 1.0), (45.0, 60.0), (-120.0, 75.0)),
+        },
+        {
             "name": "proj_geos_y",
             "from_crs": "EPSG:4326",
             "to_crs": "+proj=geos +h=35785831 +sweep=y +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs",
