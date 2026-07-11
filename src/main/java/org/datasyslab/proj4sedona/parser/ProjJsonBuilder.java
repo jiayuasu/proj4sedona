@@ -168,7 +168,9 @@ public final class ProjJsonBuilder {
     }
 
     /**
-     * Convert GEOGCRS or BASEGEOGCRS node.
+     * Convert a geodetic CRS node: GEOGCRS/BASEGEOGCRS (WKT2-2019) or
+     * GEODCRS/BASEGEODCRS (WKT2-2015; GEODCRS also covers geocentric CRSs via
+     * the Cartesian coordinate-system subtype).
      */
     @SuppressWarnings("unchecked")
     private static void convertGeogCrs(List<Object> node, Map<String, Object> result) {
