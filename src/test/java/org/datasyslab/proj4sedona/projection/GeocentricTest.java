@@ -182,8 +182,10 @@ class GeocentricTest {
         Proj proj = new Proj(EPSG_4978_PROJJSON);
         assertEquals("geocent", proj.getParams().projName.toLowerCase(), "projName");
         assertEquals("meter", proj.getParams().units, "string-form axis unit parsed");
+        assertEquals(1.0, proj.getParams().toMeter, 0,
+            "well-known metre records the identity factor (wkt-parser fixture: to_meter 1)");
         assertEquals("enu", proj.getParams().axis,
-            "geocentric axis directions must not corrupt the axis order");
+            "geocentricX/Y/Z in canonical order map to enu (wkt-parser fixture)");
         assertEquals("EPSG:4978", proj.toEpsgCode(), "id block parsed");
         assertTrue(CRSSerializer.toProjJson(proj).contains("4978"),
             "id survives re-export through the GeodeticCRS branch");
@@ -201,14 +203,36 @@ class GeocentricTest {
     }
 
     @Test
-    void testProjJsonGeodeticCrsWithoutCartesianCsIsNotGeocent() {
-        // The GeodeticCRS mapping is conditional on subtype Cartesian: an ellipsoidal
-        // GeodeticCRS (allowed by the PROJJSON schema for geographic CRSs) must not be
-        // silently parsed as geocentric. No other handler claims it, so parsing fails.
+    void testProjJsonGeodeticCrsEllipsoidalIsLonglat() {
+        // As in wkt-parser's transformPROJJSON: only the Cartesian subtype is
+        // geocentric; every other GeodeticCRS (ellipsoidal) is a geographic CRS.
         String ellipsoidal = EPSG_4978_PROJJSON
             .replace("\"subtype\": \"Cartesian\"", "\"subtype\": \"ellipsoidal\"");
-        assertThrows(IllegalArgumentException.class, () -> new Proj(ellipsoidal),
-            "GeodeticCRS + ellipsoidal must not map to geocent");
+        Proj proj = new Proj(ellipsoidal);
+        assertEquals("longlat", proj.getParams().projName,
+            "GeodeticCRS + ellipsoidal maps to longlat, not geocent");
+    }
+
+    @Test
+    void testProjJsonGeocentricAxisOrderHonored() {
+        // A Y/X/Z-ordered axis array maps to axis "neu" (wkt-parser preserves the
+        // document's axis order through its direction map), and enforceAxis reorders
+        // the output accordingly — same expectations as the proj-string +axis=neu
+        // case above. PROJ cannot serve as the oracle here: it rejects non-canonical
+        // geocentric axis orders outright.
+        String yxz = EPSG_4978_PROJJSON.replace(
+            "{\"name\": \"Geocentric X\", \"abbreviation\": \"X\", \"direction\": \"geocentricX\", \"unit\": \"metre\"},"
+                + "    {\"name\": \"Geocentric Y\", \"abbreviation\": \"Y\", \"direction\": \"geocentricY\", \"unit\": \"metre\"},",
+            "{\"name\": \"Geocentric Y\", \"abbreviation\": \"Y\", \"direction\": \"geocentricY\", \"unit\": \"metre\"},"
+                + "    {\"name\": \"Geocentric X\", \"abbreviation\": \"X\", \"direction\": \"geocentricX\", \"unit\": \"metre\"},");
+        Proj proj = new Proj(yxz);
+        assertEquals("neu", proj.getParams().axis, "Y/X/Z axis array maps to neu");
+
+        Converter conv = Proj4.proj4(WGS84, yxz);
+        Point r = conv.forward(new Point(-7.56, 55.95), true);
+        assertEquals(-470928.890965, r.x, M_EPSLN, "first (north) = ECEF Y");
+        assertEquals(3548342.473034, r.y, M_EPSLN, "second (east) = ECEF X");
+        assertEquals(5261327.157452, r.z, M_EPSLN, "third (up) = computed ECEF Z");
     }
 
     @Test

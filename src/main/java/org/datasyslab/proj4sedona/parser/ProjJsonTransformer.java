@@ -88,15 +88,14 @@ public final class ProjJsonTransformer {
                 if ("GeographicCRS".equals(value)) {
                     def.setProjName("longlat");
                 } else if ("GeodeticCRS".equals(value)) {
-                    // A GeodeticCRS with a Cartesian coordinate system is a geocentric
-                    // CRS (e.g. EPSG:4978) and maps to the geocent projection.
+                    // As in wkt-parser's transformPROJJSON: a GeodeticCRS with a
+                    // Cartesian coordinate system is a geocentric CRS (e.g. EPSG:4978)
+                    // and maps to geocent; any other subtype (ellipsoidal) is a
+                    // geographic CRS and maps to longlat.
                     Object coordSys = projjson.get("coordinate_system");
-                    if (coordSys instanceof Map) {
-                        Object subtype = ((Map<String, Object>) coordSys).get("subtype");
-                        if ("Cartesian".equals(subtype)) {
-                            def.setProjName("geocent");
-                        }
-                    }
+                    boolean cartesian = coordSys instanceof Map
+                        && "Cartesian".equals(((Map<String, Object>) coordSys).get("subtype"));
+                    def.setProjName(cartesian ? "geocent" : "longlat");
                 } else if ("ProjectedCRS".equals(value)) {
                     // projName will be set from conversion.method.name
                     Object conversion = projjson.get("conversion");
@@ -325,24 +324,27 @@ public final class ProjJsonTransformer {
         Object axisList = coordSys.get("axis");
         if (axisList instanceof List) {
             List<Map<String, Object>> axes = (List<Map<String, Object>>) axisList;
+
+            // Mirrors wkt-parser's transformPROJJSON direction map: the axis string is
+            // set only when every direction maps (all-or-nothing), preserving the
+            // document's axis order — including geocentric X/Y/Z permutations — and a
+            // 2-axis system gets the implicit up axis appended.
             StringBuilder axisOrder = new StringBuilder();
-            
+            boolean allMapped = !axes.isEmpty();
             for (Map<String, Object> axis : axes) {
                 Object direction = axis.get("direction");
-                if (direction != null) {
-                    String dir = direction.toString().toLowerCase();
-                    switch (dir) {
-                        case "east": axisOrder.append('e'); break;
-                        case "north": axisOrder.append('n'); break;
-                        case "west": axisOrder.append('w'); break;
-                        case "south": axisOrder.append('s'); break;
-                        default: break;
-                    }
+                String mapped = direction == null ? null
+                    : mapAxisDirection(direction.toString().toLowerCase());
+                if (mapped == null) {
+                    allMapped = false;
+                    break;
                 }
+                axisOrder.append(mapped);
             }
-            
-            if (axisOrder.length() > 0) {
-                axisOrder.append('u'); // Add up direction
+            if (allMapped) {
+                if (axisOrder.length() == 2) {
+                    axisOrder.append('u');
+                }
                 def.setAxis(axisOrder.toString());
             }
 
@@ -369,6 +371,11 @@ public final class ProjJsonTransformer {
     private static void processUnit(Object unit, ProjectionDef def) {
         if (unit instanceof String) {
             setUnitsFromName(unit.toString(), def);
+            // wkt-parser's processUnit records the identity factor for the
+            // well-known metre; the proj-string parser does the same for +units=m.
+            if ("meter".equals(def.getUnits())) {
+                def.setToMeter(1.0);
+            }
             return;
         }
         if (!(unit instanceof Map)) {
@@ -391,6 +398,21 @@ public final class ProjJsonTransformer {
             units = "meter";
         }
         def.setUnits(units);
+    }
+
+    private static String mapAxisDirection(String direction) {
+        switch (direction) {
+            case "east": return "e";
+            case "north": return "n";
+            case "west": return "w";
+            case "south": return "s";
+            case "up": return "u";
+            case "down": return "d";
+            case "geocentricx": return "e";
+            case "geocentricy": return "n";
+            case "geocentricz": return "u";
+            default: return null;
+        }
     }
 
     /**
