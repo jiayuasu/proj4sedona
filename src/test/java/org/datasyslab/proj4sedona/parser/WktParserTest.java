@@ -662,4 +662,82 @@ class WktParserTest {
         assertNotNull(def.getLat1());
         assertEquals(def.getLat0(), def.getLat1(), 1e-9);
     }
+
+    // ========== WKT2 GEODCRS (geographic + geocentric) ==========
+
+    private static final String GEODCRS_4978_CS =
+        "CS[Cartesian,3],"
+        + "AXIS[\"(X)\",geocentricX,ORDER[1],LENGTHUNIT[\"metre\",1]],"
+        + "AXIS[\"(Y)\",geocentricY,ORDER[2],LENGTHUNIT[\"metre\",1]],"
+        + "AXIS[\"(Z)\",geocentricZ,ORDER[3],LENGTHUNIT[\"metre\",1]]";
+
+    private static final String GEODCRS_4978_HEAD =
+        "GEODCRS[\"WGS 84\",ENSEMBLE[\"World Geodetic System 1984 ensemble\","
+        + "MEMBER[\"World Geodetic System 1984 (Transit)\"],"
+        + "MEMBER[\"World Geodetic System 1984 (G2296)\"],"
+        + "ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]],"
+        + "ENSEMBLEACCURACY[2.0]],"
+        + "PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],";
+
+    private void assertGeocentric4978(String wkt) {
+        ProjectionDef def = WktParser.parse(wkt);
+        assertEquals("geocent", def.getProjName(), "projName");
+        assertEquals("enu", def.getAxis(), "geocentric X/Y/Z axes map to enu");
+        assertEquals("meter", def.getUnits(), "axis unit");
+        assertEquals(1.0, def.getToMeter(), 0, "identity to-metre factor");
+
+        // Same ECEF references as GeocentricTest (pyproj/PROJ 9.5.1).
+        org.datasyslab.proj4sedona.transform.Converter conv =
+            org.datasyslab.proj4sedona.Proj4.proj4("+proj=longlat +datum=WGS84 +no_defs", wkt);
+        Point xyz = conv.forward(new Point(-7.56, 55.95));
+        assertEquals(3548342.473034, xyz.x, 1e-4, "X");
+        assertEquals(-470928.890965, xyz.y, 1e-4, "Y");
+        assertEquals(5261327.157452, xyz.z, 1e-4, "computed ECEF Z");
+    }
+
+    @Test
+    @DisplayName("GEODCRS geocentric (WKT2-2019 form with USAGE) parses as geocent")
+    void testGeodcrsGeocentric2019() {
+        // wkt-parser 1.5.5 test fixture (expected: projName geocent, axis enu,
+        // units meter, to_meter 1); trimmed ensemble members.
+        assertGeocentric4978(GEODCRS_4978_HEAD + GEODCRS_4978_CS
+            + ",USAGE[SCOPE[\"Geodesy.\"],AREA[\"World.\"],BBOX[-90,-180,90,180]]"
+            + ",ID[\"EPSG\",4978]]");
+    }
+
+    @Test
+    @DisplayName("GEODCRS geocentric (WKT2-2015 form, no USAGE) parses as geocent")
+    void testGeodcrsGeocentric2015() {
+        // Documented divergence from proj4js/wkt-parser 1.5.5, which honors the CS
+        // subtype only in its WKT2-2019 builder and silently parses this form as
+        // longlat. USAGE does not exist in WKT2-2015, and PROJ's own WKT2:2015
+        // output for EPSG:4978 is exactly this shape — PROJ parses it as geocentric
+        // (verified via pyproj 3.7.2: CRS.from_wkt(...).is_geocentric == True).
+        assertGeocentric4978(GEODCRS_4978_HEAD + GEODCRS_4978_CS + ",ID[\"EPSG\",4978]]");
+    }
+
+    @Test
+    @DisplayName("PROJ crs.EPSG_4807_as_WKT2: ellipsoidal GEODCRS parses as longlat")
+    void testGeodcrsEllipsoidal4807() {
+        // Input verbatim from PROJ 9.5.1 test/unit/test_crs.cpp (crs.EPSG_4807_as_WKT2);
+        // PROJ exports it as "+proj=longlat +ellps=clrk80ign +pm=paris +no_defs" —
+        // assertions cover the projection kind and unit tokens only (datum and prime
+        // meridian name resolution differ from PROJ's EPSG database).
+        String wkt = "GEODCRS[\"NTF (Paris)\","
+            + "DATUM[\"Nouvelle Triangulation Francaise (Paris)\","
+            + "ELLIPSOID[\"Clarke 1880 (IGN)\",6378249.2,293.466021293627,LENGTHUNIT[\"metre\",1]]],"
+            + "PRIMEM[\"Paris\",2.5969213,ANGLEUNIT[\"grad\",0.015707963267949]],"
+            + "CS[ellipsoidal,2],"
+            + "AXIS[\"latitude\",north,ORDER[1],ANGLEUNIT[\"grad\",0.015707963267949]],"
+            + "AXIS[\"longitude\",east,ORDER[2],ANGLEUNIT[\"grad\",0.015707963267949]],"
+            + "ID[\"EPSG\",4807]]";
+        ProjectionDef def = WktParser.parse(wkt);
+        assertEquals("longlat", def.getProjName(), "ellipsoidal GEODCRS is geographic");
+
+        String projStr = CRSSerializer.toProjString(
+            new org.datasyslab.proj4sedona.core.Proj(wkt));
+        assertTrue(projStr.contains("+proj=longlat"), projStr);
+        assertFalse(projStr.contains("+units="), projStr);
+        assertFalse(projStr.contains("+to_meter="), projStr);
+    }
 }

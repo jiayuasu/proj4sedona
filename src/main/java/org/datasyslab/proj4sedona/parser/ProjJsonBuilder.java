@@ -56,6 +56,7 @@ public final class ProjJsonBuilder {
 
             case "BASEGEOGCRS":
             case "GEOGCRS":
+            case "GEODCRS":
                 convertGeogCrs(node, result);
                 break;
 
@@ -162,7 +163,12 @@ public final class ProjJsonBuilder {
      */
     @SuppressWarnings("unchecked")
     private static void convertGeogCrs(List<Object> node, Map<String, Object> result) {
-        result.put("type", "GeographicCRS");
+        // The WKT2-2015 GEODCRS keyword covers both geographic and geocentric CRSs;
+        // GEOGCRS (2019) is geographic only. Mirrors wkt-parser PROJJSONBuilderBase
+        // (type selection) — but the coordinate-system subtype below intentionally
+        // diverges from it.
+        boolean isGeodetic = "GEODCRS".equals(node.get(0).toString());
+        result.put("type", isGeodetic ? "GeodeticCRS" : "GeographicCRS");
         if (node.size() > 1) {
             result.put("name", node.get(1));
         }
@@ -189,9 +195,20 @@ public final class ProjJsonBuilder {
             result.put("datum_ensemble", convert(ensembleNode, new HashMap<>()));
         }
 
-        // Coordinate system
+        // Coordinate system. For GEODCRS the CS node's subtype decides geographic
+        // (ellipsoidal) vs geocentric (Cartesian) in the downstream transformer.
+        // Divergence from proj4js/wkt-parser 1.5.5, which honors the CS node only in
+        // its WKT2-2019 builder: PROJ's own WKT2:2015 output for EPSG:4978 carries
+        // CS[Cartesian,3] and no USAGE node (USAGE is 2019-only), and PROJ parses it
+        // as geocentric, while proj4js silently yields longlat for it. The subtype is
+        // read here for both forms, matching PROJ.
         Map<String, Object> coordSystem = new HashMap<>();
-        coordSystem.put("type", "ellipsoidal");
+        String subtype = "ellipsoidal";
+        List<Object> csNode = findNode(node, "CS");
+        if (isGeodetic && csNode != null && csNode.size() > 1) {
+            subtype = csNode.get(1).toString();
+        }
+        coordSystem.put("subtype", subtype);
         coordSystem.put("axis", extractAxes(node));
         result.put("coordinate_system", coordSystem);
 
@@ -613,7 +630,15 @@ public final class ProjJsonBuilder {
                 case "U": direction = "up"; break;
                 case "W": direction = "west"; break;
                 case "S": direction = "south"; break;
-                default: direction = "unknown"; break;
+                default:
+                    // Not a well-known abbreviation (e.g. "(X)" on geocentric axes):
+                    // fall back to the explicit direction token, as wkt-parser does.
+                    if (node.size() > 2) {
+                        direction = node.get(2).toString().toLowerCase();
+                    } else {
+                        throw new IllegalArgumentException("Unknown axis abbreviation: " + abbrev);
+                    }
+                    break;
             }
         } else if (node.size() > 2) {
             direction = node.get(2).toString().toLowerCase();
