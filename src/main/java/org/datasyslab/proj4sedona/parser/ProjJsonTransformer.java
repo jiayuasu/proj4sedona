@@ -87,6 +87,15 @@ public final class ProjJsonTransformer {
             case "type":
                 if ("GeographicCRS".equals(value)) {
                     def.setProjName("longlat");
+                } else if ("GeodeticCRS".equals(value)) {
+                    // As in wkt-parser's transformPROJJSON: a GeodeticCRS with a
+                    // Cartesian coordinate system is a geocentric CRS (e.g. EPSG:4978)
+                    // and maps to geocent; any other subtype (ellipsoidal) is a
+                    // geographic CRS and maps to longlat.
+                    Object coordSys = projjson.get("coordinate_system");
+                    boolean cartesian = coordSys instanceof Map
+                        && "Cartesian".equals(((Map<String, Object>) coordSys).get("subtype"));
+                    def.setProjName(cartesian ? "geocent" : "longlat");
                 } else if ("ProjectedCRS".equals(value)) {
                     // projName will be set from conversion.method.name
                     Object conversion = projjson.get("conversion");
@@ -159,21 +168,7 @@ public final class ProjJsonTransformer {
                 break;
 
             case "unit":
-                if (value instanceof Map) {
-                    Map<String, Object> unit = (Map<String, Object>) value;
-                    Object unitName = unit.get("name");
-                    if (unitName != null) {
-                        String units = unitName.toString().toLowerCase();
-                        if ("metre".equals(units)) {
-                            units = "meter";
-                        }
-                        def.setUnits(units);
-                    }
-                    Object convFactor = unit.get("conversion_factor");
-                    if (convFactor != null) {
-                        def.setToMeter(toDouble(convFactor));
-                    }
-                }
+                processUnit(value, def);
                 break;
 
             case "base_crs":
@@ -329,56 +324,94 @@ public final class ProjJsonTransformer {
         Object axisList = coordSys.get("axis");
         if (axisList instanceof List) {
             List<Map<String, Object>> axes = (List<Map<String, Object>>) axisList;
+
+            // Mirrors wkt-parser's transformPROJJSON direction map: the axis string is
+            // set only when every direction maps (all-or-nothing), preserving the
+            // document's axis order — including geocentric X/Y/Z permutations — and a
+            // 2-axis system gets the implicit up axis appended.
             StringBuilder axisOrder = new StringBuilder();
-            
+            boolean allMapped = !axes.isEmpty();
             for (Map<String, Object> axis : axes) {
                 Object direction = axis.get("direction");
-                if (direction != null) {
-                    String dir = direction.toString().toLowerCase();
-                    switch (dir) {
-                        case "east": axisOrder.append('e'); break;
-                        case "north": axisOrder.append('n'); break;
-                        case "west": axisOrder.append('w'); break;
-                        case "south": axisOrder.append('s'); break;
-                        default: break;
-                    }
+                String mapped = direction == null ? null
+                    : mapAxisDirection(direction.toString().toLowerCase());
+                if (mapped == null) {
+                    allMapped = false;
+                    break;
                 }
+                axisOrder.append(mapped);
             }
-            
-            if (axisOrder.length() > 0) {
-                axisOrder.append('u'); // Add up direction
+            if (allMapped) {
+                if (axisOrder.length() == 2) {
+                    axisOrder.append('u');
+                }
                 def.setAxis(axisOrder.toString());
             }
 
             // Process units from coordinate system
             Object unit = coordSys.get("unit");
-            if (unit instanceof Map) {
-                processUnit((Map<String, Object>) unit, def);
+            if (unit != null) {
+                processUnit(unit, def);
             } else if (!axes.isEmpty()) {
                 // Try to get unit from first axis
                 Object axisUnit = axes.get(0).get("unit");
-                if (axisUnit instanceof Map) {
-                    processUnit((Map<String, Object>) axisUnit, def);
+                if (axisUnit != null) {
+                    processUnit(axisUnit, def);
                 }
             }
         }
     }
 
     /**
-     * Process unit info.
+     * Process unit info. PROJJSON units are either an object with name and
+     * conversion_factor, or a bare string for well-known units (e.g. the "metre"
+     * on EPSG:4978's geocentric axes).
      */
-    private static void processUnit(Map<String, Object> unit, ProjectionDef def) {
-        Object unitName = unit.get("name");
-        if (unitName != null) {
-            String units = unitName.toString().toLowerCase();
-            if ("metre".equals(units)) {
-                units = "meter";
+    @SuppressWarnings("unchecked")
+    private static void processUnit(Object unit, ProjectionDef def) {
+        if (unit instanceof String) {
+            setUnitsFromName(unit.toString(), def);
+            // wkt-parser's processUnit records the identity factor for the
+            // well-known metre; the proj-string parser does the same for +units=m.
+            if ("meter".equals(def.getUnits())) {
+                def.setToMeter(1.0);
             }
-            def.setUnits(units);
+            return;
         }
-        Object convFactor = unit.get("conversion_factor");
+        if (!(unit instanceof Map)) {
+            return;
+        }
+        Map<String, Object> unitMap = (Map<String, Object>) unit;
+        Object unitName = unitMap.get("name");
+        if (unitName != null) {
+            setUnitsFromName(unitName.toString(), def);
+        }
+        Object convFactor = unitMap.get("conversion_factor");
         if (convFactor != null) {
             def.setToMeter(toDouble(convFactor));
+        }
+    }
+
+    private static void setUnitsFromName(String unitName, ProjectionDef def) {
+        String units = unitName.toLowerCase();
+        if ("metre".equals(units)) {
+            units = "meter";
+        }
+        def.setUnits(units);
+    }
+
+    private static String mapAxisDirection(String direction) {
+        switch (direction) {
+            case "east": return "e";
+            case "north": return "n";
+            case "west": return "w";
+            case "south": return "s";
+            case "up": return "u";
+            case "down": return "d";
+            case "geocentricx": return "e";
+            case "geocentricy": return "n";
+            case "geocentricz": return "u";
+            default: return null;
         }
     }
 
