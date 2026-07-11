@@ -262,6 +262,8 @@ class GeocentricTest {
         Proj original = new Proj("+proj=geocent +datum=WGS84 +units=us-ft +no_defs");
         String json = CRSSerializer.toProjJson(original);
         assertTrue(json.contains("conversion_factor"), "unit factor emitted: " + json);
+        assertTrue(json.contains("\"US survey foot\""),
+            "authority unit name emitted, not the proj short code: " + json);
         Proj reimported = new Proj(json);
         // Proj.forward is raw projection math (unit scaling happens in Transform), so
         // the factor itself must be checked on the re-imported params.

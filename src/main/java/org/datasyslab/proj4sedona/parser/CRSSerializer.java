@@ -979,7 +979,9 @@ public final class CRSSerializer {
         } else {
             Map<String, Object> unitMap = new LinkedHashMap<>();
             unitMap.put("type", "LinearUnit");
-            unitMap.put("name", params.units != null ? params.units : "unknown");
+            // Authority-style unit name, as the other PROJJSON paths emit (PROJ writes
+            // LENGTHUNIT["unknown",...] when only a bare to-metre factor is known).
+            unitMap.put("name", params.units != null ? getUnitName(params.units) : "unknown");
             unitMap.put("conversion_factor", params.toMeter);
             unit = unitMap;
         }
