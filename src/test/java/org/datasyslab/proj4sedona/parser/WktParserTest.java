@@ -740,4 +740,93 @@ class WktParserTest {
         assertFalse(projStr.contains("+units="), projStr);
         assertFalse(projStr.contains("+to_meter="), projStr);
     }
+
+    // ========== WKT2_2015_SIMPLIFIED (plain UNIT keyword, no per-axis units) ==========
+
+    @Test
+    @DisplayName("GEODCRS geocentric in WKT2_2015_SIMPLIFIED form parses as geocent")
+    void testGeodcrsSimplified4978() {
+        // PROJ 9.5.1's to_wkt('WKT2_2015_SIMPLIFIED') for EPSG:4978: no LENGTHUNIT/
+        // ANGLEUNIT/USAGE keywords at all — detection must key on GEODCRS itself,
+        // and the single CS-level UNIT applies to the axes.
+        String wkt = "GEODCRS[\"WGS 84\",DATUM[\"World Geodetic System 1984\","
+            + "ELLIPSOID[\"WGS 84\",6378137,298.257223563]],"
+            + "CS[Cartesian,3],AXIS[\"(X)\",geocentricX],AXIS[\"(Y)\",geocentricY],"
+            + "AXIS[\"(Z)\",geocentricZ],UNIT[\"metre\",1],"
+            + "SCOPE[\"Geodesy.\"],AREA[\"World.\"],BBOX[-90,-180,90,180],ID[\"EPSG\",4978]]";
+        assertEquals(WktVersion.WKT2, WktVersion.detect(wkt), "simplified GEODCRS is WKT2");
+        ProjectionDef def = WktParser.parse(wkt);
+        assertEquals("geocent", def.getProjName());
+        assertEquals("enu", def.getAxis());
+        assertEquals(1.0, def.getToMeter(), 0, "CS-level metre unit propagated");
+
+        org.datasyslab.proj4sedona.transform.Converter conv =
+            org.datasyslab.proj4sedona.Proj4.proj4("+proj=longlat +datum=WGS84 +no_defs", wkt);
+        Point xyz = conv.forward(new Point(-7.56, 55.95));
+        assertEquals(3548342.473034, xyz.x, 1e-4, "X");
+        assertEquals(-470928.890965, xyz.y, 1e-4, "Y");
+        assertEquals(5261327.157452, xyz.z, 1e-4, "computed ECEF Z");
+    }
+
+    @Test
+    @DisplayName("Simplified geocentric CRS with non-metre CS unit keeps its scale")
+    void testGeodcrsSimplifiedNonMetreKeepsScale() {
+        // PROJ 9.5.1's WKT2_2015_SIMPLIFIED for +proj=geocent +datum=WGS84 +units=us-ft.
+        // The CS-level UNIT is the only unit in the document; dropping it would
+        // silently produce metre output. References match GeocentricTest's us-ft
+        // case (pyproj/PROJ 9.5.1).
+        String wkt = "GEODCRS[\"unknown\",DATUM[\"World Geodetic System 1984\","
+            + "ELLIPSOID[\"WGS 84\",6378137,298.257223563],ID[\"EPSG\",6326]],"
+            + "CS[Cartesian,3],AXIS[\"(X)\",geocentricX],AXIS[\"(Y)\",geocentricY],"
+            + "AXIS[\"(Z)\",geocentricZ],"
+            + "UNIT[\"US survey foot\",0.304800609601219,ID[\"EPSG\",9003]]]";
+        ProjectionDef def = WktParser.parse(wkt);
+        assertEquals("geocent", def.getProjName());
+        assertEquals(0.304800609601219, def.getToMeter(), 1e-15, "us-ft factor propagated");
+
+        org.datasyslab.proj4sedona.transform.Converter conv =
+            org.datasyslab.proj4sedona.Proj4.proj4("+proj=longlat +datum=WGS84 +no_defs", wkt);
+        Point xyz = conv.forward(new Point(2.35, 48.85, 100));
+        assertEquals(13784550.5068, xyz.x, 0.001, "X in US feet");
+        assertEquals(565693.8601, xyz.y, 0.001, "Y in US feet");
+        assertEquals(15681312.7958, xyz.z, 0.001, "Z in US feet");
+    }
+
+    @Test
+    @DisplayName("GEODCRS ellipsoidal in WKT2_2015_SIMPLIFIED form parses as longlat")
+    void testGeodcrsSimplified4807() {
+        // PROJ 9.5.1's WKT2_2015_SIMPLIFIED for EPSG:4807 (grads CS-level UNIT).
+        String wkt = "GEODCRS[\"NTF (Paris)\",DATUM[\"Nouvelle Triangulation Francaise (Paris)\","
+            + "ELLIPSOID[\"Clarke 1880 (IGN)\",6378249.2,293.466021293627]],"
+            + "PRIMEM[\"Paris\",2.5969213],CS[ellipsoidal,2],"
+            + "AXIS[\"geodetic latitude (Lat)\",north],AXIS[\"geodetic longitude (Lon)\",east],"
+            + "UNIT[\"grad\",0.0157079632679489],ID[\"EPSG\",4807]]";
+        ProjectionDef def = WktParser.parse(wkt);
+        assertEquals("longlat", def.getProjName());
+
+        String projStr = CRSSerializer.toProjString(
+            new org.datasyslab.proj4sedona.core.Proj(wkt));
+        assertFalse(projStr.contains("+units="), projStr);
+        assertFalse(projStr.contains("+to_meter="),
+            "angular CS unit must not leak into +to_meter=: " + projStr);
+    }
+
+    @Test
+    @DisplayName("PROJCRS with a BASEGEODCRS base (WKT2-2015) keeps the base ellipsoid")
+    void testProjcrsBaseGeodCrs2015() {
+        // PROJ's WKT2:2015 output uses BASEGEODCRS (not BASEGEOGCRS) for every
+        // projected CRS; dropping it silently falls back to the WGS84 default
+        // ellipsoid. Bessel-based CRS so the loss is observable (EPSG:5514-style).
+        String wkt = "PROJCRS[\"S-JTSK / Krovak East North\","
+            + "BASEGEODCRS[\"S-JTSK\",DATUM[\"System of the Unified Trigonometrical Cadastral Network\","
+            + "ELLIPSOID[\"Bessel 1841\",6377397.155,299.1528128,LENGTHUNIT[\"metre\",1]]],"
+            + "PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]]],"
+            + "CONVERSION[\"Krovak\",METHOD[\"Krovak (North Orientated)\",ID[\"EPSG\",1041]],"
+            + "PARAMETER[\"Latitude of projection centre\",49.5,ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "PARAMETER[\"Longitude of origin\",24.8333333333333,ANGLEUNIT[\"degree\",0.0174532925199433]]],"
+            + "CS[Cartesian,2],AXIS[\"x\",south,ORDER[1]],AXIS[\"y\",west,ORDER[2]],"
+            + "LENGTHUNIT[\"metre\",1],ID[\"EPSG\",5514]]";
+        ProjectionDef def = WktParser.parse(wkt);
+        assertEquals(6377397.155, def.getA(), 1e-6, "Bessel semi-major from BASEGEODCRS");
+    }
 }

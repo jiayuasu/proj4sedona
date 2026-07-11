@@ -45,9 +45,14 @@ public enum WktVersion {
 
         String normalizedWkt = wkt.toUpperCase();
 
-        // Check for WKT2-specific keywords
+        // Check for WKT2-specific keywords. GEODCRS (WKT2-2015; also covers
+        // BASEGEODCRS by substring) is not in wkt-parser's detection list, but the
+        // WKT2_2015_SIMPLIFIED convention drops the typed unit keywords
+        // (LENGTHUNIT/ANGLEUNIT become UNIT), so without it a simplified GEODCRS
+        // document would fall through to the WKT1 branch via its UNIT node.
         if (normalizedWkt.contains("PROJCRS") ||
             normalizedWkt.contains("GEOGCRS") ||
+            normalizedWkt.contains("GEODCRS") ||
             normalizedWkt.contains("BOUNDCRS") ||
             normalizedWkt.contains("VERTCRS") ||
             normalizedWkt.contains("LENGTHUNIT") ||

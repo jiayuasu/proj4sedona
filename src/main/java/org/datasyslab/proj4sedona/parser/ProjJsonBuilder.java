@@ -55,6 +55,7 @@ public final class ProjJsonBuilder {
                 break;
 
             case "BASEGEOGCRS":
+            case "BASEGEODCRS":
             case "GEOGCRS":
             case "GEODCRS":
                 convertGeogCrs(node, result);
@@ -118,8 +119,12 @@ public final class ProjJsonBuilder {
             result.put("name", node.get(1));
         }
 
-        // Find and convert BASEGEOGCRS
+        // Find and convert the base CRS: BASEGEOGCRS (WKT2-2019) or BASEGEODCRS
+        // (WKT2-2015 — PROJ's WKT2:2015 output uses it for every projected CRS).
         List<Object> baseCrsNode = findNode(node, "BASEGEOGCRS");
+        if (baseCrsNode == null) {
+            baseCrsNode = findNode(node, "BASEGEODCRS");
+        }
         if (baseCrsNode != null) {
             result.put("base_crs", convert(baseCrsNode, new HashMap<>()));
         }
@@ -141,8 +146,12 @@ public final class ProjJsonBuilder {
             result.put("coordinate_system", coordSystem);
         }
 
-        // Find and convert LENGTHUNIT
+        // Find and convert the coordinate-system unit: LENGTHUNIT, or the plain
+        // UNIT keyword the WKT2 SIMPLIFIED conventions emit.
         List<Object> lengthUnitNode = findNode(node, "LENGTHUNIT");
+        if (lengthUnitNode == null) {
+            lengthUnitNode = findNode(node, "UNIT");
+        }
         if (lengthUnitNode != null) {
             Map<String, Object> unit = convertUnit(lengthUnitNode);
             Map<String, Object> coordSystem = (Map<String, Object>) result.get("coordinate_system");
@@ -210,6 +219,19 @@ public final class ProjJsonBuilder {
         }
         coordSystem.put("subtype", subtype);
         coordSystem.put("axis", extractAxes(node));
+        // The WKT2 SIMPLIFIED conventions carry a single CS-level unit (plain UNIT
+        // keyword) instead of per-axis units; without it a non-metre simplified
+        // geocentric CRS would silently lose its scale.
+        List<Object> csUnitNode = findNode(node, "LENGTHUNIT");
+        if (csUnitNode == null) {
+            csUnitNode = findNode(node, "ANGLEUNIT");
+        }
+        if (csUnitNode == null) {
+            csUnitNode = findNode(node, "UNIT");
+        }
+        if (csUnitNode != null) {
+            coordSystem.put("unit", convertUnit(csUnitNode));
+        }
         result.put("coordinate_system", coordSystem);
 
         // Find ID
