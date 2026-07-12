@@ -139,35 +139,29 @@ public final class DeriveConstants {
     }
 
     /**
-     * Look up ellipsoid and return its parameters.
+     * Look up ellipsoid and return its parameters as [a, b, rf].
+     *
+     * <p>Resolves against the full Ellipsoid registry, as proj4js's
+     * deriveConstants.sphere does with its complete ellipsoid table. A hardcoded
+     * 10-entry switch previously shadowed the registry here, silently defaulting
+     * the other 34 registered codes to WGS84 (issue #105) — +ellps=clrk80ign
+     * parsed 112 m off in the semi-major axis. Unknown codes still default to
+     * WGS84, matching proj4js.</p>
      */
     private static Double[] getEllipsoidValues(String key) {
-        // Common ellipsoids - [a, b, rf]
-        switch (key) {
-            case "wgs84":
-                return new Double[]{6378137.0, 6356752.314245179, 298.257223563};
-            case "grs80":
-                return new Double[]{6378137.0, 6356752.314140356, 298.257222101};
-            case "clrk66":
-                return new Double[]{6378206.4, 6356583.8, null};
-            case "clrk80":
-            case "clark80":
-                return new Double[]{6378249.145, 6356514.966398753, 293.4663};
-            case "bessel":
-                return new Double[]{6377397.155, 6356078.962818189, 299.1528128};
-            case "intl":
-                return new Double[]{6378388.0, 6356911.946127947, 297.0};
-            case "airy":
-                return new Double[]{6377563.396, 6356256.91, null};
-            case "mod_airy":
-                return new Double[]{6377340.189, 6356034.446, null};
-            case "krass":
-                return new Double[]{6378245.0, 6356863.018773047, 298.3};
-            case "sphere":
-                return new Double[]{6370997.0, 6370997.0, null};
-            default:
-                // Default to WGS84
-                return new Double[]{6378137.0, 6356752.314245179, 298.257223563};
+        org.datasyslab.proj4sedona.constants.Ellipsoid ellipsoid =
+            org.datasyslab.proj4sedona.constants.Ellipsoid.get(key);
+        if (ellipsoid == null) {
+            ellipsoid = org.datasyslab.proj4sedona.constants.Ellipsoid.WGS84;
         }
+        // A sphere entry (a == b) derives rf = a / (a - b) = Infinity in the
+        // registry; the sphere() caller expects null there, as for any
+        // b-defined ellipsoid whose rf is not meaningful.
+        double rf = ellipsoid.getRf();
+        return new Double[]{
+            ellipsoid.getA(),
+            ellipsoid.getB(),
+            rf > 0 && !Double.isInfinite(rf) ? rf : null
+        };
     }
 }

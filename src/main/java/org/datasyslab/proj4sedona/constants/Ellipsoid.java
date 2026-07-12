@@ -100,6 +100,12 @@ public final class Ellipsoid {
     /** Perfect sphere - used for some projections and approximate calculations */
     public static final Ellipsoid SPHERE = registerWithB("sphere", 6370997, 6370997, "Normal Sphere (r=6370997)");
 
+    static {
+        // Legacy alias: the datum registry's carthage entry (ported from proj4js
+        // constants/Datum.js) spells Clarke 1880 mod. as "clark80".
+        ELLIPSOIDS.put("clark80", CLRK80);
+    }
+
     private final String code;
     private final double a;           // Semi-major axis (equatorial radius) in meters
     private final double b;           // Semi-minor axis (polar radius) in meters

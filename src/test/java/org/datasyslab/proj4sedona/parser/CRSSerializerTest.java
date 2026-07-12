@@ -1354,6 +1354,34 @@ class CRSSerializerTest {
         assertTrue(projString.contains("+proj=eck6"), "re-export uses short code: " + projString);
     }
 
+    // ========== Ellipsoid resolution (issues #101, #105) ==========
+
+    @Test
+    @DisplayName("Issue #105: every registered +ellps code parses with its own axes")
+    void testAllEllipsoidCodesParse() {
+        // A hardcoded 10-entry switch shadowed the 45-entry registry, silently
+        // defaulting the rest to WGS84 (+ellps=clrk80ign parsed 112 m off in a).
+        for (org.datasyslab.proj4sedona.constants.Ellipsoid e :
+                org.datasyslab.proj4sedona.constants.Ellipsoid.getAll().values()) {
+            Proj p = new Proj("+proj=longlat +ellps=" + e.getCode() + " +no_defs");
+            assertEquals(e.getA(), p.getParams().a, 1e-6, e.getCode() + " semi-major");
+            assertEquals(e.getB(), p.getParams().b, 1e-6, e.getCode() + " semi-minor");
+        }
+    }
+
+    @Test
+    @DisplayName("Issue #105: parsed clrk80ign transforms match pyproj")
+    void testClrk80ignTransform() {
+        // Reference from pyproj 3.7.2/PROJ 9.5.1; with the WGS84 fallback this was
+        // ~100 m off.
+        Point p = org.datasyslab.proj4sedona.Proj4
+            .proj4("+proj=longlat +ellps=clrk80ign +no_defs",
+                   "+proj=utm +zone=31 +ellps=clrk80ign +no_defs")
+            .forward(new Point(2.5, 46.0));
+        assertEquals(461282.081634, p.x, 1e-4);
+        assertEquals(5093857.024237, p.y, 1e-4);
+    }
+
     // ========== Datum token normalization (issue #98) ==========
 
     @Test
