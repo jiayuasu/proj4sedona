@@ -812,6 +812,30 @@ class WktParserTest {
     }
 
     @Test
+    @DisplayName("GEODCRS PROJJSON type follows the CS subtype, not the keyword")
+    void testGeodcrsProjJsonTypeBySubtype() {
+        // PROJ rejects GeodeticCRS + ellipsoidal PROJJSON ("expected a Cartesian or
+        // spherical CS") and normalizes an ellipsoidal GEODCRS to GeographicCRS, so
+        // the intermediate PROJJSON must pick the type from the coordinate system.
+        String cartesian = GEODCRS_4978_HEAD + GEODCRS_4978_CS + ",ID[\"EPSG\",4978]]";
+        assertEquals("GeodeticCRS",
+            WktParser.parseWkt2ToProjJson(cartesian).get("type"),
+            "Cartesian CS keeps the geocentric type");
+
+        String ellipsoidal = "GEODCRS[\"NTF (Paris)\","
+            + "DATUM[\"Nouvelle Triangulation Francaise (Paris)\","
+            + "ELLIPSOID[\"Clarke 1880 (IGN)\",6378249.2,293.466021293627,LENGTHUNIT[\"metre\",1]]],"
+            + "PRIMEM[\"Paris\",2.5969213,ANGLEUNIT[\"grad\",0.015707963267949]],"
+            + "CS[ellipsoidal,2],"
+            + "AXIS[\"latitude\",north,ORDER[1],ANGLEUNIT[\"grad\",0.015707963267949]],"
+            + "AXIS[\"longitude\",east,ORDER[2],ANGLEUNIT[\"grad\",0.015707963267949]],"
+            + "ID[\"EPSG\",4807]]";
+        assertEquals("GeographicCRS",
+            WktParser.parseWkt2ToProjJson(ellipsoidal).get("type"),
+            "ellipsoidal GEODCRS normalizes to GeographicCRS, as PROJ does");
+    }
+
+    @Test
     @DisplayName("PROJCRS with a BASEGEODCRS base (WKT2-2015) keeps the base ellipsoid")
     void testProjcrsBaseGeodCrs2015() {
         // PROJ's WKT2:2015 output uses BASEGEODCRS (not BASEGEOGCRS) for every

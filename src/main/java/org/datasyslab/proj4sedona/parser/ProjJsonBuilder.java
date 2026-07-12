@@ -175,11 +175,15 @@ public final class ProjJsonBuilder {
     @SuppressWarnings("unchecked")
     private static void convertGeogCrs(List<Object> node, Map<String, Object> result) {
         // The WKT2-2015 GEODCRS keyword covers both geographic and geocentric CRSs;
-        // GEOGCRS (2019) is geographic only. Mirrors wkt-parser PROJJSONBuilderBase
-        // (type selection) — but the coordinate-system subtype below intentionally
-        // diverges from it.
+        // GEOGCRS (2019) is geographic only. The PROJJSON type is decided by the
+        // coordinate-system subtype, not the keyword: PROJ rejects a GeodeticCRS
+        // document with an ellipsoidal coordinate system ("expected a Cartesian or
+        // spherical CS") and itself normalizes an ellipsoidal GEODCRS to
+        // GeographicCRS. Divergence from wkt-parser 1.5.5, which stamps GeodeticCRS
+        // on every GEODCRS — its intermediate PROJJSON is internal, while ours is
+        // exposed via WktParser.parseWkt2ToProjJson. (The transformer still accepts
+        // GeodeticCRS + ellipsoidal leniently on input.)
         boolean isGeodetic = "GEODCRS".equals(node.get(0).toString());
-        result.put("type", isGeodetic ? "GeodeticCRS" : "GeographicCRS");
         if (node.size() > 1) {
             result.put("name", node.get(1));
         }
@@ -219,6 +223,8 @@ public final class ProjJsonBuilder {
         if (isGeodetic && csNode != null && csNode.size() > 1) {
             subtype = csNode.get(1).toString();
         }
+        result.put("type",
+            isGeodetic && "Cartesian".equals(subtype) ? "GeodeticCRS" : "GeographicCRS");
         coordSystem.put("subtype", subtype);
         coordSystem.put("axis", extractAxes(node));
         // The WKT2 SIMPLIFIED conventions carry a single CS-level unit (plain UNIT
