@@ -52,12 +52,13 @@ public final class WktUtils {
 
         String normalizedProjName = projName.toLowerCase().replace("_", " ");
 
-        // For Albers and Lambert Azimuthal, long0 from longc
+        // longitude_of_center feeds long0 whenever no central meridian was given,
+        // for every projection (wkt-parser 1.5.5 util.js dropped the Albers/LAEA-only
+        // restriction). Without this, GDAL-style WKT with longitude_of_center on e.g.
+        // Sinusoidal, Miller or Azimuthal_Equidistant silently projects around
+        // longitude 0. Projections that read longc directly (omerc) are unaffected.
         if (def.getLong0() == null && def.getLongc() != null) {
-            if (normalizedProjName.equals("albers conic equal area") ||
-                normalizedProjName.equals("lambert azimuthal equal area")) {
-                def.setLong0(def.getLongc());
-            }
+            def.setLong0(def.getLongc());
         }
 
         // Handle stereographic projections

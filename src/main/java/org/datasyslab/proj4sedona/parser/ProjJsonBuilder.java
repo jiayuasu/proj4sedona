@@ -664,14 +664,18 @@ public final class ProjJsonBuilder {
                     // Not a well-known abbreviation (e.g. "(X)" on geocentric axes):
                     // fall back to the explicit direction token, as wkt-parser does.
                     if (node.size() > 2) {
-                        direction = node.get(2).toString().toLowerCase();
+                        direction = node.get(2).toString();
                     } else {
                         throw new IllegalArgumentException("Unknown axis abbreviation: " + abbrev);
                     }
                     break;
             }
         } else if (node.size() > 2) {
-            direction = node.get(2).toString().toLowerCase();
+            // Preserve the token's case (wkt-parser 1.5.5): the PROJJSON direction
+            // enum is camelCase for geocentricX/Y/Z, so lowercasing produced
+            // schema-invalid values in the exposed intermediate PROJJSON. The
+            // transformer lowercases at lookup, so parsing tolerance is unchanged.
+            direction = node.get(2).toString();
         } else {
             direction = "unknown";
         }
