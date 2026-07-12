@@ -136,7 +136,7 @@ public final class ProjJsonTransformer {
                 if (value instanceof Map) {
                     Object longitude = ((Map<String, Object>) value).get("longitude");
                     if (longitude != null) {
-                        def.setLong0(toDouble(longitude) * Values.D2R);
+                        def.setLong0(primeMeridianToRadians(longitude));
                     }
                 }
                 break;
@@ -257,9 +257,39 @@ public final class ProjJsonTransformer {
         if (primeMeridian instanceof Map) {
             Object longitude = ((Map<String, Object>) primeMeridian).get("longitude");
             if (longitude != null) {
-                def.setFromGreenwich(toDouble(longitude) * Values.D2R);
+                def.setFromGreenwich(primeMeridianToRadians(longitude));
             }
         }
+    }
+
+    /**
+     * Resolve a PROJJSON prime-meridian longitude to radians. The field is either a
+     * plain number in degrees, or a value-with-unit object as PROJ emits for
+     * non-degree meridians (EPSG:4807's Paris meridian is
+     * {"value": 2.5969213, "unit": {..."grad", "conversion_factor": 0.0157...}});
+     * the previous degree assumption fed the object through toDouble, which lost
+     * the meridian entirely (0.0). Divergence from wkt-parser 1.5.5, which assumes
+     * degrees unconditionally.
+     */
+    @SuppressWarnings("unchecked")
+    private static double primeMeridianToRadians(Object longitude) {
+        if (longitude instanceof Map) {
+            Map<String, Object> lon = (Map<String, Object>) longitude;
+            double value = toDouble(lon.get("value"));
+            Object unit = lon.get("unit");
+            if (unit instanceof Map) {
+                Object factor = ((Map<String, Object>) unit).get("conversion_factor");
+                if (factor != null && toDouble(factor) > 0) {
+                    // Rounded at 1e-9 in degrees (as the towgs84 re-encode does) so
+                    // the unit conversion's float noise does not leak into +pm=.
+                    double degrees = Math.round(
+                        value * toDouble(factor) * Values.R2D * 1e9) / 1e9;
+                    return degrees * Values.D2R;
+                }
+            }
+            return value * Values.D2R;
+        }
+        return toDouble(longitude) * Values.D2R;
     }
 
     /**

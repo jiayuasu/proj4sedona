@@ -1,5 +1,7 @@
 package org.datasyslab.proj4sedona.parser;
 
+import org.datasyslab.proj4sedona.constants.Values;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -202,7 +204,28 @@ public final class ProjJsonBuilder {
                 Map<String, Object> primeMeridian = new HashMap<>();
                 primeMeridian.put("name", primemNode.get(1));
                 if (primemNode.size() > 2) {
-                    primeMeridian.put("longitude", parseDouble(primemNode.get(2)));
+                    // The PRIMEM value is in its own ANGLEUNIT when present, else in
+                    // the CRS's angular unit (the SIMPLIFIED form drops the local
+                    // unit — EPSG:4807's Paris meridian is 2.5969213 grads, not
+                    // degrees), else degrees. Normalized to degrees here, the plain-
+                    // number form of the PROJJSON prime_meridian.longitude field.
+                    // Divergence from wkt-parser 1.5.5, which reads the raw value as
+                    // degrees (~0.26 deg / 29 km error for grads meridians).
+                    double raw = parseDouble(primemNode.get(2));
+                    Double toRadians = angularUnitFactor(findNode(primemNode, "ANGLEUNIT"));
+                    if (toRadians == null) {
+                        toRadians = angularUnitFactor(findNode(primemNode, "UNIT"));
+                    }
+                    if (toRadians == null) {
+                        toRadians = angularUnitFactor(findNode(node, "ANGLEUNIT"));
+                    }
+                    if (toRadians == null) {
+                        toRadians = angularUnitFactor(findNode(node, "UNIT"));
+                    }
+                    double degrees = toRadians != null
+                        ? Math.round(raw * toRadians * Values.R2D * 1e9) / 1e9
+                        : raw;
+                    primeMeridian.put("longitude", degrees);
                 }
                 datum.put("prime_meridian", primeMeridian);
             }
@@ -637,6 +660,18 @@ public final class ProjJsonBuilder {
         }
 
         return unit;
+    }
+
+    /**
+     * The to-radians conversion factor of an ANGLEUNIT/UNIT node, or null when the
+     * node is absent or carries no numeric factor.
+     */
+    private static Double angularUnitFactor(List<Object> unitNode) {
+        if (unitNode == null || unitNode.size() < 3) {
+            return null;
+        }
+        double factor = parseDouble(unitNode.get(2));
+        return factor > 0 ? factor : null;
     }
 
     /**

@@ -894,6 +894,85 @@ class WktParserTest {
     }
 
     @Test
+    @DisplayName("Issue #99: grads PRIMEM resolves through its angular unit")
+    void testPrimemAngularUnits() {
+        // EPSG:4807's Paris meridian is 2.5969213 grads = 2.33722917 degrees. The
+        // raw value was read as degrees (~0.26 deg / 29 km error). Verified against
+        // PROJ, whose export of the same CRS is +pm=paris (2.33722917 deg).
+        // Divergence from wkt-parser 1.5.5, which assumes degrees unconditionally.
+        String full = "GEODCRS[\"NTF (Paris)\",DATUM[\"Nouvelle Triangulation Francaise (Paris)\","
+            + "ELLIPSOID[\"Clarke 1880 (IGN)\",6378249.2,293.466021293627,LENGTHUNIT[\"metre\",1]]],"
+            + "PRIMEM[\"Paris\",2.5969213,ANGLEUNIT[\"grad\",0.015707963267949]],CS[ellipsoidal,2],"
+            + "AXIS[\"latitude\",north,ORDER[1],ANGLEUNIT[\"grad\",0.015707963267949]],"
+            + "AXIS[\"longitude\",east,ORDER[2],ANGLEUNIT[\"grad\",0.015707963267949]],ID[\"EPSG\",4807]]";
+        // The SIMPLIFIED form drops the local ANGLEUNIT; the value is in the CRS's
+        // CS-level unit (grads), not degrees.
+        String simplified = "GEODCRS[\"NTF (Paris)\",DATUM[\"Nouvelle Triangulation Francaise (Paris)\","
+            + "ELLIPSOID[\"Clarke 1880 (IGN)\",6378249.2,293.466021293627]],"
+            + "PRIMEM[\"Paris\",2.5969213],CS[ellipsoidal,2],"
+            + "AXIS[\"geodetic latitude (Lat)\",north],AXIS[\"geodetic longitude (Lon)\",east],"
+            + "UNIT[\"grad\",0.0157079632679489],ID[\"EPSG\",4807]]";
+        for (String wkt : new String[]{full, simplified}) {
+            org.datasyslab.proj4sedona.core.Proj p = new org.datasyslab.proj4sedona.core.Proj(wkt);
+            assertEquals(2.33722917, Math.toDegrees(p.getParams().fromGreenwich), 1e-9,
+                "Paris meridian in degrees");
+            assertTrue(CRSSerializer.toProjString(p).contains("+pm=2.33722917"),
+                CRSSerializer.toProjString(p));
+        }
+
+        // Internal consistency: a Greenwich longitude of 5 deg is 5 - 2.33722917 deg
+        // east of the Paris meridian.
+        Point out = org.datasyslab.proj4sedona.Proj4
+            .proj4("+proj=longlat +datum=WGS84 +no_defs", full)
+            .forward(new Point(5.0, 48.0));
+        assertEquals(5.0 - 2.33722917, out.x, 1e-9, "lon relative to Paris");
+        assertEquals(48.0, out.y, 1e-9, "lat unchanged");
+
+        // A degree-unit PRIMEM stays an identity conversion (Madrid, EPSG:4903 style).
+        String madrid = "GEODCRS[\"Madrid 1870\",DATUM[\"Madrid 1870\","
+            + "ELLIPSOID[\"Struve 1860\",6378298.3,294.73]],"
+            + "PRIMEM[\"Madrid\",-3.687375,ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "CS[ellipsoidal,2],AXIS[\"latitude\",north,ORDER[1],ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "AXIS[\"longitude\",east,ORDER[2],ANGLEUNIT[\"degree\",0.0174532925199433]]]";
+        assertEquals(-3.687375,
+            Math.toDegrees(new org.datasyslab.proj4sedona.core.Proj(madrid).getParams().fromGreenwich),
+            1e-9);
+    }
+
+    @Test
+    @DisplayName("Issue #99: PROJJSON value-with-unit prime meridian is honored")
+    void testPrimemProjJsonValueUnitObject() {
+        // PROJ's PROJJSON for EPSG:4807 carries the meridian as
+        // {"value": 2.5969213, "unit": {..."grad"...}}; the degree assumption fed the
+        // object through toDouble, which silently produced 0.0 — the meridian was
+        // lost entirely.
+        String json = "{\"type\": \"GeographicCRS\", \"name\": \"NTF (Paris)\","
+            + "\"datum\": {\"type\": \"GeodeticReferenceFrame\","
+            + "  \"name\": \"Nouvelle Triangulation Francaise (Paris)\","
+            + "  \"ellipsoid\": {\"name\": \"Clarke 1880 (IGN)\", \"semi_major_axis\": 6378249.2,"
+            + "   \"inverse_flattening\": 293.466021293627},"
+            + "  \"prime_meridian\": {\"name\": \"Paris\", \"longitude\": {\"value\": 2.5969213,"
+            + "   \"unit\": {\"type\": \"AngularUnit\", \"name\": \"grad\","
+            + "    \"conversion_factor\": 0.0157079632679489}}}},"
+            + "\"coordinate_system\": {\"subtype\": \"ellipsoidal\", \"axis\": ["
+            + " {\"name\": \"Geodetic latitude\", \"abbreviation\": \"Lat\", \"direction\": \"north\", \"unit\": \"degree\"},"
+            + " {\"name\": \"Geodetic longitude\", \"abbreviation\": \"Lon\", \"direction\": \"east\", \"unit\": \"degree\"}]},"
+            + "\"id\": {\"authority\": \"EPSG\", \"code\": 4807}}";
+        org.datasyslab.proj4sedona.core.Proj p = new org.datasyslab.proj4sedona.core.Proj(json);
+        assertEquals(2.33722917, Math.toDegrees(p.getParams().fromGreenwich), 1e-9,
+            "grads meridian object resolved, not dropped");
+
+        // Plain-number longitude stays degrees.
+        String plain = json.replace(
+            "{\"value\": 2.5969213,"
+            + "   \"unit\": {\"type\": \"AngularUnit\", \"name\": \"grad\","
+            + "    \"conversion_factor\": 0.0157079632679489}}", "2.33722917");
+        assertEquals(2.33722917,
+            Math.toDegrees(new org.datasyslab.proj4sedona.core.Proj(plain).getParams().fromGreenwich),
+            1e-9);
+    }
+
+    @Test
     @DisplayName("PROJCRS with a BASEGEODCRS base (WKT2-2015) keeps the base ellipsoid")
     void testProjcrsBaseGeodCrs2015() {
         // PROJ's WKT2:2015 output uses BASEGEODCRS (not BASEGEOGCRS) for every
