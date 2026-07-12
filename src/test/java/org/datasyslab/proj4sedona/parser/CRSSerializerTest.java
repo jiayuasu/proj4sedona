@@ -1419,6 +1419,14 @@ class CRSSerializerTest {
         String out = CRSSerializer.toProjString(new Proj("+proj=longlat +datum=potsdam +no_defs"));
         assertFalse(out.contains("+datum="), out);
         assertTrue(out.contains("+towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7"), out);
+
+        // Even a definition that carries PROJ's exact @BETA2007.gsb grid must not be
+        // tokenized: our own parser (like proj4js) re-reads +datum=potsdam as the
+        // legacy Helmert, so the token cannot round-trip on both sides.
+        String grid = CRSSerializer.toProjString(
+            new Proj("+proj=longlat +datum=potsdam +nadgrids=@BETA2007.gsb +no_defs"));
+        assertFalse(grid.contains("+datum="), grid);
+        assertTrue(grid.contains("+nadgrids=@BETA2007.gsb"), grid);
     }
 
     @Test
@@ -1485,6 +1493,8 @@ class CRSSerializerTest {
         Proj p = new Proj("+proj=longlat +datum=ch1903 +nadgrids=@foo.gsb +no_defs");
         String out = CRSSerializer.toProjString(p);
         assertTrue(out.contains("+nadgrids=@foo.gsb"), out);
+        assertTrue(out.contains("+towgs84=674.374,15.056,405.346"),
+            "the dormant towgs84 half of the state is preserved too: " + out);
         Proj reimported = new Proj(out);
         assertTrue(reimported.getParams().datum.isGridShift(),
             "grid shift stays authoritative after the round-trip");
@@ -1497,6 +1507,108 @@ class CRSSerializerTest {
         // semantic gate passes and the compact token is kept.
         assertTrue(CRSSerializer.toProjString(new Proj("+proj=longlat +datum=NAD27 +no_defs"))
             .contains("+datum=NAD27"));
+
+        // A different grid list must reject the token and keep the explicit grid.
+        String out = CRSSerializer.toProjString(
+            new Proj("+proj=longlat +datum=NAD27 +nadgrids=@other.gsb +no_defs"));
+        assertFalse(out.contains("+datum="), out);
+        assertTrue(out.contains("+nadgrids=@other.gsb"), out);
+    }
+
+    @Test
+    @DisplayName("toProjString: grid-shift datum with a converted 7-param tail re-encodes it")
+    void testGridShiftWithConverted7ParamTail() {
+        // The nadgrids override flips the datum type to PJD_GRIDSHIFT after the
+        // 7-parameter tail was already converted to radians/multiplier, so the
+        // re-encode must key on the converted-at-parse flag, not the datum type —
+        // otherwise the dormant tail is emitted in internal units and every
+        // round-trip converts it again.
+        String def = "+proj=longlat +ellps=bessel "
+            + "+towgs84=597.1,71.4,412.1,0.894,0.068,-1.563,7.58 +nadgrids=@foo.gsb +no_defs";
+        String s1 = CRSSerializer.toProjString(new Proj(def));
+        assertTrue(s1.contains("+towgs84=597.1,71.4,412.1,0.894,0.068,-1.563,7.58"), s1);
+        assertTrue(s1.contains("+nadgrids=@foo.gsb"), s1);
+        assertEquals(s1, CRSSerializer.toProjString(new Proj(s1)), "serialization is idempotent");
+    }
+
+    @Test
+    @DisplayName("toProjString: rotation/scale re-encode is float-noise free")
+    void testTowgs84ReEncodeRounding() {
+        // The radian round-trip (x * SEC_TO_RAD / SEC_TO_RAD) is not exact in
+        // binary floating point; the 1e-9 human-unit rounding keeps the emitted
+        // values byte-identical to the input.
+        String out = CRSSerializer.toProjString(
+            new Proj("+proj=longlat +ellps=bessel +towgs84=1,2,3,0.1,0.2,0.3,0.4 +no_defs"));
+        assertTrue(out.contains("+towgs84=1,2,3,0.1,0.2,0.3,0.4"), out);
+    }
+
+    @Test
+    @DisplayName("toProjString: token gate compares 3- and 7-value transforms padded")
+    void testTokenGatePaddedComparison() {
+        // A 7-value all-zero-tail TOWGS84 equals PROJ's 3-value canonical WGS84.
+        String wgs = "GEOGCS[\"WGS 84\",DATUM[\"World Geodetic System 1984\","
+            + "SPHEROID[\"WGS 84\",6378137,298.257223563],TOWGS84[0,0,0,0,0,0,0]],"
+            + "PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433]]";
+        assertTrue(CRSSerializer.toProjString(new Proj(wgs)).contains("+datum=WGS84"));
+
+        // A 3-value transform does not equal a canonical 7-value one (hermannskogel).
+        String herm = "GEOGCS[\"MGI-ish\",DATUM[\"Hermannskogel\","
+            + "SPHEROID[\"Bessel 1841\",6377397.155,299.1528128],"
+            + "TOWGS84[577.326,90.129,463.919]],"
+            + "PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433]]";
+        String out = CRSSerializer.toProjString(new Proj(herm));
+        assertFalse(out.contains("+datum="), out);
+        assertTrue(out.contains("+towgs84=577.326,90.129,463.919"), out);
+    }
+
+    @Test
+    @DisplayName("toProjString: token gate rejects a datum name on the wrong ellipsoid")
+    void testEllipsoidGateRejectsToken() {
+        // PROJ's +datum=NAD83 implies GRS80; a document claiming the NAD83 datum on
+        // a Bessel spheroid must not be tokenized (the token would replace the
+        // ellipsoid on re-parse).
+        String wkt = "GEOGCS[\"odd\",DATUM[\"North_American_Datum_1983\","
+            + "SPHEROID[\"Bessel 1841\",6377397.155,299.1528128]],"
+            + "PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433]]";
+        String out = CRSSerializer.toProjString(new Proj(wkt));
+        assertFalse(out.contains("+datum="), out);
+        assertTrue(out.contains("+ellps=bessel"), out);
+    }
+
+    @Test
+    @DisplayName("toProjString: every PROJ datum token row is exercised")
+    void testAllProjDatumTokens() {
+        // One assertion per pj_datums row we tokenize (potsdam is deliberately
+        // absent — see testPotsdamSemanticMismatch).
+        String[][] cases = {
+            {"WGS84", "+datum=WGS84"}, {"GGRS87", "+datum=GGRS87"},
+            {"NAD83", "+datum=NAD83"}, {"NAD27", "+datum=NAD27"},
+            {"carthage", "+datum=carthage"}, {"hermannskogel", "+datum=hermannskogel"},
+            {"ire65", "+datum=ire65"}, {"nzgd49", "+datum=nzgd49"},
+            {"OSGB36", "+datum=OSGB36"},
+        };
+        for (String[] c : cases) {
+            String out = CRSSerializer.toProjString(
+                new Proj("+proj=longlat +datum=" + c[0] + " +no_defs"));
+            assertTrue(out.contains(c[1]), c[0] + " -> " + out);
+        }
+    }
+
+    @Test
+    @DisplayName("toProjString: PROJJSON-parsed datum name goes through the same gate")
+    void testProjJsonDatumNameTokenized() {
+        // EPSG:4277-style PROJJSON: the datum name resolves through the registry and
+        // the gate (transform + airy ellipsoid match), yielding the compact token.
+        String json = "{\"type\": \"GeographicCRS\", \"name\": \"OSGB36\","
+            + "\"datum\": {\"type\": \"GeodeticReferenceFrame\","
+            + "  \"name\": \"Ordnance Survey of Great Britain 1936\","
+            + "  \"ellipsoid\": {\"name\": \"Airy 1830\", \"semi_major_axis\": 6377563.396,"
+            + "   \"inverse_flattening\": 299.3249646}},"
+            + "\"coordinate_system\": {\"subtype\": \"ellipsoidal\", \"axis\": ["
+            + " {\"name\": \"Geodetic latitude\", \"abbreviation\": \"Lat\", \"direction\": \"north\", \"unit\": \"degree\"},"
+            + " {\"name\": \"Geodetic longitude\", \"abbreviation\": \"Lon\", \"direction\": \"east\", \"unit\": \"degree\"}]}}";
+        String out = CRSSerializer.toProjString(new Proj(json));
+        assertTrue(out.contains("+datum=OSGB36"), out);
     }
 
     @Test

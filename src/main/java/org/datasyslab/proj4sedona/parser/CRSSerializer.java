@@ -1556,11 +1556,21 @@ public final class CRSSerializer {
     /**
      * PROJ's fixed set of {@code +datum=} tokens, keyed by lower-case registry code.
      * PROJ's datum lookup is case-sensitive — {@code WGS84}/{@code NAD83} are
-     * upper-case while {@code potsdam}/{@code carthage} are lower-case — and it
-     * accepts no other datum names. Note potsdam: PROJ defines it as
-     * nadgrids=@BETA2007.gsb (the legacy 7-parameter transform is commented out in
-     * datums.cpp), while our registry, like proj4js, carries the 7-parameter form —
-     * so a registry potsdam never matches the token and serializes as +towgs84=.
+     * upper-case while {@code carthage}/{@code nzgd49} are lower-case — and it
+     * accepts no other datum names. potsdam is omitted deliberately: PROJ's token
+     * means nadgrids=@BETA2007.gsb (the legacy 7-parameter transform is commented
+     * out in datums.cpp), while our registry — like proj4js — expands the same
+     * token to that legacy 7-parameter transform. No definition can round-trip
+     * the token consistently on both sides, so potsdam definitions always
+     * serialize their explicit transform (+towgs84= or +nadgrids=).
+     *
+     * <p>Note on modern PROJ: it resolves +datum= tokens through its EPSG database
+     * at transform time rather than attaching the pj_datums values, which can give
+     * marginally different (usually better) transformations — ~5 cm for ire65,
+     * ~5 mm for OSGB36, exact for the rest. That applies equally to the original
+     * +datum= input string, so the token remains the faithful representation of
+     * the datum's identity; the alternative — always expanding to +towgs84= —
+     * would freeze the legacy Helmert values and lose the identity.</p>
      */
     private static final Map<String, ProjDatum> PROJ_DATUMS = new HashMap<>();
     static {
@@ -1570,7 +1580,6 @@ public final class CRSSerializer {
         PROJ_DATUMS.put("nad83", new ProjDatum("NAD83", new double[]{0, 0, 0}, null, "GRS80"));
         PROJ_DATUMS.put("nad27", new ProjDatum("NAD27",
             null, "@conus,@alaska,@ntv2_0.gsb,@ntv1_can.dat", "clrk66"));
-        PROJ_DATUMS.put("potsdam", new ProjDatum("potsdam", null, "@BETA2007.gsb", "bessel"));
         PROJ_DATUMS.put("carthage", new ProjDatum("carthage",
             new double[]{-263.0, 6.0, 431.0}, null, "clrk80ign"));
         PROJ_DATUMS.put("hermannskogel", new ProjDatum("hermannskogel",
@@ -1639,14 +1648,17 @@ public final class CRSSerializer {
      * verbatim would make a re-parse convert them a second time (a +datum=mgi
      * round-trip moved WGS84 results by ~12.4 m). Values are rounded to 1e-9 in
      * human units — far below any real datum accuracy — to strip the float noise
-     * of the radian round-trip.
+     * of the radian round-trip. The re-encode keys on the converted-at-parse flag,
+     * not the datum type: a nadgrids override flips the type to PJD_GRIDSHIFT while
+     * the converted values stay in the array (and an all-zero tail is never
+     * converted, so keying on array length would corrupt the scale slot).
      */
     private static double[] toHumanTowgs84(DatumParams datum) {
         double[] out = datum.getDatumParams().clone();
-        if (datum.is7Param()) {
-            out[3] = out[3] / Values.SEC_TO_RAD;
-            out[4] = out[4] / Values.SEC_TO_RAD;
-            out[5] = out[5] / Values.SEC_TO_RAD;
+        if (datum.hasConverted7Params()) {
+            out[3] = Math.round(out[3] / Values.SEC_TO_RAD * 1e9) / 1e9;
+            out[4] = Math.round(out[4] / Values.SEC_TO_RAD * 1e9) / 1e9;
+            out[5] = Math.round(out[5] / Values.SEC_TO_RAD * 1e9) / 1e9;
             out[6] = Math.round((out[6] - 1.0) * 1000000.0 * 1e9) / 1e9;
         }
         return out;

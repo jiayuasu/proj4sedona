@@ -15,6 +15,12 @@ import java.util.List;
 public class DatumParams {
 
     private int datumType;         // PJD_3PARAM, PJD_7PARAM, PJD_GRIDSHIFT, PJD_WGS84, PJD_NODATUM
+    // True when the 7-parameter tail was converted at parse time (arc-seconds to
+    // radians, ppm to multiplier). datumType alone cannot answer this after a
+    // nadgrids override flips it to PJD_GRIDSHIFT: the converted values stay in
+    // datumParams, while an all-zero tail is never converted. Serialization needs
+    // the distinction to re-encode correctly.
+    private boolean sevenParamsConverted;
     private double[] datumParams;  // 3 or 7 transformation parameters
     private double a;              // Semi-major axis of the ellipsoid
     private double b;              // Semi-minor axis of the ellipsoid
@@ -72,6 +78,7 @@ public class DatumParams {
                     this.datumParams[4] *= Values.SEC_TO_RAD;
                     this.datumParams[5] *= Values.SEC_TO_RAD;
                     this.datumParams[6] = (this.datumParams[6] / 1000000.0) + 1.0;
+                    this.sevenParamsConverted = true;
                 }
             }
         }
@@ -147,6 +154,7 @@ public class DatumParams {
     // Getters
 
     public int getDatumType() { return datumType; }
+    public boolean hasConverted7Params() { return sevenParamsConverted; }
     public double[] getDatumParams() { return datumParams; }
     public double getA() { return a; }
     public double getB() { return b; }
