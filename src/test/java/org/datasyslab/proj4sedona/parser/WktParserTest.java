@@ -836,6 +836,43 @@ class WktParserTest {
     }
 
     @Test
+    @DisplayName("longitude_of_center feeds long0 for every projection")
+    void testLongitudeOfCenterFeedsLong0() {
+        // wkt-parser 1.5.5 (util.js) dropped the Albers/LAEA-only restriction on the
+        // longc -> long0 fallback. GDAL-style WKT1 with longitude_of_center on other
+        // projections silently projected around longitude 0 here. Reference from
+        // pyproj 3.7.2/PROJ 9.5.1.
+        String wkt = "PROJCS[\"World_Sinusoidal\",GEOGCS[\"GCS_WGS_1984\",DATUM[\"WGS_1984\","
+            + "SPHEROID[\"WGS 84\",6378137,298.257223563]],PRIMEM[\"Greenwich\",0],"
+            + "UNIT[\"degree\",0.0174532925199433]],PROJECTION[\"Sinusoidal\"],"
+            + "PARAMETER[\"longitude_of_center\",100],PARAMETER[\"false_easting\",0],"
+            + "PARAMETER[\"false_northing\",0],UNIT[\"metre\",1]]";
+        ProjectionDef def = WktParser.parse(wkt);
+        assertNotNull(def.getLong0(), "long0 populated from longitude_of_center");
+        assertEquals(100 * Values.D2R, def.getLong0(), 1e-12);
+
+        org.datasyslab.proj4sedona.transform.Converter conv =
+            org.datasyslab.proj4sedona.Proj4.proj4("EPSG:4326", wkt);
+        Point xy = conv.forward(new Point(105, 10));
+        assertEquals(548196.8203407656, xy.x, 1e-4, "x with central meridian 100");
+        assertEquals(1105854.833234372, xy.y, 1e-4, "y");
+
+        // Oblique-mercator-family CRSs get long0 populated too (1.5.5 fixture
+        // expectation); omerc itself reads longc directly, so values must agree.
+        String omerc = "PROJCS[\"Hotine\",GEOGCS[\"GCS_WGS_1984\",DATUM[\"WGS_1984\","
+            + "SPHEROID[\"WGS 84\",6378137,298.257223563]],PRIMEM[\"Greenwich\",0],"
+            + "UNIT[\"degree\",0.0174532925199433]],"
+            + "PROJECTION[\"Hotine_Oblique_Mercator_Azimuth_Center\"],"
+            + "PARAMETER[\"latitude_of_center\",4],PARAMETER[\"longitude_of_center\",115],"
+            + "PARAMETER[\"azimuth\",53.315820472222],PARAMETER[\"rectified_grid_angle\",53.130102361111],"
+            + "PARAMETER[\"scale_factor\",0.99984],PARAMETER[\"false_easting\",0],"
+            + "PARAMETER[\"false_northing\",0],UNIT[\"metre\",1]]";
+        ProjectionDef omercDef = WktParser.parse(omerc);
+        assertNotNull(omercDef.getLong0(), "omerc-family long0 populated");
+        assertEquals(omercDef.getLongc(), omercDef.getLong0(), 0, "long0 equals longc");
+    }
+
+    @Test
     @DisplayName("PROJCRS with a BASEGEODCRS base (WKT2-2015) keeps the base ellipsoid")
     void testProjcrsBaseGeodCrs2015() {
         // PROJ's WKT2:2015 output uses BASEGEODCRS (not BASEGEOGCRS) for every
