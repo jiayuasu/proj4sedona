@@ -55,7 +55,9 @@ public final class ProjJsonBuilder {
                 break;
 
             case "BASEGEOGCRS":
+            case "BASEGEODCRS":
             case "GEOGCRS":
+            case "GEODCRS":
                 convertGeogCrs(node, result);
                 break;
 
@@ -117,8 +119,12 @@ public final class ProjJsonBuilder {
             result.put("name", node.get(1));
         }
 
-        // Find and convert BASEGEOGCRS
+        // Find and convert the base CRS: BASEGEOGCRS (WKT2-2019) or BASEGEODCRS
+        // (WKT2-2015 — PROJ's WKT2:2015 output uses it for every projected CRS).
         List<Object> baseCrsNode = findNode(node, "BASEGEOGCRS");
+        if (baseCrsNode == null) {
+            baseCrsNode = findNode(node, "BASEGEODCRS");
+        }
         if (baseCrsNode != null) {
             result.put("base_crs", convert(baseCrsNode, new HashMap<>()));
         }
@@ -140,8 +146,12 @@ public final class ProjJsonBuilder {
             result.put("coordinate_system", coordSystem);
         }
 
-        // Find and convert LENGTHUNIT
+        // Find and convert the coordinate-system unit: LENGTHUNIT, or the plain
+        // UNIT keyword the WKT2 SIMPLIFIED conventions emit.
         List<Object> lengthUnitNode = findNode(node, "LENGTHUNIT");
+        if (lengthUnitNode == null) {
+            lengthUnitNode = findNode(node, "UNIT");
+        }
         if (lengthUnitNode != null) {
             Map<String, Object> unit = convertUnit(lengthUnitNode);
             Map<String, Object> coordSystem = (Map<String, Object>) result.get("coordinate_system");
@@ -158,11 +168,22 @@ public final class ProjJsonBuilder {
     }
 
     /**
-     * Convert GEOGCRS or BASEGEOGCRS node.
+     * Convert a geodetic CRS node: GEOGCRS/BASEGEOGCRS (WKT2-2019) or
+     * GEODCRS/BASEGEODCRS (WKT2-2015; GEODCRS also covers geocentric CRSs via
+     * the Cartesian coordinate-system subtype).
      */
     @SuppressWarnings("unchecked")
     private static void convertGeogCrs(List<Object> node, Map<String, Object> result) {
-        result.put("type", "GeographicCRS");
+        // The WKT2-2015 GEODCRS keyword covers both geographic and geocentric CRSs;
+        // GEOGCRS (2019) is geographic only. The PROJJSON type is decided by the
+        // coordinate-system subtype, not the keyword: PROJ rejects a GeodeticCRS
+        // document with an ellipsoidal coordinate system ("expected a Cartesian or
+        // spherical CS") and itself normalizes an ellipsoidal GEODCRS to
+        // GeographicCRS. Divergence from wkt-parser 1.5.5, which stamps GeodeticCRS
+        // on every GEODCRS — its intermediate PROJJSON is internal, while ours is
+        // exposed via WktParser.parseWkt2ToProjJson. (The transformer still accepts
+        // GeodeticCRS + ellipsoidal leniently on input.)
+        boolean isGeodetic = "GEODCRS".equals(node.get(0).toString());
         if (node.size() > 1) {
             result.put("name", node.get(1));
         }
@@ -189,10 +210,36 @@ public final class ProjJsonBuilder {
             result.put("datum_ensemble", convert(ensembleNode, new HashMap<>()));
         }
 
-        // Coordinate system
+        // Coordinate system. For GEODCRS the CS node's subtype decides geographic
+        // (ellipsoidal) vs geocentric (Cartesian) in the downstream transformer.
+        // Divergence from proj4js/wkt-parser 1.5.5, which honors the CS node only in
+        // its WKT2-2019 builder: PROJ's own WKT2:2015 output for EPSG:4978 carries
+        // CS[Cartesian,3] and no USAGE node (USAGE is 2019-only), and PROJ parses it
+        // as geocentric, while proj4js silently yields longlat for it. The subtype is
+        // read here for both forms, matching PROJ.
         Map<String, Object> coordSystem = new HashMap<>();
-        coordSystem.put("type", "ellipsoidal");
+        String subtype = "ellipsoidal";
+        List<Object> csNode = findNode(node, "CS");
+        if (isGeodetic && csNode != null && csNode.size() > 1) {
+            subtype = csNode.get(1).toString();
+        }
+        result.put("type",
+            isGeodetic && "Cartesian".equals(subtype) ? "GeodeticCRS" : "GeographicCRS");
+        coordSystem.put("subtype", subtype);
         coordSystem.put("axis", extractAxes(node));
+        // The WKT2 SIMPLIFIED conventions carry a single CS-level unit (plain UNIT
+        // keyword) instead of per-axis units; without it a non-metre simplified
+        // geocentric CRS would silently lose its scale.
+        List<Object> csUnitNode = findNode(node, "LENGTHUNIT");
+        if (csUnitNode == null) {
+            csUnitNode = findNode(node, "ANGLEUNIT");
+        }
+        if (csUnitNode == null) {
+            csUnitNode = findNode(node, "UNIT");
+        }
+        if (csUnitNode != null) {
+            coordSystem.put("unit", convertUnit(csUnitNode));
+        }
         result.put("coordinate_system", coordSystem);
 
         // Find ID
@@ -613,7 +660,15 @@ public final class ProjJsonBuilder {
                 case "U": direction = "up"; break;
                 case "W": direction = "west"; break;
                 case "S": direction = "south"; break;
-                default: direction = "unknown"; break;
+                default:
+                    // Not a well-known abbreviation (e.g. "(X)" on geocentric axes):
+                    // fall back to the explicit direction token, as wkt-parser does.
+                    if (node.size() > 2) {
+                        direction = node.get(2).toString().toLowerCase();
+                    } else {
+                        throw new IllegalArgumentException("Unknown axis abbreviation: " + abbrev);
+                    }
+                    break;
             }
         } else if (node.size() > 2) {
             direction = node.get(2).toString().toLowerCase();
