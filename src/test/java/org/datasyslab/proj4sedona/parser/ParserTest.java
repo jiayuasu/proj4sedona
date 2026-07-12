@@ -222,6 +222,27 @@ class ParserTest {
         assertEquals(6.7, def.getDatumParams()[6], DELTA);
     }
 
+    @Test
+    void testTowgs84InvalidArityRejected() {
+        // PROJ accepts exactly 3 or 7 towgs84 values and rejects any other arity at
+        // parse time. Mirroring the malformed-input behavior of either reference was
+        // not an option: this port previously threw ArrayIndexOutOfBounds for 4-6
+        // values, and proj4js silently reads past the array end, producing NaN
+        // rotations. Documented divergence from proj4js: fail loudly, as PROJ does.
+        for (String v : new String[]{"1,2", "1,2,3,4", "1,2,3,4,5,6", "1,2,3,4,5,6,7,8"}) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> new org.datasyslab.proj4sedona.core.Proj(
+                    "+proj=longlat +ellps=bessel +towgs84=" + v + " +no_defs"),
+                v);
+            assertTrue(e.getMessage().contains("towgs84"), e.getMessage());
+        }
+        // The valid arities still parse.
+        assertNotNull(new org.datasyslab.proj4sedona.core.Proj(
+            "+proj=longlat +ellps=bessel +towgs84=1,2,3 +no_defs").getParams().datum);
+        assertNotNull(new org.datasyslab.proj4sedona.core.Proj(
+            "+proj=longlat +ellps=bessel +towgs84=1,2,3,4,5,6,7 +no_defs").getParams().datum);
+    }
+
     // ========== Units Tests ==========
 
     @Test

@@ -375,9 +375,9 @@ public final class CRSSerializer {
         if (projDatumToken != null) {
             sb.append(" +datum=").append(projDatumToken);
         } else if (params.datum != null) {
-            // PROJ accepts only 3- or 7-value +towgs84= lists; a degenerate array
-            // (the proj-string parser, like proj4js's, does not validate arity)
-            // must not be re-emitted as a token PROJ rejects.
+            // PROJ accepts only 3- or 7-value +towgs84= lists. DatumParams now
+            // rejects any other arity at parse time (as PROJ does), so this guard is
+            // a defensive net for datum objects constructed outside the parsers.
             if (params.datum.getDatumParams() != null
                     && params.datum.getDatumParams().length >= 3) {
                 sb.append(" +towgs84=").append(formatTowgs84(params.datum));
@@ -1646,9 +1646,10 @@ public final class CRSSerializer {
      * DatumParams converts on parse (rotations arc-seconds → radians, scale
      * ppm → multiplier, on the 7-parameter path only); emitting the stored values
      * verbatim would make a re-parse convert them a second time (a +datum=mgi
-     * round-trip moved WGS84 results by ~12.4 m). Values are rounded to 1e-9 in
-     * human units — far below any real datum accuracy — to strip the float noise
-     * of the radian round-trip. The re-encode keys on the converted-at-parse flag,
+     * round-trip moved WGS84 results by ~12.4 m). The re-encoded rotation and
+     * scale slots are rounded to 1e-9 in human units — far below any real datum
+     * accuracy — to strip the float noise of the radian round-trip; translations
+     * are never unit-converted and pass through untouched. The re-encode keys on the converted-at-parse flag,
      * not the datum type: a nadgrids override flips the type to PJD_GRIDSHIFT while
      * the converted values stay in the array (and an all-zero tail is never
      * converted, so keying on array length would corrupt the scale slot).

@@ -56,6 +56,15 @@ public class DatumParams {
         this.datumType = Values.PJD_NODATUM;
 
         if (datumParamsArray != null) {
+            // PROJ accepts exactly 3 or 7 towgs84 values and rejects any other arity
+            // at parse time. Neither reference behavior for malformed input is worth
+            // mirroring: this port previously threw ArrayIndexOutOfBounds for 4-6
+            // values, and proj4js silently reads past the array end, poisoning the
+            // 7-parameter branch with NaN rotations. Fail loudly instead.
+            if (datumParamsArray.length != 3 && datumParamsArray.length != 7) {
+                throw new IllegalArgumentException(
+                    "towgs84 requires 3 or 7 parameters, got " + datumParamsArray.length);
+            }
             this.datumType = Values.PJD_WGS84;
             this.datumParams = datumParamsArray.clone();
             
