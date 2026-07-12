@@ -1382,6 +1382,55 @@ class CRSSerializerTest {
         assertEquals(5093857.024237, p.y, 1e-4);
     }
 
+    @Test
+    @DisplayName("Issue #101: every registered +ellps code round-trips through toProjString")
+    void testAllEllipsoidCodesRoundTrip() {
+        // First-tolerance-match resolution shadowed WGS84 behind MERIT (semi-minor
+        // axes 1.6 cm apart) and could never round-trip parameter-identical twins
+        // (NWL9D/WGS66); the definition's own code now wins when its parameters
+        // match, then exact parameter match, then closest-in-tolerance.
+        for (org.datasyslab.proj4sedona.constants.Ellipsoid e :
+                org.datasyslab.proj4sedona.constants.Ellipsoid.getAll().values()) {
+            String out = CRSSerializer.toProjString(
+                new Proj("+proj=longlat +ellps=" + e.getCode() + " +no_defs"));
+            assertTrue(out.contains("+ellps=" + e.getCode()), e.getCode() + " -> " + out);
+        }
+    }
+
+    @Test
+    @DisplayName("Issue #101: WGS84 is no longer shadowed by MERIT")
+    void testWgs84NotShadowedByMerit() {
+        assertTrue(CRSSerializer.toProjString(new Proj("+proj=longlat +datum=WGS84 +no_defs"))
+            .contains("+ellps=WGS84"));
+        assertTrue(CRSSerializer.toProjString(new Proj("EPSG:4326"))
+            .contains("+ellps=WGS84"));
+        assertTrue(CRSSerializer.toProjString(new Proj("+proj=utm +zone=10 +datum=NAD83 +no_defs"))
+            .contains("+ellps=GRS80"));
+
+        // The WKT ellipsoid *name* resolves through the registry too.
+        String wkt = "GEOGCRS[\"WGS 84\",DATUM[\"World Geodetic System 1984\","
+            + "ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]]],"
+            + "CS[ellipsoidal,2],AXIS[\"lat\",north],AXIS[\"lon\",east],"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",4326]]";
+        assertTrue(CRSSerializer.toProjString(new Proj(wkt)).contains("+ellps=WGS84"));
+    }
+
+    @Test
+    @DisplayName("Issue #101: custom parameters are not snapped to a registry ellipsoid")
+    void testCustomParametersStayExplicit() {
+        // Proj assigns the "wgs84" ellps placeholder when none is given; the resolver
+        // must reject it when the actual parameters differ.
+        String custom = CRSSerializer.toProjString(
+            new Proj("+proj=longlat +a=6378137 +b=6356000 +no_defs"));
+        assertFalse(custom.contains("+ellps="), custom);
+        assertTrue(custom.contains("+a=6378137") && custom.contains("+b=6356000"), custom);
+
+        String sphere = CRSSerializer.toProjString(
+            new Proj("+proj=longlat +R=6371000 +no_defs"));
+        assertFalse(sphere.contains("+ellps="), sphere);
+        assertTrue(sphere.contains("+a=6371000") && sphere.contains("+b=6371000"), sphere);
+    }
+
     // ========== Datum token normalization (issue #98) ==========
 
     @Test

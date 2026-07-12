@@ -431,11 +431,10 @@ public final class CRSSerializer {
     }
 
     private static void appendEllipsoidParams(StringBuilder sb, ProjectionParams params) {
-        // Try to find matching ellipsoid by parameters
-        String ellpsCode = findEllipsoidCode(params.a, params.b, params.rf);
-        
-        if (ellpsCode != null) {
-            sb.append(" +ellps=").append(ellpsCode);
+        Ellipsoid resolved = resolveEllipsoid(params);
+
+        if (resolved != null) {
+            sb.append(" +ellps=").append(resolved.getCode());
         } else if (params.a > 0) {
             // Use explicit a/b or a/rf
             sb.append(" +a=").append(params.a);
@@ -1755,27 +1754,72 @@ public final class CRSSerializer {
     }
 
     private static String getEllipsoidName(ProjectionParams params) {
-        String code = findEllipsoidCode(params.a, params.b, params.rf);
-        if (code != null) {
-            Ellipsoid ellps = Ellipsoid.get(code);
-            if (ellps != null) {
-                return ellps.getEllipseName();
-            }
-            return code;
-        }
-        return "Custom";
+        Ellipsoid resolved = resolveEllipsoid(params);
+        return resolved != null ? resolved.getEllipseName() : "Custom";
     }
 
-    private static String findEllipsoidCode(double a, double b, double rf) {
-        // Check all registered ellipsoids (LinkedHashMap ensures deterministic order)
-        for (Map.Entry<String, Ellipsoid> entry : Ellipsoid.getAll().entrySet()) {
-            Ellipsoid ellps = entry.getValue();
-            if (Math.abs(ellps.getA() - a) < 0.1 && 
-                (Math.abs(ellps.getB() - b) < 0.1 || Math.abs(ellps.getRf() - rf) < 1e-6)) {
-                return ellps.getCode();
+    /**
+     * Resolve the definition's ellipsoid to a registry entry (issue #101).
+     *
+     * <p>Preference order:</p>
+     * <ol>
+     *   <li>The ellipsoid the definition itself names (the +ellps= code or the
+     *       WKT/PROJJSON ellipsoid name), when its parameters match the
+     *       definition's — this keeps the stated identity for twins with identical
+     *       parameters (NWL9D/WGS66) and rejects Proj's "wgs84" placeholder on
+     *       custom-parameter definitions.</li>
+     *   <li>An exact parameter match over the registry.</li>
+     *   <li>The closest entry within the legacy tolerance (0.1 m on both axes).
+     *       First-match-in-registry-order is what shadowed WGS84 behind MERIT,
+     *       whose semi-minor axis differs by only 1.6 cm.</li>
+     * </ol>
+     */
+    private static Ellipsoid resolveEllipsoid(ProjectionParams params) {
+        double a = params.a;
+        double b = params.b > 0 ? params.b
+            : (params.rf > 0 ? a * (1 - 1 / params.rf) : a);
+
+        // 1. The definition's own ellipsoid, validated against its parameters.
+        if (params.ellps != null) {
+            Ellipsoid named = Ellipsoid.get(params.ellps);
+            if (named == null) {
+                for (Ellipsoid candidate : Ellipsoid.getAll().values()) {
+                    if (params.ellps.equalsIgnoreCase(candidate.getEllipseName())) {
+                        named = candidate;
+                        break;
+                    }
+                }
+            }
+            if (named != null
+                    && Math.abs(named.getA() - a) < 1e-3
+                    && Math.abs(named.getB() - b) < 1e-3) {
+                return named;
             }
         }
-        return null;
+
+        // 2. Exact parameter match (registry b is always derived the same way the
+        //    definition's is, so equal source values compare equal).
+        for (Ellipsoid candidate : Ellipsoid.getAll().values()) {
+            if (Math.abs(candidate.getA() - a) < 1e-6
+                    && (Math.abs(candidate.getB() - b) < 1e-6
+                        || (params.rf > 0 && candidate.getRf() > 0
+                            && Math.abs(candidate.getRf() - params.rf) < 1e-9))) {
+                return candidate;
+            }
+        }
+
+        // 3. Closest within the legacy tolerance.
+        Ellipsoid best = null;
+        double bestScore = Double.MAX_VALUE;
+        for (Ellipsoid candidate : Ellipsoid.getAll().values()) {
+            double da = Math.abs(candidate.getA() - a);
+            double db = Math.abs(candidate.getB() - b);
+            if (da < 0.1 && db < 0.1 && da + db < bestScore) {
+                best = candidate;
+                bestScore = da + db;
+            }
+        }
+        return best;
     }
 
     private static String getWktMethodName(String projName) {
