@@ -836,6 +836,27 @@ class WktParserTest {
     }
 
     @Test
+    @DisplayName("Axis direction tokens keep their case in the intermediate PROJJSON")
+    @SuppressWarnings("unchecked")
+    void testAxisDirectionCasePreserved() {
+        // wkt-parser 1.5.5 stopped lowercasing the direction token: the PROJJSON
+        // direction enum is camelCase for geocentricX/Y/Z, so the exposed
+        // intermediate PROJJSON (parseWkt2ToProjJson) carried schema-invalid
+        // "geocentricx" values. Parsing tolerance is unchanged — the transformer
+        // lowercases at lookup.
+        String wkt = GEODCRS_4978_HEAD + GEODCRS_4978_CS + ",ID[\"EPSG\",4978]]";
+        Map<String, Object> projjson = WktParser.parseWkt2ToProjJson(wkt);
+        Map<String, Object> cs = (Map<String, Object>) projjson.get("coordinate_system");
+        List<Map<String, Object>> axes = (List<Map<String, Object>>) cs.get("axis");
+        assertEquals("geocentricX", axes.get(0).get("direction"));
+        assertEquals("geocentricY", axes.get(1).get("direction"));
+        assertEquals("geocentricZ", axes.get(2).get("direction"));
+
+        // End-to-end parse still resolves the directions (case-insensitive lookup).
+        assertEquals("enu", WktParser.parse(wkt).getAxis());
+    }
+
+    @Test
     @DisplayName("longitude_of_center feeds long0 for every projection")
     void testLongitudeOfCenterFeedsLong0() {
         // wkt-parser 1.5.5 (util.js) dropped the Albers/LAEA-only restriction on the
