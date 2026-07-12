@@ -940,7 +940,7 @@ class WktParserTest {
     }
 
     @Test
-    @DisplayName("Issue #99: PROJJSON value-with-unit prime meridian is honored")
+    @DisplayName("Issue #103: PROJJSON value-with-unit prime meridian is honored")
     void testPrimemProjJsonValueUnitObject() {
         // PROJ's PROJJSON for EPSG:4807 carries the meridian as
         // {"value": 2.5969213, "unit": {..."grad"...}}; the degree assumption fed the
