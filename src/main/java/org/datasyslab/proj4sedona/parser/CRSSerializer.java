@@ -5,6 +5,8 @@ import com.google.gson.GsonBuilder;
 import org.datasyslab.proj4sedona.constants.Datum;
 import org.datasyslab.proj4sedona.constants.Ellipsoid;
 import org.datasyslab.proj4sedona.constants.Units;
+import org.datasyslab.proj4sedona.constants.Values;
+import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.defs.Defs;
 import org.datasyslab.proj4sedona.projection.ProjectionParams;
@@ -360,25 +362,30 @@ public final class CRSSerializer {
         // Datum. Mirrors PROJ's CRS export: +datum= accepts only the fixed pj_datums
         // short codes (in their exact canonical case — "WGS84" and "NAD83" are
         // uppercase but "potsdam" and "carthage" are lowercase), never the full datum
-        // name. Emitting params.datumCode verbatim produced tokens external PROJ
-        // rejects: unparseable names with spaces/parens from WKT ("Nouvelle
-        // Triangulation Francaise (Paris)") and wrong-case short codes ("POTSDAM").
-        // When the datum is not one of PROJ's, fall back to the transformation itself
-        // (+towgs84=/+nadgrids=, which PROJ and proj4sedona both accept) and otherwise
-        // rely on the ellipsoid already emitted above.
-        String projDatumToken = resolveProjDatumToken(params.datumCode);
+        // name. A token is emitted only when the definition's effective transform and
+        // ellipsoid match PROJ's canonical meaning of that token — a name match alone
+        // is not enough (a WKT NAD83 datum with an explicit TOWGS84[1,2,3] override
+        // is not PROJ's NAD83, and our registry's potsdam is the legacy 7-parameter
+        // transform while PROJ's +datum=potsdam means nadgrids=@BETA2007.gsb).
+        // Otherwise the transform itself is serialized: +towgs84= re-encoded to
+        // PROJ's arc-second/ppm representation, and +nadgrids= for grid shifts (both
+        // are emitted when both are present, so the re-parsed datum state is
+        // identical — the grid stays authoritative, as in proj4js).
+        String projDatumToken = resolveProjDatumToken(params);
         if (projDatumToken != null) {
             sb.append(" +datum=").append(projDatumToken);
-        } else if (params.datum != null && params.datum.getDatumParams() != null) {
-            double[] dp = params.datum.getDatumParams();
-            sb.append(" +towgs84=");
-            for (int i = 0; i < dp.length; i++) {
-                if (i > 0) sb.append(",");
-                sb.append(formatNumber(dp[i]));
+        } else if (params.datum != null) {
+            // PROJ accepts only 3- or 7-value +towgs84= lists; a degenerate array
+            // (the proj-string parser, like proj4js's, does not validate arity)
+            // must not be re-emitted as a token PROJ rejects.
+            if (params.datum.getDatumParams() != null
+                    && params.datum.getDatumParams().length >= 3) {
+                sb.append(" +towgs84=").append(formatTowgs84(params.datum));
             }
-        } else if (params.datum != null && params.datum.getNadgrids() != null
-                && !params.datum.getNadgrids().isEmpty()) {
-            sb.append(" +nadgrids=").append(params.datum.getNadgrids());
+            if (params.datum.isGridShift() && params.datum.getNadgrids() != null
+                    && !params.datum.getNadgrids().isEmpty()) {
+                sb.append(" +nadgrids=").append(params.datum.getNadgrids());
+            }
         }
 
         // Units. Mirrors PROJ's CRS export (crs.cpp / UnitOfMeasure::exportToPROJString),
@@ -1528,41 +1535,133 @@ public final class CRSSerializer {
     }
 
     /**
-     * PROJ's fixed set of {@code +datum=} tokens (its {@code pj_datums} table),
-     * keyed by our lower-case registry code and valued with PROJ's exact canonical
-     * casing. PROJ's datum lookup is case-sensitive — {@code WGS84}/{@code NAD83} are
-     * upper-case while {@code potsdam}/{@code carthage} are lower-case — and it
-     * accepts no other datum names. Datums outside this set (which our registry also
-     * carries, e.g. ch1903, s_jtsk) are serialized via +towgs84=/+nadgrids= instead.
+     * An entry of PROJ's {@code pj_datums} table (src/datums.cpp): the canonical
+     * {@code +datum=} token in PROJ's exact case, the transform that token means to
+     * PROJ (towgs84 in human units — metres/arc-seconds/ppm — or a grid list), and
+     * the ellipsoid it implies (PROJ's +datum= sets the ellipsoid too).
      */
-    private static final Map<String, String> PROJ_DATUM_TOKENS = new HashMap<>();
-    static {
-        PROJ_DATUM_TOKENS.put("wgs84", "WGS84");
-        PROJ_DATUM_TOKENS.put("ggrs87", "GGRS87");
-        PROJ_DATUM_TOKENS.put("nad83", "NAD83");
-        PROJ_DATUM_TOKENS.put("nad27", "NAD27");
-        PROJ_DATUM_TOKENS.put("potsdam", "potsdam");
-        PROJ_DATUM_TOKENS.put("carthage", "carthage");
-        PROJ_DATUM_TOKENS.put("hermannskogel", "hermannskogel");
-        PROJ_DATUM_TOKENS.put("ire65", "ire65");
-        PROJ_DATUM_TOKENS.put("nzgd49", "nzgd49");
-        PROJ_DATUM_TOKENS.put("osgb36", "OSGB36");
+    private static final class ProjDatum {
+        final String token;
+        final double[] towgs84;
+        final String nadgrids;
+        final String ellipseCode;
+        ProjDatum(String token, double[] towgs84, String nadgrids, String ellipseCode) {
+            this.token = token;
+            this.towgs84 = towgs84;
+            this.nadgrids = nadgrids;
+            this.ellipseCode = ellipseCode;
+        }
     }
 
     /**
-     * Resolve a stored datum code or name to PROJ's canonical {@code +datum=} token,
-     * or null when it is not one of PROJ's datums. The stored value may be a short
-     * code ("nad83"), a full datum name from WKT/PROJJSON ("North American Datum
-     * 1983"), or unknown; the registry resolves the first two to a canonical datum.
+     * PROJ's fixed set of {@code +datum=} tokens, keyed by lower-case registry code.
+     * PROJ's datum lookup is case-sensitive — {@code WGS84}/{@code NAD83} are
+     * upper-case while {@code potsdam}/{@code carthage} are lower-case — and it
+     * accepts no other datum names. Note potsdam: PROJ defines it as
+     * nadgrids=@BETA2007.gsb (the legacy 7-parameter transform is commented out in
+     * datums.cpp), while our registry, like proj4js, carries the 7-parameter form —
+     * so a registry potsdam never matches the token and serializes as +towgs84=.
      */
-    private static String resolveProjDatumToken(String datumCode) {
+    private static final Map<String, ProjDatum> PROJ_DATUMS = new HashMap<>();
+    static {
+        PROJ_DATUMS.put("wgs84", new ProjDatum("WGS84", new double[]{0, 0, 0}, null, "WGS84"));
+        PROJ_DATUMS.put("ggrs87", new ProjDatum("GGRS87",
+            new double[]{-199.87, 74.79, 246.62}, null, "GRS80"));
+        PROJ_DATUMS.put("nad83", new ProjDatum("NAD83", new double[]{0, 0, 0}, null, "GRS80"));
+        PROJ_DATUMS.put("nad27", new ProjDatum("NAD27",
+            null, "@conus,@alaska,@ntv2_0.gsb,@ntv1_can.dat", "clrk66"));
+        PROJ_DATUMS.put("potsdam", new ProjDatum("potsdam", null, "@BETA2007.gsb", "bessel"));
+        PROJ_DATUMS.put("carthage", new ProjDatum("carthage",
+            new double[]{-263.0, 6.0, 431.0}, null, "clrk80ign"));
+        PROJ_DATUMS.put("hermannskogel", new ProjDatum("hermannskogel",
+            new double[]{577.326, 90.129, 463.919, 5.137, 1.474, 5.297, 2.4232}, null, "bessel"));
+        PROJ_DATUMS.put("ire65", new ProjDatum("ire65",
+            new double[]{482.530, -130.596, 564.557, -1.042, -0.214, -0.631, 8.15}, null, "mod_airy"));
+        PROJ_DATUMS.put("nzgd49", new ProjDatum("nzgd49",
+            new double[]{59.47, -5.04, 187.44, 0.47, -0.1, 1.024, -4.5993}, null, "intl"));
+        PROJ_DATUMS.put("osgb36", new ProjDatum("OSGB36",
+            new double[]{446.448, -125.157, 542.060, 0.1502, 0.2470, 0.8421, -20.4894}, null, "airy"));
+    }
+
+    /**
+     * Resolve a definition to PROJ's canonical {@code +datum=} token, or null when
+     * its datum is not semantically one of PROJ's. The stored datumCode may be a
+     * short code ("nad83"), a full datum name from WKT/PROJJSON ("North American
+     * Datum 1983"), or unknown; the registry resolves the first two. The token is
+     * used only when the definition's effective transform (towgs84 values or grid
+     * list — a WKT TOWGS84 node can override the registry's) and ellipsoid match the
+     * token's canonical PROJ definition, since +datum= replaces both on re-parse.
+     */
+    private static String resolveProjDatumToken(ProjectionParams params) {
+        String datumCode = params.datumCode;
         if (datumCode == null || datumCode.isEmpty()
                 || "none".equalsIgnoreCase(datumCode)) {
             return null;
         }
-        Datum datum = Datum.get(datumCode);
-        String code = datum != null ? datum.getCode() : datumCode;
-        return PROJ_DATUM_TOKENS.get(code.toLowerCase(Locale.ROOT));
+        Datum registryDatum = Datum.get(datumCode);
+        String code = registryDatum != null ? registryDatum.getCode() : datumCode;
+        ProjDatum canon = PROJ_DATUMS.get(code.toLowerCase(Locale.ROOT));
+        if (canon == null) {
+            return null;
+        }
+
+        Ellipsoid ellipse = Ellipsoid.get(canon.ellipseCode);
+        double canonB = ellipse.getB() > 0
+            ? ellipse.getB()
+            : ellipse.getA() * (1 - 1 / ellipse.getRf());
+        if (Math.abs(params.a - ellipse.getA()) > 0.1 || Math.abs(params.b - canonB) > 0.1) {
+            return null;
+        }
+
+        DatumParams datum = params.datum;
+        if (canon.nadgrids != null) {
+            return datum != null && datum.isGridShift()
+                && canon.nadgrids.equals(datum.getNadgrids()) ? canon.token : null;
+        }
+        if (datum == null || datum.isGridShift() || datum.getDatumParams() == null) {
+            return null;
+        }
+        double[] human = toHumanTowgs84(datum);
+        for (int i = 0; i < 7; i++) {
+            double have = i < human.length ? human[i] : 0;
+            double want = i < canon.towgs84.length ? canon.towgs84[i] : 0;
+            if (Math.abs(have - want) > 1e-6) {
+                return null;
+            }
+        }
+        return canon.token;
+    }
+
+    /**
+     * Re-encode stored datum parameters to PROJ's +towgs84= representation.
+     * DatumParams converts on parse (rotations arc-seconds → radians, scale
+     * ppm → multiplier, on the 7-parameter path only); emitting the stored values
+     * verbatim would make a re-parse convert them a second time (a +datum=mgi
+     * round-trip moved WGS84 results by ~12.4 m). Values are rounded to 1e-9 in
+     * human units — far below any real datum accuracy — to strip the float noise
+     * of the radian round-trip.
+     */
+    private static double[] toHumanTowgs84(DatumParams datum) {
+        double[] out = datum.getDatumParams().clone();
+        if (datum.is7Param()) {
+            out[3] = out[3] / Values.SEC_TO_RAD;
+            out[4] = out[4] / Values.SEC_TO_RAD;
+            out[5] = out[5] / Values.SEC_TO_RAD;
+            out[6] = Math.round((out[6] - 1.0) * 1000000.0 * 1e9) / 1e9;
+        }
+        return out;
+    }
+
+    private static String formatTowgs84(DatumParams datum) {
+        double[] human = toHumanTowgs84(datum);
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < human.length; i++) {
+            if (i > 0) {
+                b.append(",");
+            }
+            b.append(formatNumber(human[i]));
+        }
+        return b.toString();
     }
 
     /**

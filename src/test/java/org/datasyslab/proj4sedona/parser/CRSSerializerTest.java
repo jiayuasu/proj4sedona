@@ -1398,14 +1398,105 @@ class CRSSerializerTest {
     @Test
     @DisplayName("toProjString: PROJ datum short code keeps PROJ's canonical case")
     void testDatumCanonicalCase() {
-        // PROJ's +datum= lookup is case-sensitive: potsdam is lower-case, so the old
-        // blanket toUpperCase() emitted +datum=POTSDAM, which PROJ rejects.
-        assertTrue(CRSSerializer.toProjString(new Proj("+proj=longlat +datum=potsdam +no_defs"))
-            .contains("+datum=potsdam"));
-        assertTrue(CRSSerializer.toProjString(new Proj("+proj=longlat +datum=carthage +no_defs"))
-            .contains("+datum=carthage"));
+        // PROJ's +datum= lookup is case-sensitive: nzgd49/hermannskogel/carthage are
+        // lower-case, so the old blanket toUpperCase() emitted tokens PROJ rejects.
+        assertTrue(CRSSerializer.toProjString(new Proj("+proj=longlat +datum=nzgd49 +no_defs"))
+            .contains("+datum=nzgd49"));
+        assertTrue(CRSSerializer.toProjString(new Proj("+proj=longlat +datum=hermannskogel +no_defs"))
+            .contains("+datum=hermannskogel"));
         assertTrue(CRSSerializer.toProjString(new Proj("+proj=longlat +datum=WGS84 +no_defs"))
             .contains("+datum=WGS84"));
+    }
+
+    @Test
+    @DisplayName("toProjString: potsdam is not tokenized — PROJ's potsdam means a grid shift")
+    void testPotsdamSemanticMismatch() {
+        // Our registry (like proj4js) defines potsdam as the legacy 7-parameter
+        // transform, but PROJ's pj_datums defines +datum=potsdam as
+        // nadgrids=@BETA2007.gsb (the towgs84 form is commented out in datums.cpp).
+        // Emitting the token would silently change the transform for external PROJ,
+        // so the actual parameters are serialized instead, in human units.
+        String out = CRSSerializer.toProjString(new Proj("+proj=longlat +datum=potsdam +no_defs"));
+        assertFalse(out.contains("+datum="), out);
+        assertTrue(out.contains("+towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7"), out);
+    }
+
+    @Test
+    @DisplayName("toProjString: 7-parameter datums re-encode to arc-seconds/ppm")
+    void testSevenParamReEncoded() {
+        // DatumParams stores rotations in radians and scale as a multiplier;
+        // emitting those raw made a re-parse convert them a second time (a
+        // +datum=mgi round-trip moved WGS84 results by ~12.4 m at (16,48)).
+        Proj mgi = new Proj("+proj=longlat +datum=mgi +no_defs");
+        String out = CRSSerializer.toProjString(mgi);
+        assertTrue(out.contains("+towgs84=577.326,90.129,463.919,5.137,1.474,5.297,2.4232"), out);
+
+        Proj reimported = new Proj(out);
+        assertArrayEquals(
+            mgi.getParams().datum.getDatumParams(),
+            reimported.getParams().datum.getDatumParams(), 1e-15,
+            "7-parameter transform survives the round-trip");
+
+        org.datasyslab.proj4sedona.transform.Converter a =
+            org.datasyslab.proj4sedona.Proj4.proj4("+proj=longlat +datum=WGS84 +no_defs",
+                "+proj=longlat +datum=mgi +no_defs");
+        org.datasyslab.proj4sedona.transform.Converter b =
+            org.datasyslab.proj4sedona.Proj4.proj4("+proj=longlat +datum=WGS84 +no_defs", out);
+        Point pa = a.inverse(new Point(16, 48));
+        Point pb = b.inverse(new Point(16, 48));
+        assertEquals(pa.x, pb.x, 1e-12, "lon identical after round-trip");
+        assertEquals(pa.y, pb.y, 1e-12, "lat identical after round-trip");
+    }
+
+    @Test
+    @DisplayName("toProjString: all-zero 7-value towgs84 is not scale-corrupted")
+    void testAllZeroTailTowgs84() {
+        // A 7-value +towgs84 whose rotation/scale entries are all zero stays on the
+        // 3-parameter path (no unit conversion at parse), so re-encoding must not
+        // treat the zero scale slot as a multiplier ((0-1)*1e6 = -1000000 ppm).
+        String out = CRSSerializer.toProjString(
+            new Proj("+proj=longlat +ellps=bessel +towgs84=1,2,3,0,0,0,0 +no_defs"));
+        assertTrue(out.contains("+towgs84=1,2,3,0,0,0,0"), out);
+    }
+
+    @Test
+    @DisplayName("toProjString: explicit TOWGS84 override blocks the +datum= token")
+    void testExplicitTowgs84OverrideBlocksToken() {
+        // A WKT datum named NAD83 with TOWGS84[1,2,3] is not PROJ's NAD83 (whose
+        // canonical transform is 0,0,0): emitting the token would replace the
+        // explicit override with the registry values on re-parse.
+        String wkt = "GEOGCS[\"NAD83-ish\",DATUM[\"North_American_Datum_1983\","
+            + "SPHEROID[\"GRS 1980\",6378137,298.257222101],TOWGS84[1,2,3]],"
+            + "PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433]]";
+        String out = CRSSerializer.toProjString(new Proj(wkt));
+        assertFalse(out.contains("+datum="), out);
+        assertTrue(out.contains("+towgs84=1,2,3"), out);
+        assertArrayEquals(new double[]{1, 2, 3},
+            new Proj(out).getParams().datum.getDatumParams(), 0,
+            "the override survives the round-trip");
+    }
+
+    @Test
+    @DisplayName("toProjString: grid shift is preserved and stays authoritative")
+    void testGridShiftPreserved() {
+        // Grids are authoritative over towgs84 (DatumParams sets PJD_GRIDSHIFT last,
+        // as proj4js does); both are emitted so the re-parsed datum state is
+        // identical. Previously the grid was silently dropped.
+        Proj p = new Proj("+proj=longlat +datum=ch1903 +nadgrids=@foo.gsb +no_defs");
+        String out = CRSSerializer.toProjString(p);
+        assertTrue(out.contains("+nadgrids=@foo.gsb"), out);
+        Proj reimported = new Proj(out);
+        assertTrue(reimported.getParams().datum.isGridShift(),
+            "grid shift stays authoritative after the round-trip");
+    }
+
+    @Test
+    @DisplayName("toProjString: NAD27 keeps its token — the grid lists match PROJ's")
+    void testNad27GridTokenKept() {
+        // NAD27 is grid-shift on both sides with the identical grid list, so the
+        // semantic gate passes and the compact token is kept.
+        assertTrue(CRSSerializer.toProjString(new Proj("+proj=longlat +datum=NAD27 +no_defs"))
+            .contains("+datum=NAD27"));
     }
 
     @Test
