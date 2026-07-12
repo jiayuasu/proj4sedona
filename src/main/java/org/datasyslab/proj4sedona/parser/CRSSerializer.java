@@ -357,9 +357,18 @@ public final class CRSSerializer {
         // Ellipsoid parameters
         appendEllipsoidParams(sb, params);
 
-        // Datum
-        if (params.datumCode != null && !params.datumCode.isEmpty()) {
-            sb.append(" +datum=").append(params.datumCode.toUpperCase());
+        // Datum. Mirrors PROJ's CRS export: +datum= accepts only the fixed pj_datums
+        // short codes (in their exact canonical case — "WGS84" and "NAD83" are
+        // uppercase but "potsdam" and "carthage" are lowercase), never the full datum
+        // name. Emitting params.datumCode verbatim produced tokens external PROJ
+        // rejects: unparseable names with spaces/parens from WKT ("Nouvelle
+        // Triangulation Francaise (Paris)") and wrong-case short codes ("POTSDAM").
+        // When the datum is not one of PROJ's, fall back to the transformation itself
+        // (+towgs84=/+nadgrids=, which PROJ and proj4sedona both accept) and otherwise
+        // rely on the ellipsoid already emitted above.
+        String projDatumToken = resolveProjDatumToken(params.datumCode);
+        if (projDatumToken != null) {
+            sb.append(" +datum=").append(projDatumToken);
         } else if (params.datum != null && params.datum.getDatumParams() != null) {
             double[] dp = params.datum.getDatumParams();
             sb.append(" +towgs84=");
@@ -367,6 +376,9 @@ public final class CRSSerializer {
                 if (i > 0) sb.append(",");
                 sb.append(formatNumber(dp[i]));
             }
+        } else if (params.datum != null && params.datum.getNadgrids() != null
+                && !params.datum.getNadgrids().isEmpty()) {
+            sb.append(" +nadgrids=").append(params.datum.getNadgrids());
         }
 
         // Units. Mirrors PROJ's CRS export (crs.cpp / UnitOfMeasure::exportToPROJString),
@@ -1513,6 +1525,44 @@ public final class CRSSerializer {
         // This matches pyproj behavior: unknown datum names drop confidence
         // below the identification threshold (60% < 70%), so to_epsg() returns None.
         return false;
+    }
+
+    /**
+     * PROJ's fixed set of {@code +datum=} tokens (its {@code pj_datums} table),
+     * keyed by our lower-case registry code and valued with PROJ's exact canonical
+     * casing. PROJ's datum lookup is case-sensitive — {@code WGS84}/{@code NAD83} are
+     * upper-case while {@code potsdam}/{@code carthage} are lower-case — and it
+     * accepts no other datum names. Datums outside this set (which our registry also
+     * carries, e.g. ch1903, s_jtsk) are serialized via +towgs84=/+nadgrids= instead.
+     */
+    private static final Map<String, String> PROJ_DATUM_TOKENS = new HashMap<>();
+    static {
+        PROJ_DATUM_TOKENS.put("wgs84", "WGS84");
+        PROJ_DATUM_TOKENS.put("ggrs87", "GGRS87");
+        PROJ_DATUM_TOKENS.put("nad83", "NAD83");
+        PROJ_DATUM_TOKENS.put("nad27", "NAD27");
+        PROJ_DATUM_TOKENS.put("potsdam", "potsdam");
+        PROJ_DATUM_TOKENS.put("carthage", "carthage");
+        PROJ_DATUM_TOKENS.put("hermannskogel", "hermannskogel");
+        PROJ_DATUM_TOKENS.put("ire65", "ire65");
+        PROJ_DATUM_TOKENS.put("nzgd49", "nzgd49");
+        PROJ_DATUM_TOKENS.put("osgb36", "OSGB36");
+    }
+
+    /**
+     * Resolve a stored datum code or name to PROJ's canonical {@code +datum=} token,
+     * or null when it is not one of PROJ's datums. The stored value may be a short
+     * code ("nad83"), a full datum name from WKT/PROJJSON ("North American Datum
+     * 1983"), or unknown; the registry resolves the first two to a canonical datum.
+     */
+    private static String resolveProjDatumToken(String datumCode) {
+        if (datumCode == null || datumCode.isEmpty()
+                || "none".equalsIgnoreCase(datumCode)) {
+            return null;
+        }
+        Datum datum = Datum.get(datumCode);
+        String code = datum != null ? datum.getCode() : datumCode;
+        return PROJ_DATUM_TOKENS.get(code.toLowerCase(Locale.ROOT));
     }
 
     /**
