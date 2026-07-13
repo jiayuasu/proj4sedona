@@ -1456,6 +1456,40 @@ class CRSSerializerTest {
     }
 
     @Test
+    @DisplayName("Datum-name authority candidates are validated against their reference")
+    void testDatumNameCandidateValidated() {
+        // The datum-name shortcut previously validated the ellipsoid only when the
+        // datum resolved in the registry — 15 of the 27 mapped names (ETRS89,
+        // GDA2020, JGD2011, CGCS2000, ...) do not, so a conflicting definition was
+        // stamped with the mapped EPSG id unchecked. Candidates now validate through
+        // matchesDefinition (effective axes, rf, datum, projection parameters).
+        Proj conflict = new Proj("+proj=longlat +datum=ETRS89 +a=6378137 +b=6300000 +no_defs");
+        assertNull(CRSSerializer.toAuthority(conflict.getParams()),
+            "conflicting axes must not identify as EPSG:4258");
+
+        // rf discrimination now applies to the shortcut too: GRS80's semi-minor axis
+        // is only 0.1 mm from WGS84's, so the coarse axis check alone cannot see it.
+        Proj mixed = new Proj("+proj=longlat +datum=WGS84 +ellps=GRS80 +no_defs");
+        String[] auth = CRSSerializer.toAuthority(mixed.getParams());
+        assertFalse(auth != null && "4326".equals(auth[1]),
+            "a GRS80 ellipsoid must not identify as EPSG:4326");
+
+        // Positive control: the realistic carrier of these names — a document with
+        // the datum name and its proper ellipsoid — still identifies.
+        String etrs89 = "{\"type\": \"GeographicCRS\", \"name\": \"ETRS89\","
+            + "\"datum\": {\"type\": \"GeodeticReferenceFrame\","
+            + " \"name\": \"European Terrestrial Reference System 1989\","
+            + " \"ellipsoid\": {\"name\": \"GRS 1980\", \"semi_major_axis\": 6378137,"
+            + "  \"inverse_flattening\": 298.257222101}},"
+            + "\"coordinate_system\": {\"subtype\": \"ellipsoidal\", \"axis\": ["
+            + " {\"name\": \"Geodetic latitude\", \"abbreviation\": \"Lat\", \"direction\": \"north\", \"unit\": \"degree\"},"
+            + " {\"name\": \"Geodetic longitude\", \"abbreviation\": \"Lon\", \"direction\": \"east\", \"unit\": \"degree\"}]}}";
+        String[] pos = CRSSerializer.toAuthority(new Proj(etrs89).getParams());
+        assertNotNull(pos, "genuine ETRS89 with GRS80 still identifies");
+        assertEquals("4258", pos[1]);
+    }
+
+    @Test
     @DisplayName("plessis matches PROJ, not proj4js's rf typo")
     void testPlessisMatchesProj() {
         // Documented divergence: proj4js stores plessis's 6355863 as the inverse

@@ -1341,41 +1341,25 @@ public final class CRSSerializer {
         }
 
         // Try datumCode (set from PROJJSON datum.name or PROJ +datum flag).
-        // The name alone is not enough: explicit +a/+b override the datum's
-        // ellipsoid at parse, so +datum=WGS84 +a=6378137 +b=6300000 must not be
-        // identified as EPSG:4326.
-        if (params.datumCode != null && !ellipsoidConflictsWithDatum(params)) {
+        // The name alone is not enough: explicit +a/+b (or +ellps=) override the
+        // datum's ellipsoid at parse, so +datum=WGS84 +a=6378137 +b=6300000 must
+        // not be identified as EPSG:4326, nor +datum=WGS84 +ellps=GRS80. The
+        // mapped candidate is validated against its actual reference definition
+        // (effective axes, rf discrimination, datum and projection parameters) —
+        // a registry-ellipse spot check cannot do this, since most of the mapped
+        // datum names (ETRS89, GDA2020, JGD2011, ...) are not registry datums.
+        if (params.datumCode != null) {
             String normalized = params.datumCode.toLowerCase(Locale.ROOT).trim();
             String epsg = DATUM_NAME_TO_EPSG.get(normalized);
-            if (epsg != null) {
-                return epsg;
+            if (epsg == null) {
+                // Also try with underscores replaced by spaces
+                epsg = DATUM_NAME_TO_EPSG.get(normalized.replace('_', ' '));
             }
-            // Also try with underscores replaced by spaces
-            epsg = DATUM_NAME_TO_EPSG.get(normalized.replace('_', ' '));
-            if (epsg != null) {
+            if (epsg != null && matchesDefinition(params, epsg)) {
                 return epsg;
             }
         }
         return null;
-    }
-
-    /**
-     * Whether the definition's effective axes contradict the ellipsoid its datum
-     * implies. Unresolvable datums or ellipses (e.g. PROJJSON datum names outside
-     * the registry) do not count as conflicts — those definitions carry their own
-     * explicit ellipsoid, which phase-3 parameter matching validates.
-     */
-    private static boolean ellipsoidConflictsWithDatum(ProjectionParams params) {
-        Datum datum = Datum.get(params.datumCode);
-        if (datum == null || datum.getEllipse() == null) {
-            return false;
-        }
-        Ellipsoid ellipse = Ellipsoid.get(datum.getEllipse());
-        if (ellipse == null) {
-            return false;
-        }
-        return Math.abs(params.a - ellipse.getA()) > 0.1
-            || Math.abs(params.b - ellipse.getB()) > 0.01;
     }
 
     /**
