@@ -9,7 +9,7 @@ Proj4Sedona provides coordinate system transformations, datum conversions, and p
 **Key Features:**
 - High-performance: faster than Python's pyproj
 - Format support: PROJ strings, WKT1/WKT2, PROJJSON, EPSG codes
-- 30 map projections (Mercator, UTM, Lambert, Albers, Krovak, Oblique Mercator, Equal Earth, etc.)
+- 34 map projections (Mercator, UTM, Lambert, Albers, Krovak, Oblique Mercator, Equal Earth, Geocentric, etc.)
 - MGRS coordinate conversion
 - GeoTIFF datum grids with PROJ CDN integration
 - JTS geometry transformation support
@@ -22,7 +22,7 @@ Full documentation is available in the [docs/](docs/) folder:
 - [Getting Started](docs/getting-started.md) -- installation and first transformation
 - [Coordinate Transformations](docs/coordinate-transformations.md) -- single, batch, and flat array transforms
 - [CRS Formats](docs/crs-formats.md) -- PROJ strings, WKT1, WKT2, PROJJSON, EPSG codes
-- [Projections](docs/projections.md) -- all 15 supported map projections
+- [Projections](docs/projections.md) -- all 34 supported map projections
 - [Datum Transformations](docs/datum-transformations.md) -- 3-param, 7-param, and grid-based shifts
 - [Grid Shifts](docs/grid-shifts.md) -- NTv2/GeoTIFF grid loading and CDN auto-fetching
 - [MGRS Coordinates](docs/mgrs.md) -- Military Grid Reference System conversion
@@ -210,12 +210,38 @@ CompletableFuture<GridData> future = GridCdnFetcher.fetchAndLoadAsync("ca_nrc_nt
 
 ## Supported Projections
 
-30 map projections:
-- **Cylindrical**: Mercator, Transverse Mercator, UTM, Miller, Equirectangular, Cylindrical Equal Area, Cassini-Soldner, Swiss Oblique Mercator, Hotine Oblique Mercator
+34 map projections — the complete proj4js set:
+- **Cylindrical**: Mercator, Transverse Mercator, UTM, Miller, Equirectangular, Cylindrical Equal Area, Cassini-Soldner, Swiss Oblique Mercator, Hotine Oblique Mercator, Gauss-Schreiber Transverse Mercator
 - **Pseudocylindrical**: Sinusoidal, Mollweide, Robinson, Equal Earth, Eckert VI, Van der Grinten
 - **Conic**: Lambert Conformal Conic, Albers Equal Area, Equidistant Conic, Polyconic, Krovak, Bonne
-- **Azimuthal**: Lambert Azimuthal Equal Area, Stereographic, Oblique Stereographic Alternative, Azimuthal Equidistant, Orthographic, Gnomonic
-- **Other**: Geostationary Satellite, Identity (longlat)
+- **Azimuthal**: Lambert Azimuthal Equal Area, Stereographic, Oblique Stereographic Alternative, Azimuthal Equidistant, Orthographic, Gnomonic, Tilted Perspective
+- **Other**: Geostationary Satellite, New Zealand Map Grid, Geocentric (ECEF), Quadrilateralized Spherical Cube, General Oblique Transformation (rotated pole), Identity (longlat)
+
+## Upstream Sync Status
+
+Proj4Sedona tracks two upstream code bases. The port is complete and audited as of the
+commits below — every upstream change up to these points is either ported, backported,
+or documented as an intentional divergence (divergences follow PROJ where proj4js is
+known to be wrong; each is noted in the relevant Javadoc and pinned by a test):
+
+| Upstream | Ported through | Date |
+|---|---|---|
+| [proj4js](https://github.com/proj4js/proj4js) | commit `695c191` | 2026-07-05 |
+| [wkt-parser](https://github.com/proj4js/wkt-parser) | v1.5.5 | 2026-07-13 (audit) |
+| [mgrs](https://github.com/proj4js/mgrs) | v1.0.0 | — |
+
+To find upstream changes that may need porting since the last sync:
+
+```bash
+# In a proj4js checkout:
+git log 695c191..origin/master -- lib/
+
+# For wkt-parser, diff the published packages:
+npm pack wkt-parser@1.5.5 && npm pack wkt-parser@latest
+```
+
+When updating this table, audit each new commit/diff hunk as ported, not applicable,
+or needs-backport, and land backports one commit per upstream change.
 
 ## Building
 

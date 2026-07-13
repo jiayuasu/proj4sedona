@@ -23,7 +23,7 @@ Proj fromJson = new Proj("{\"type\": \"ProjectedCRS\", ...}");
 |--------|-------------------|
 | PROJ string | Starts with `+` |
 | WKT1 | Contains `[` and starts with `PROJCS`, `GEOGCS`, `GEOCCS`, or `LOCAL_CS` |
-| WKT2 | Contains `[` and starts with `PROJCRS`, `GEOGCRS`, `GEODCRS`, `ENGCRS`, or `VERTCRS` |
+| WKT2 | Contains `[` and starts with `PROJCRS`, `GEOGCRS`, `GEODCRS`, `BOUNDCRS`, or `VERTCRS` |
 | PROJJSON | Starts with `{` |
 | Authority code | Matches pattern `AUTHORITY:CODE` (e.g., `EPSG:4326`, `ESRI:102001`, `IAU_2015:49900`) |
 | Shorthand alias | Matches a pre-registered name like `WGS84` or `GOOGLE` |
@@ -205,15 +205,16 @@ Proj proj = new Proj("EPSG:32618");
 
 // Export to PROJ string
 String projStr = proj.toProjString();
-// "+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs"
+// "+proj=utm +zone=18 +lon_0=-75 +k_0=0.9996 +x_0=500000.0 +ellps=WGS84 +datum=WGS84 +no_defs"
+// (metre CRSs emit no +units= token, matching PROJ)
 
 // Export to WKT1
 String wkt1 = proj.toWkt1();
-// "PROJCS[\"WGS 84 / UTM zone 18N\", ...]"
+// "PROJCS[\"EPSG:32618\", ...]"  (the CRS name is the input srsCode)
 
 // Export to WKT2
 String wkt2 = proj.toWkt2();
-// "PROJCRS[\"WGS 84 / UTM zone 18N\", ...]"
+// "PROJCRS[\"EPSG:32618\", ...]"
 
 // Export to PROJJSON
 String json = proj.toProjJson();
@@ -226,7 +227,7 @@ String prettyJson = proj.toProjJson(true);
 String epsg = proj.toEpsgCode();    // "EPSG:32618"
 
 // Get full authority reference
-String auth = proj.toAuthority();   // "EPSG:32618"
+String[] auth = proj.toAuthority();   // {"EPSG", "32618"}
 ```
 
 ### Using CRSSerializer Directly
@@ -241,7 +242,7 @@ String wkt1 = CRSSerializer.toWkt1(proj);
 String wkt2 = CRSSerializer.toWkt2(proj);
 String json = CRSSerializer.toProjJson(proj);
 String epsg = CRSSerializer.toEpsgCode(proj);
-String auth = CRSSerializer.toAuthority(proj);
+String[] auth = CRSSerializer.toAuthority(proj);
 ```
 
 ## See Also
