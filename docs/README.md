@@ -1,13 +1,13 @@
 # Proj4Sedona Documentation
 
-Proj4Sedona is a high-performance Java library for coordinate system transformations, ported from [Proj4js](https://github.com/proj4js/proj4js). It supports PROJ strings, WKT1, WKT2, PROJJSON, and EPSG code inputs, 34 map projections, datum transformations with grid shift support, MGRS conversion, and JTS geometry integration.
+Proj4Sedona is a high-performance Java library for coordinate system transformations, ported from [Proj4js](https://github.com/proj4js/proj4js). It supports PROJ strings, WKT1, WKT2, PROJJSON, and EPSG code inputs, 34 map projections (plus the longlat identity transform), datum transformations with grid shift support, MGRS conversion, and JTS geometry integration.
 
 ## Guides
 
 - [Getting Started](getting-started.md) -- Installation, first transformation, core concepts
 - [Coordinate Transformations](coordinate-transformations.md) -- Single, batch, and flat array transforms; converters and performance tips
 - [CRS Formats](crs-formats.md) -- Parsing and exporting PROJ strings, WKT1, WKT2, PROJJSON, and EPSG codes
-- [Projections](projections.md) -- All 34 supported map projections with examples
+- [Projections](projections.md) -- All 34 map projections plus the longlat identity, with examples
 - [Datum Transformations](datum-transformations.md) -- 3-parameter, 7-parameter, and grid-based datum shifts
 - [Grid Shifts](grid-shifts.md) -- NTv2 and GeoTIFF grid loading, PROJ CDN auto-fetching, cache configuration
 - [MGRS Coordinates](mgrs.md) -- Military Grid Reference System conversion and UPS polar support

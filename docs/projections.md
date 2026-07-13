@@ -1,6 +1,6 @@
 # Projections
 
-Proj4Sedona supports 34 map projections — the complete proj4js set — covering cylindrical, pseudocylindrical, conic, azimuthal, and special families. This page lists each projection with its PROJ name, aliases, and a usage example.
+Proj4Sedona supports 34 map projections — the complete proj4js set — plus the geographic identity (longlat) transform, covering cylindrical, pseudocylindrical, conic, azimuthal, and special families. The identity transform is documented under Other Projections but is not itself a map projection and is not counted among the 34. This page lists each projection with its PROJ name, aliases, and a usage example.
 
 ## Cylindrical Projections
 

@@ -9,7 +9,7 @@ Proj4Sedona provides coordinate system transformations, datum conversions, and p
 **Key Features:**
 - High-performance: faster than Python's pyproj
 - Format support: PROJ strings, WKT1/WKT2, PROJJSON, EPSG codes
-- 34 map projections (Mercator, UTM, Lambert, Albers, Krovak, Oblique Mercator, Equal Earth, Geocentric, etc.)
+- 34 map projections (Mercator, UTM, Lambert, Albers, Krovak, Oblique Mercator, Equal Earth, Geocentric, etc.), plus the longlat identity transform
 - MGRS coordinate conversion
 - GeoTIFF datum grids with PROJ CDN integration
 - JTS geometry transformation support
@@ -22,7 +22,7 @@ Full documentation is available in the [docs/](docs/) folder:
 - [Getting Started](docs/getting-started.md) -- installation and first transformation
 - [Coordinate Transformations](docs/coordinate-transformations.md) -- single, batch, and flat array transforms
 - [CRS Formats](docs/crs-formats.md) -- PROJ strings, WKT1, WKT2, PROJJSON, EPSG codes
-- [Projections](docs/projections.md) -- all 34 supported map projections
+- [Projections](docs/projections.md) -- all 34 map projections plus the longlat identity
 - [Datum Transformations](docs/datum-transformations.md) -- 3-param, 7-param, and grid-based shifts
 - [Grid Shifts](docs/grid-shifts.md) -- NTv2/GeoTIFF grid loading and CDN auto-fetching
 - [MGRS Coordinates](docs/mgrs.md) -- Military Grid Reference System conversion
@@ -210,7 +210,7 @@ CompletableFuture<GridData> future = GridCdnFetcher.fetchAndLoadAsync("ca_nrc_nt
 
 ## Supported Projections
 
-34 map projections — the complete proj4js set:
+34 map projections — the complete proj4js set — plus the longlat identity transform. Identity is listed under Other below but is not counted among the 34:
 - **Cylindrical**: Mercator, Transverse Mercator, UTM, Miller, Equirectangular, Cylindrical Equal Area, Cassini-Soldner, Swiss Oblique Mercator, Hotine Oblique Mercator, Gauss-Schreiber Transverse Mercator
 - **Pseudocylindrical**: Sinusoidal, Mollweide, Robinson, Equal Earth, Eckert VI, Van der Grinten
 - **Conic**: Lambert Conformal Conic, Albers Equal Area, Equidistant Conic, Polyconic, Krovak, Bonne
