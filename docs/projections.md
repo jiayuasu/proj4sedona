@@ -503,7 +503,7 @@ double[] result = Proj4.proj4(
 Not a map projection: converts geodetic longitude/latitude/height to Earth-centered, Earth-fixed X/Y/Z coordinates (e.g. EPSG:4978). Two-dimensional input returns the computed Z. Geocentric CRSs are also recognized when parsed from PROJJSON (`GeodeticCRS` + Cartesian coordinate system) and WKT2 (`GEODCRS` with `CS[Cartesian,3]`).
 
 - PROJ name: `geocent`
-- Aliases: `Geocentric`, `geocentric`
+- Aliases: `Geocentric`, `geocentric`, `Geocent`
 
 ```java
 double[] xyz = Proj4.proj4(

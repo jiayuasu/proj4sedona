@@ -170,13 +170,18 @@ double[] results = Proj4.transformFlat3D(
 Some CRS definitions specify non-standard axis orders (e.g., northing/easting instead of easting/northing). By default, Proj4Sedona assumes standard ENU (east, north, up) order and does not reorder coordinates. Set the `enforceAxis` parameter on `Converter` to honor the axis order declared in the CRS definition:
 
 ```java
-Converter conv = Proj4.proj4("EPSG:4326", "EPSG:32618");
+// A source CRS whose declared axis order is northing, easting, up.
+String neuSource = "+proj=longlat +datum=WGS84 +axis=neu +no_defs";
+Converter conv = Proj4.proj4(neuSource, "EPSG:32618");
 
-// Default: assumes standard ENU order; the CRS axis order is not applied
+// Default: assumes standard ENU order; the +axis=neu declaration is ignored,
+// so the point is still read as (longitude, latitude).
 Point result1 = conv.forward(new Point(-77.0, 38.9));
 
-// enforceAxis=true: honor the CRS-declared axis order
-Point result2 = conv.forward(new Point(-77.0, 38.9), true);
+// enforceAxis=true: honor the CRS-declared order, so the point is read as
+// (north, east) = (latitude, longitude). This yields the same projected
+// coordinate as result1 above.
+Point result2 = conv.forward(new Point(38.9, -77.0), true);
 ```
 
 ## Choosing the Right Method

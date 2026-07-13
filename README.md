@@ -219,7 +219,7 @@ CompletableFuture<GridData> future = GridCdnFetcher.fetchAndLoadAsync("ca_nrc_nt
 
 ## Upstream Sync Status
 
-Proj4Sedona tracks two upstream code bases. The port is complete and audited as of the
+Proj4Sedona tracks three upstream code bases. The port is complete and audited as of the
 commits below — every upstream change up to these points is either ported, backported,
 or documented as an intentional divergence (divergences follow PROJ where proj4js is
 known to be wrong; each is noted in the relevant Javadoc and pinned by a test):
