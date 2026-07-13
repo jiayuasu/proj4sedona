@@ -1370,16 +1370,23 @@ public final class CRSSerializer {
      * (new Proj(code)) is NOT an option here: only EPSG:4326 and EPSG:4269 are
      * built-in definitions — the rest resolve through the remote CRS provider, so
      * toAuthority/toProjJson would perform blocking HTTP during routine
-     * serialization and silently fail offline. The canonical literals are used
-     * rather than the Ellipsoid registry because b-defined registry entries
-     * (airy) carry a rounded semi-minor axis whose derived inverse flattening is
-     * off by ~1e-5 — the rf comparison below must stay at 1e-6 to separate WGS 84
-     * from GRS 1980 (which differ by only 1.46e-6).</p>
+     * serialization and silently fail offline.</p>
+     *
+     * <p>Each row carries its own inverse-flattening tolerance. Strict 1e-6 is
+     * needed only where a near-twin exists: WGS 84 and GRS 1980 share the
+     * semi-major axis and differ by 1.46e-6 in rf (0.1 mm in b). The unambiguous
+     * families (clrk66, evrst30, airy) use 1e-4 — an implied b window of ~7 mm,
+     * still inside the 0.01 m axis gate — because definitions reach this check
+     * from two sources whose rf disagree at the ~1e-5 level: documents carry the
+     * EPSG-canonical value, while +datum=-built definitions inherit the registry's
+     * proj4js-faithful rounded semi-minor axis (airy b=6356256.91 derives
+     * rf=299.324975 vs canonical 299.3249646).</p>
      */
     private static final Map<String, double[]> EPSG_GEOGRAPHIC_ELLIPSOID = new HashMap<>();
     static {
-        double[] wgs84 = {6378137, 298.257223563};
-        double[] grs80 = {6378137, 298.257222101};
+        // {semi-major axis, inverse flattening, rf tolerance}
+        double[] wgs84 = {6378137, 298.257223563, 1e-6};
+        double[] grs80 = {6378137, 298.257222101, 1e-6};
         EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4326", wgs84);
         for (String grs80Crs : new String[]{
                 "EPSG:4269", "EPSG:6318", "EPSG:4759", "EPSG:6783", "EPSG:4152",
@@ -1387,12 +1394,15 @@ public final class CRSSerializer {
                 "EPSG:4490"}) {
             EPSG_GEOGRAPHIC_ELLIPSOID.put(grs80Crs, grs80);
         }
-        // NAD27 / Clarke 1866 (b-defined: rf equivalent to a=6378206.4, b=6356583.8)
-        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4267", new double[]{6378206.4, 294.9786982139006});
+        // NAD27 / Clarke 1866
+        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4267",
+            new double[]{6378206.4, 294.9786982139006, 1e-4});
         // Indian 1975 / Everest 1830 (1937 Adjustment)
-        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4240", new double[]{6377276.345, 300.8017});
+        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4240",
+            new double[]{6377276.345, 300.8017, 1e-4});
         // OSGB36 / Airy 1830
-        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4277", new double[]{6377563.396, 299.3249646});
+        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4277",
+            new double[]{6377563.396, 299.3249646, 1e-4});
     }
 
     /**
@@ -1408,13 +1418,14 @@ public final class CRSSerializer {
         }
         double expectedA = expected[0];
         double expectedRf = expected[1];
+        double rfTolerance = expected[2];
         double expectedB = expectedA * (1 - 1 / expectedRf);
         if (Math.abs(params.a - expectedA) > 0.1
                 || Math.abs(params.b - expectedB) > 0.01) {
             return false;
         }
         double effRf = effectiveRf(params);
-        return effRf <= 0 || Math.abs(effRf - expectedRf) < 1e-6;
+        return effRf <= 0 || Math.abs(effRf - expectedRf) < rfTolerance;
     }
 
     /**

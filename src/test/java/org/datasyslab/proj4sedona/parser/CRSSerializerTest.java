@@ -1532,6 +1532,19 @@ class CRSSerializerTest {
                 assertEquals(c[3], auth[1], (String) c[0]);
             }
 
+            // Registry-sourced definitions identify too: +datum=OSGB36 inherits the
+            // proj4js-faithful rounded airy semi-minor axis (b=6356256.91), whose
+            // derived rf sits ~1e-5 from the EPSG-canonical literal — the per-row
+            // tolerance must accommodate both sources.
+            String[] osgb = CRSSerializer.toAuthority(new Proj(
+                "+proj=longlat +datum=OSGB36 +no_defs").getParams());
+            assertNotNull(osgb, "registry-sourced OSGB36 identifies");
+            assertEquals("4277", osgb[1]);
+            String[] nad27 = CRSSerializer.toAuthority(new Proj(
+                "+proj=longlat +datum=NAD27 +no_defs").getParams());
+            assertNotNull(nad27, "registry-sourced NAD27 identifies");
+            assertEquals("4267", nad27[1]);
+
             // The conflict rejections hold offline too.
             assertNull(CRSSerializer.toAuthority(new Proj(
                 "+proj=longlat +datum=ETRS89 +a=6378137 +b=6300000 +no_defs").getParams()));
