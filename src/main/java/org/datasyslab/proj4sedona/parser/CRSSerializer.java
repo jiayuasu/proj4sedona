@@ -541,7 +541,7 @@ public final class CRSSerializer {
         String ellpsName = getEllipsoidName(params);
         sb.append("SPHEROID[\"").append(ellpsName).append("\",");
         sb.append(params.a).append(",");
-        sb.append(params.rf > 0 ? params.rf : 0);
+        sb.append(effectiveRf(params));
         sb.append("]");
 
         // TOWGS84 if present
@@ -738,7 +738,7 @@ public final class CRSSerializer {
         String ellpsName = getEllipsoidName(params);
         sb.append("ELLIPSOID[\"").append(ellpsName).append("\",");
         sb.append(params.a).append(",");
-        sb.append(params.rf > 0 ? params.rf : 0);
+        sb.append(effectiveRf(params));
         sb.append(",LENGTHUNIT[\"metre\",1]]");
 
         sb.append("]");
@@ -1035,10 +1035,16 @@ public final class CRSSerializer {
         Map<String, Object> ellipsoid = new LinkedHashMap<>();
         ellipsoid.put("name", getEllipsoidName(params));
         ellipsoid.put("semi_major_axis", params.a);
-        if (params.rf > 0) {
+        // Emit the rf literal only when it is consistent with the effective
+        // semi-minor axis; b is authoritative when both are present, so a stale
+        // conflicting rf must not be re-imported as the ellipsoid shape. The
+        // semi_minor_axis form is schema-valid and exact.
+        if (params.rf > 0 && rfConsistentWithB(params)) {
             ellipsoid.put("inverse_flattening", params.rf);
         } else if (params.b > 0) {
             ellipsoid.put("semi_minor_axis", params.b);
+        } else if (params.rf > 0) {
+            ellipsoid.put("inverse_flattening", params.rf);
         }
         return ellipsoid;
     }
@@ -1334,8 +1340,11 @@ public final class CRSSerializer {
             return null;
         }
 
-        // Try datumCode (set from PROJJSON datum.name or PROJ +datum flag)
-        if (params.datumCode != null) {
+        // Try datumCode (set from PROJJSON datum.name or PROJ +datum flag).
+        // The name alone is not enough: explicit +a/+b override the datum's
+        // ellipsoid at parse, so +datum=WGS84 +a=6378137 +b=6300000 must not be
+        // identified as EPSG:4326.
+        if (params.datumCode != null && !ellipsoidConflictsWithDatum(params)) {
             String normalized = params.datumCode.toLowerCase(Locale.ROOT).trim();
             String epsg = DATUM_NAME_TO_EPSG.get(normalized);
             if (epsg != null) {
@@ -1348,6 +1357,25 @@ public final class CRSSerializer {
             }
         }
         return null;
+    }
+
+    /**
+     * Whether the definition's effective axes contradict the ellipsoid its datum
+     * implies. Unresolvable datums or ellipses (e.g. PROJJSON datum names outside
+     * the registry) do not count as conflicts — those definitions carry their own
+     * explicit ellipsoid, which phase-3 parameter matching validates.
+     */
+    private static boolean ellipsoidConflictsWithDatum(ProjectionParams params) {
+        Datum datum = Datum.get(params.datumCode);
+        if (datum == null || datum.getEllipse() == null) {
+            return false;
+        }
+        Ellipsoid ellipse = Ellipsoid.get(datum.getEllipse());
+        if (ellipse == null) {
+            return false;
+        }
+        return Math.abs(params.a - ellipse.getA()) > 0.1
+            || Math.abs(params.b - ellipse.getB()) > 0.01;
     }
 
     /**
@@ -1459,13 +1487,17 @@ public final class CRSSerializer {
                 return false;
             }
 
-            // Check inverse flattening (distinguishes GRS 1980 from WGS 84)
-            if (params.rf != 0 && refParams.rf != 0) {
-                if (Math.abs(params.rf - refParams.rf) > 1e-6) {
-                    return false;
-                }
-            } else if (Math.abs(params.b - refParams.b) > 0.01) {
-                // Fall back to semi-minor axis comparison
+            // Check the effective semi-minor axis unconditionally: b is
+            // authoritative when both b and rf are present, so a matching rf must
+            // not accept a conflicting ellipsoid shape (+datum=WGS84 +a=... +b=6300000
+            // +rf=298.257223563 is not EPSG:4326).
+            if (Math.abs(params.b - refParams.b) > 0.01) {
+                return false;
+            }
+            // rf as fine discrimination when both sides carry it: GRS 1980 and
+            // WGS 84 differ by only 0.1 mm in b, far below the axis tolerance.
+            if (params.rf != 0 && refParams.rf != 0
+                    && Math.abs(params.rf - refParams.rf) > 1e-6) {
                 return false;
             }
 
@@ -1756,6 +1788,37 @@ public final class CRSSerializer {
     private static String getEllipsoidName(ProjectionParams params) {
         Ellipsoid resolved = resolveEllipsoid(params);
         return resolved != null ? resolved.getEllipseName() : "Custom";
+    }
+
+    /**
+     * Whether the stored inverse flattening agrees with the effective semi-minor
+     * axis. b wins over rf at parse time (here and in proj4js), so a definition can
+     * carry a stale rf that describes a different ellipsoid than its axes do.
+     */
+    private static boolean rfConsistentWithB(ProjectionParams params) {
+        if (params.b <= 0 || params.rf <= 0) {
+            return true;
+        }
+        return Math.abs(params.a * (1 - 1 / params.rf) - params.b) < 1e-6;
+    }
+
+    /**
+     * The inverse flattening implied by the effective axes, for the WKT SPHEROID/
+     * ELLIPSOID nodes (which cannot carry a semi-minor axis): the stored rf when
+     * consistent with b (keeps the clean literal), the value derived from a and b
+     * when they conflict, and 0 for spheres, per WKT convention.
+     */
+    private static double effectiveRf(ProjectionParams params) {
+        if (params.b > 0 && !rfConsistentWithB(params)) {
+            return params.a == params.b ? 0 : params.a / (params.a - params.b);
+        }
+        if (params.rf > 0) {
+            return params.rf;
+        }
+        if (params.b > 0 && params.a != params.b) {
+            return params.a / (params.a - params.b);
+        }
+        return 0;
     }
 
     /**

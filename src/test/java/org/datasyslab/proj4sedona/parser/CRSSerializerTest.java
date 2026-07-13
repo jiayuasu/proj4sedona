@@ -1416,6 +1416,46 @@ class CRSSerializerTest {
     }
 
     @Test
+    @DisplayName("A stale conflicting rf does not survive WKT or PROJJSON either")
+    void testStaleRfAllFormats() {
+        // b is authoritative when both b and rf are present; the WKT writers and the
+        // PROJJSON exporter emitted the stale rf literal, so re-import changed the
+        // effective semi-minor axis by 56.8 km even though the proj-string
+        // round-trip was already fixed.
+        Proj p = new Proj("+proj=longlat +a=6378137 +b=6300000 +rf=298.257223563 +no_defs");
+        assertEquals(6300000.0, new Proj(CRSSerializer.toWkt1(p)).getParams().b, 1e-6, "WKT1");
+        assertEquals(6300000.0, new Proj(CRSSerializer.toWkt2(p)).getParams().b, 1e-6, "WKT2");
+        assertEquals(6300000.0, new Proj(CRSSerializer.toProjJson(p)).getParams().b, 1e-6, "PROJJSON");
+        assertEquals(6300000.0, new Proj(CRSSerializer.toProjString(p)).getParams().b, 1e-6, "proj string");
+
+        // A consistent rf keeps its clean literal in WKT.
+        assertTrue(CRSSerializer.toWkt2(new Proj("+proj=longlat +ellps=WGS84 +no_defs"))
+            .contains("298.257223563"));
+    }
+
+    @Test
+    @DisplayName("Authority matching validates the effective semi-minor axis")
+    void testAuthorityRejectsConflictingEllipsoid() {
+        // The datum name and rf both said WGS84, but the explicit b overrides the
+        // ellipsoid at parse — toAuthority returned EPSG:4326 and the PROJJSON
+        // export carried the 4326 id for a non-WGS84 ellipsoid.
+        Proj q = new Proj("+proj=longlat +datum=WGS84 +a=6378137 +b=6300000 +rf=298.257223563 +no_defs");
+        assertNull(CRSSerializer.toAuthority(q.getParams()), "conflicting b must not identify");
+        assertFalse(CRSSerializer.toProjJson(q).contains("4326"), "no EPSG:4326 id");
+
+        // Genuine WGS84 still identifies, and the rf discrimination still separates
+        // GRS 1980 (b only 0.1 mm away) from WGS 84.
+        String[] wgs = CRSSerializer.toAuthority(
+            new Proj("+proj=longlat +datum=WGS84 +no_defs").getParams());
+        assertNotNull(wgs);
+        assertEquals("4326", wgs[1]);
+        String[] grs80 = CRSSerializer.toAuthority(
+            new Proj("+proj=longlat +ellps=GRS80 +no_defs").getParams());
+        assertFalse(grs80 != null && "4326".equals(grs80[1]),
+            "GRS80 must not identify as EPSG:4326");
+    }
+
+    @Test
     @DisplayName("plessis matches PROJ, not proj4js's rf typo")
     void testPlessisMatchesProj() {
         // Documented divergence: proj4js stores plessis's 6355863 as the inverse
