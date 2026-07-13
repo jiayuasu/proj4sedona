@@ -174,7 +174,24 @@ public final class Datum {
         if (code == null) {
             return null;
         }
-        return DATUMS.get(code.toLowerCase());
+        Datum direct = DATUMS.get(code.toLowerCase());
+        if (direct != null) {
+            return direct;
+        }
+        // Fuzzy fallback, as proj4js's match.js applies to its datum table:
+        // whitespace, underscores, hyphens, slashes and parentheses are ignored,
+        // so +datum=s-jtsk resolves to s_jtsk.
+        String normalized = normalizeKey(code);
+        for (Map.Entry<String, Datum> entry : DATUMS.entrySet()) {
+            if (normalizeKey(entry.getKey()).equals(normalized)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private static String normalizeKey(String key) {
+        return key.toLowerCase().replaceAll("[\\s_\\-/()]", "");
     }
 
     /** @return The datum code (e.g., "wgs84") */

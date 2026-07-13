@@ -1797,13 +1797,14 @@ public final class CRSSerializer {
             }
         }
 
-        // 2. Exact parameter match (registry b is always derived the same way the
-        //    definition's is, so equal source values compare equal).
+        // 2. Exact parameter match on the effective axes (registry b is always
+        //    derived the same way the definition's is, so equal source values
+        //    compare equal). rf is only ever used to derive b when b is absent —
+        //    an rf equality must not override a conflicting explicit b
+        //    (+a=6378137 +b=6300000 +rf=298.257223563 is not WGS84).
         for (Ellipsoid candidate : Ellipsoid.getAll().values()) {
             if (Math.abs(candidate.getA() - a) < 1e-6
-                    && (Math.abs(candidate.getB() - b) < 1e-6
-                        || (params.rf > 0 && candidate.getRf() > 0
-                            && Math.abs(candidate.getRf() - params.rf) < 1e-9))) {
+                    && Math.abs(candidate.getB() - b) < 1e-6) {
                 return candidate;
             }
         }

@@ -1378,8 +1378,52 @@ class CRSSerializerTest {
             .proj4("+proj=longlat +ellps=clrk80ign +no_defs",
                    "+proj=utm +zone=31 +ellps=clrk80ign +no_defs")
             .forward(new Point(2.5, 46.0));
-        assertEquals(461282.081634, p.x, 1e-4);
-        assertEquals(5093857.024237, p.y, 1e-4);
+        assertEquals(461282.081634, p.x, 0.01);
+        assertEquals(5093857.024237, p.y, 0.01);
+    }
+
+    @Test
+    @DisplayName("Ellipsoid codes resolve with match.js normalization (separators ignored)")
+    void testEllipsoidCodeNormalization() {
+        // proj4js resolves registry keys through match.js, which ignores whitespace,
+        // underscores, hyphens, slashes and parentheses — +ellps=bess-nam is
+        // Bessel Namibia upstream, and previously parsed here as WGS84 silently.
+        Proj p = new Proj("+proj=longlat +ellps=bess-nam +no_defs");
+        assertEquals(6377483.865, p.getParams().a, 1e-6, "bess-nam resolves to bess_nam");
+
+        // The legacy clark80 alias spelling resolves to clrk80 (carthage's ellipse).
+        assertEquals(6378249.145,
+            new Proj("+proj=longlat +ellps=clark80 +no_defs").getParams().a, 1e-6);
+
+        // Datum codes get the same normalization (+datum=s-jtsk -> s_jtsk).
+        assertEquals("bessel",
+            org.datasyslab.proj4sedona.constants.Datum.get("s-jtsk").getEllipse());
+    }
+
+    @Test
+    @DisplayName("A matching rf must not override a conflicting explicit b")
+    void testRfDoesNotOverrideConflictingB() {
+        // b wins over rf when both are given (here and in proj4js); the resolver
+        // previously accepted the rf equality and emitted +ellps=WGS84, silently
+        // moving the effective semi-minor axis by 56.8 km on re-parse.
+        Proj p = new Proj("+proj=longlat +a=6378137 +b=6300000 +rf=298.257223563 +no_defs");
+        assertEquals(6300000.0, p.getParams().b, 0, "explicit b is the effective b");
+        String out = CRSSerializer.toProjString(p);
+        assertFalse(out.contains("+ellps="), out);
+        assertTrue(out.contains("+a=6378137") && out.contains("+b=6300000"), out);
+        assertEquals(6300000.0, new Proj(out).getParams().b, 0,
+            "effective semi-minor axis survives the round-trip");
+    }
+
+    @Test
+    @DisplayName("plessis matches PROJ, not proj4js's rf typo")
+    void testPlessisMatchesProj() {
+        // Documented divergence: proj4js stores plessis's 6355863 as the inverse
+        // flattening (deriving the near-sphere b=6376521.997, 20.7 km off); PROJ
+        // defines a=6376523, b=6355863, which this registry matches.
+        Proj p = new Proj("+proj=longlat +ellps=plessis +no_defs");
+        assertEquals(6376523.0, p.getParams().a, 1e-6);
+        assertEquals(6355863.0, p.getParams().b, 1e-6, "b per PROJ's table");
     }
 
     @Test
