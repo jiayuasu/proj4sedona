@@ -1355,11 +1355,66 @@ public final class CRSSerializer {
                 // Also try with underscores replaced by spaces
                 epsg = DATUM_NAME_TO_EPSG.get(normalized.replace('_', ' '));
             }
-            if (epsg != null && matchesDefinition(params, epsg)) {
+            if (epsg != null && matchesExpectedEllipsoid(params, epsg)) {
                 return epsg;
             }
         }
         return null;
+    }
+
+    /**
+     * The ellipsoid of each geographic CRS in DATUM_NAME_TO_EPSG, as canonical
+     * (semi-major axis, inverse flattening) literals from the EPSG definitions.
+     *
+     * <p>Validating the mapped candidate against its actual reference definition
+     * (new Proj(code)) is NOT an option here: only EPSG:4326 and EPSG:4269 are
+     * built-in definitions — the rest resolve through the remote CRS provider, so
+     * toAuthority/toProjJson would perform blocking HTTP during routine
+     * serialization and silently fail offline. The canonical literals are used
+     * rather than the Ellipsoid registry because b-defined registry entries
+     * (airy) carry a rounded semi-minor axis whose derived inverse flattening is
+     * off by ~1e-5 — the rf comparison below must stay at 1e-6 to separate WGS 84
+     * from GRS 1980 (which differ by only 1.46e-6).</p>
+     */
+    private static final Map<String, double[]> EPSG_GEOGRAPHIC_ELLIPSOID = new HashMap<>();
+    static {
+        double[] wgs84 = {6378137, 298.257223563};
+        double[] grs80 = {6378137, 298.257222101};
+        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4326", wgs84);
+        for (String grs80Crs : new String[]{
+                "EPSG:4269", "EPSG:6318", "EPSG:4759", "EPSG:6783", "EPSG:4152",
+                "EPSG:4258", "EPSG:4171", "EPSG:4283", "EPSG:7844", "EPSG:6668",
+                "EPSG:4490"}) {
+            EPSG_GEOGRAPHIC_ELLIPSOID.put(grs80Crs, grs80);
+        }
+        // NAD27 / Clarke 1866 (b-defined: rf equivalent to a=6378206.4, b=6356583.8)
+        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4267", new double[]{6378206.4, 294.9786982139006});
+        // Indian 1975 / Everest 1830 (1937 Adjustment)
+        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4240", new double[]{6377276.345, 300.8017});
+        // OSGB36 / Airy 1830
+        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4277", new double[]{6377563.396, 299.3249646});
+    }
+
+    /**
+     * Validate a datum-name authority candidate against the ellipsoid its CRS is
+     * defined on, using only bundled metadata (no reference construction — see
+     * EPSG_GEOGRAPHIC_ELLIPSOID). Effective values are compared, so a stale rf
+     * that contradicts an explicit b cannot vouch for the wrong ellipsoid.
+     */
+    private static boolean matchesExpectedEllipsoid(ProjectionParams params, String epsg) {
+        double[] expected = EPSG_GEOGRAPHIC_ELLIPSOID.get(epsg);
+        if (expected == null) {
+            return false;
+        }
+        double expectedA = expected[0];
+        double expectedRf = expected[1];
+        double expectedB = expectedA * (1 - 1 / expectedRf);
+        if (Math.abs(params.a - expectedA) > 0.1
+                || Math.abs(params.b - expectedB) > 0.01) {
+            return false;
+        }
+        double effRf = effectiveRf(params);
+        return effRf <= 0 || Math.abs(effRf - expectedRf) < 1e-6;
     }
 
     /**
@@ -1479,9 +1534,12 @@ public final class CRSSerializer {
                 return false;
             }
             // rf as fine discrimination when both sides carry it: GRS 1980 and
-            // WGS 84 differ by only 0.1 mm in b, far below the axis tolerance.
-            if (params.rf != 0 && refParams.rf != 0
-                    && Math.abs(params.rf - refParams.rf) > 1e-6) {
+            // WGS 84 differ by only 0.1 mm in b, far below the axis tolerance. The
+            // effective rf is compared — a stale raw rf that contradicts an
+            // explicit b (which wins at parse time) must not vouch for a match.
+            double prf = effectiveRf(params);
+            double rrf = effectiveRf(refParams);
+            if (prf > 0 && rrf > 0 && Math.abs(prf - rrf) > 1e-6) {
                 return false;
             }
 
@@ -1837,9 +1895,13 @@ public final class CRSSerializer {
                     }
                 }
             }
+            // Exact-match epsilon: a looser tolerance here would let the stated
+            // identity swallow near-twins — +datum=WGS84 with an explicit GRS80
+            // semi-minor axis (0.105 mm away) must fall through to the exact
+            // parameter pass below and resolve as GRS80.
             if (named != null
-                    && Math.abs(named.getA() - a) < 1e-3
-                    && Math.abs(named.getB() - b) < 1e-3) {
+                    && Math.abs(named.getA() - a) < 1e-6
+                    && Math.abs(named.getB() - b) < 1e-6) {
                 return named;
             }
         }

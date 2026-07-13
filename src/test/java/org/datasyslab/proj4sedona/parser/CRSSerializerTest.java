@@ -1489,6 +1489,86 @@ class CRSSerializerTest {
         assertEquals("4258", pos[1]);
     }
 
+    private static String geographicDoc(String datumName, double a, double rf) {
+        return "{\"type\": \"GeographicCRS\", \"name\": \"" + datumName + "\","
+            + "\"datum\": {\"type\": \"GeodeticReferenceFrame\", \"name\": \"" + datumName + "\","
+            + " \"ellipsoid\": {\"name\": \"e\", \"semi_major_axis\": " + a + ","
+            + "  \"inverse_flattening\": " + rf + "}},"
+            + "\"coordinate_system\": {\"subtype\": \"ellipsoidal\", \"axis\": ["
+            + " {\"name\": \"Geodetic latitude\", \"abbreviation\": \"Lat\", \"direction\": \"north\", \"unit\": \"degree\"},"
+            + " {\"name\": \"Geodetic longitude\", \"abbreviation\": \"Lon\", \"direction\": \"east\", \"unit\": \"degree\"}]}}";
+    }
+
+    @Test
+    @DisplayName("Datum-name authority identification is fully offline")
+    void testDatumNameAuthorityOffline() {
+        // Phase-2 validation previously constructed the mapped EPSG reference via
+        // new Proj(code); only EPSG:4326 and EPSG:4269 are built-in definitions, so
+        // 13 of the 15 mapped codes triggered blocking HTTP through the remote CRS
+        // provider inside toAuthority/toProjJson — and failed silently offline.
+        // Validation now uses bundled ellipsoid metadata; this test runs with the
+        // remote provider removed to guard against reintroducing the construction.
+        org.datasyslab.proj4sedona.defs.Defs.globals();
+        org.datasyslab.proj4sedona.defs.Defs.removeProvider("spatialreference.org");
+        try {
+            // One name per mapped ellipsoid family, plus the previously failing
+            // spellings (CGCS2000 rejected via the reference's "China 2000" datum
+            // name; ETRS89/GDA2020/JGD2011 unvalidatable in the datum registry).
+            Object[][] sweep = {
+                {"World Geodetic System 1984", 6378137.0, 298.257223563, "4326"},
+                {"NAD83 (National Spatial Reference System 2011)", 6378137.0, 298.257222101, "6318"},
+                {"European Terrestrial Reference System 1989", 6378137.0, 298.257222101, "4258"},
+                {"Geocentric Datum of Australia 2020", 6378137.0, 298.257222101, "7844"},
+                {"Japanese Geodetic Datum 2011", 6378137.0, 298.257222101, "6668"},
+                {"China Geodetic Coordinate System 2000", 6378137.0, 298.257222101, "4490"},
+                {"North American Datum 1927", 6378206.4, 294.9786982139006, "4267"},
+                {"Indian 1975", 6377276.345, 300.8017, "4240"},
+                {"Ordnance Survey of Great Britain 1936", 6377563.396, 299.3249646, "4277"},
+            };
+            for (Object[] c : sweep) {
+                String doc = geographicDoc((String) c[0], (Double) c[1], (Double) c[2]);
+                String[] auth = CRSSerializer.toAuthority(new Proj(doc).getParams());
+                assertNotNull(auth, c[0] + " identifies offline");
+                assertEquals(c[3], auth[1], (String) c[0]);
+            }
+
+            // The conflict rejections hold offline too.
+            assertNull(CRSSerializer.toAuthority(new Proj(
+                "+proj=longlat +datum=ETRS89 +a=6378137 +b=6300000 +no_defs").getParams()));
+        } finally {
+            org.datasyslab.proj4sedona.defs.Defs.registerProvider(
+                org.datasyslab.proj4sedona.defs.UrlCRSProvider.spatialReference(), 101);
+        }
+    }
+
+    @Test
+    @DisplayName("A stale matching rf cannot vouch for the wrong authority")
+    void testStaleRfCannotVouchAuthority() {
+        // Effective b is GRS80's, the stale raw rf is WGS84's: the rf discrimination
+        // previously trusted the raw value and stamped EPSG:4326 onto an effectively
+        // GRS80 ellipsoid. The effective rf (derived from the authoritative axes)
+        // is compared instead.
+        Proj p = new Proj("+proj=longlat +datum=WGS84 +a=6378137 "
+            + "+b=6356752.314140356 +rf=298.257223563 +no_defs");
+        assertNull(CRSSerializer.toAuthority(p.getParams()),
+            "effectively-GRS80 ellipsoid must not identify as EPSG:4326");
+        assertFalse(CRSSerializer.toProjJson(p).contains("4326"));
+    }
+
+    @Test
+    @DisplayName("The stated ellipsoid identity does not swallow near-twins")
+    void testStatedIdentityDoesNotSwallowNearTwins() {
+        // +datum=WGS84 states the WGS84 identity, but the explicit semi-minor axis
+        // is GRS80's (0.105 mm away). The identity validation previously used a 1 mm
+        // tolerance, serializing +ellps=WGS84 and changing b on re-parse; the
+        // exact-parameter pass now wins and keeps the axes bit-identical.
+        Proj p = new Proj("+proj=longlat +datum=WGS84 +a=6378137 +b=6356752.314140356 +no_defs");
+        String out = CRSSerializer.toProjString(p);
+        assertTrue(out.contains("+ellps=GRS80"), out);
+        assertEquals(6356752.314140356, new Proj(out).getParams().b, 0,
+            "semi-minor axis is preserved exactly");
+    }
+
     @Test
     @DisplayName("plessis matches PROJ, not proj4js's rf typo")
     void testPlessisMatchesProj() {
