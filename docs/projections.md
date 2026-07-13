@@ -1,6 +1,6 @@
 # Projections
 
-Proj4Sedona supports 15 map projections covering cylindrical, pseudocylindrical, conic, and azimuthal families. This page lists each projection with its PROJ name, aliases, and a usage example.
+Proj4Sedona supports 34 map projections — the complete proj4js set — plus the geographic identity (longlat) transform, covering cylindrical, pseudocylindrical, conic, azimuthal, and special families. The identity transform is documented under Other Projections but is not itself a map projection and is not counted among the 34. This page lists each projection with its PROJ name, aliases, and a usage example.
 
 ## Cylindrical Projections
 
@@ -144,6 +144,21 @@ double[] result = Proj4.proj4(
     "+proj=longlat +datum=WGS84",
     "+proj=omerc +lat_0=4 +lonc=102.25 +alpha=323.0257964667 +k=0.99984 +x_0=804671 +y_0=0 +no_uoff +gamma=323.1301023611 +ellps=GRS80 +units=m",
     new double[]{102.5, 4.2}
+);
+```
+
+### Gauss-Schreiber Transverse Mercator
+
+Double-projection variant of the Transverse Mercator via a Gauss sphere. Used by legacy French grids (e.g. IGNF Reunion, Martinique).
+
+- PROJ name: `gstmerc`
+- Aliases: `gstmerg`, `Gauss_Schreiber_Transverse_Mercator`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=gstmerc +lat_0=-21.116666667 +lon_0=55.53333333 +k_0=1 +x_0=160000 +y_0=50000 +ellps=intl +units=m",
+    new double[]{55.5, -21.1}
 );
 ```
 
@@ -354,7 +369,7 @@ double[] result = Proj4.proj4(
 Conformal azimuthal projection. Used for polar regions and some national grids.
 
 - PROJ name: `stere`
-- Aliases: `Stereographic`, `Stereographic_South_Pole`, `Stereographic_North_Pole`, `Polar_Stereographic`, `Polar_Stereographic_variant_A`, `Polar_Stereographic_variant_B`, `Oblique_Stereographic`
+- Aliases: `Stereographic`, `Stereographic_South_Pole`, `Stereographic_North_Pole`, `Polar_Stereographic`, `Polar_Stereographic_variant_A`, `Polar_Stereographic_variant_B`
 
 ```java
 // Polar stereographic (North Pole)
@@ -425,6 +440,21 @@ double[] result = Proj4.proj4(
 );
 ```
 
+### Tilted Perspective
+
+General perspective view of the globe from an arbitrary height, azimuth, and tilt — a satellite or aerial camera view. The untilted case is the vertical near-side perspective (`nsper`).
+
+- PROJ name: `tpers`
+- Aliases: `Tilted_Perspective`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=tpers +h=5500000 +lat_0=40 +lon_0=-75 +azi=20 +tilt=30 +units=m",
+    new double[]{-74, 40.7}
+);
+```
+
 ## Other Projections
 
 ### Identity (Longitude/Latitude)
@@ -450,6 +480,67 @@ double[] result = Proj4.proj4(
     "+proj=longlat +datum=WGS84",
     "+proj=geos +h=35785831 +sweep=y +lon_0=0 +datum=WGS84 +units=m",
     new double[]{10.0, -5.0}
+);
+```
+
+### New Zealand Map Grid
+
+Sixth-order conformal fit specific to New Zealand (EPSG:27200). Defined only for the New Zealand region.
+
+- PROJ name: `nzmg`
+- Aliases: `New_Zealand_Map_Grid`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=nzmg +lat_0=-41 +lon_0=173 +x_0=2510000 +y_0=6023150 +ellps=intl +units=m",
+    new double[]{174.78, -41.29}
+);
+```
+
+### Geocentric (ECEF)
+
+Not a map projection: converts geodetic longitude/latitude/height to Earth-centered, Earth-fixed X/Y/Z coordinates (e.g. EPSG:4978). Two-dimensional input returns the computed Z. Geocentric CRSs are also recognized when parsed from PROJJSON (`GeodeticCRS` + Cartesian coordinate system) and WKT2 (`GEODCRS` with `CS[Cartesian,3]`).
+
+- PROJ name: `geocent`
+- Aliases: `Geocentric`, `geocentric`, `Geocent`
+
+```java
+double[] xyz = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=geocent +datum=WGS84 +units=m",
+    new double[]{2.35, 48.85, 100}
+);
+```
+
+### Quadrilateralized Spherical Cube
+
+Projects the sphere onto the six faces of a circumscribed cube with approximately equal-area facets. Used by astronomical and planetary data sets (COBE).
+
+- PROJ name: `qsc`
+- Aliases: `Quadrilateralized Spherical Cube`, `Quadrilateralized_Spherical_Cube`
+
+```java
+double[] result = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=qsc +lat_0=0 +lon_0=0 +ellps=WGS84 +units=m",
+    new double[]{5, 15}
+);
+```
+
+### General Oblique Transformation
+
+Meta-projection that rotates the sphere so an arbitrary point becomes the pole (or an arbitrary great circle the equator) before applying an inner projection given by `+o_proj`. Standard for rotated-pole grids in climate and ocean modeling.
+
+- PROJ name: `ob_tran`
+- Aliases: `General Oblique Transformation`, `General_Oblique_Transformation`
+
+```java
+// Rotated-pole longitude/latitude grid (output in degrees)
+double[] rotated = Proj4.proj4(
+    "+proj=longlat +datum=WGS84",
+    "+proj=ob_tran +o_proj=longlat +o_lon_p=0 +o_lat_p=35 +lon_0=-113 +R=6371229",
+    new double[]{-105, 40}
 );
 ```
 
@@ -485,6 +576,12 @@ double[] result = Proj4.proj4(
 | Azimuthal | Gnomonic | `gnom` | Gnomonic |
 | Azimuthal | Orthographic | `ortho` | Perspective |
 | Other | Geostationary Satellite | `geos` | Perspective |
+| Cylindrical | Gauss-Schreiber Transverse Mercator | `gstmerc` | Conformal |
+| Azimuthal | Tilted Perspective | `tpers` | Perspective |
+| Other | New Zealand Map Grid | `nzmg` | Conformal (regional fit) |
+| Other | Geocentric (ECEF) | `geocent` | Coordinate conversion |
+| Other | Quadrilateralized Spherical Cube | `qsc` | Approximately equal-area |
+| Other | General Oblique Transformation | `ob_tran` | Meta-projection (rotated pole) |
 | Other | Identity | `longlat` | None |
 
 ## See Also

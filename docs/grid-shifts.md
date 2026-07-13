@@ -143,7 +143,8 @@ import org.datasyslab.proj4sedona.grid.NadgridInfo;
 
 List<NadgridInfo> grids = GridLoader.getNadgrids("@conus,@alaska,@ntv2_0.gsb,null");
 // Returns list with each grid's name, mandatory flag, and loaded data
-// "null" entries are skipped (identity grid)
+// "null" entries are returned as a NadgridInfo with isNull() == true
+// (an identity / no-shift step, not dropped from the list)
 // "@" prefix means optional (mandatory=false)
 ```
 
@@ -188,7 +189,7 @@ double[] nad83 = Proj4.proj4(
     new double[]{-77.0, 38.9}
 );
 
-// 3. Transform OSGB36 to WGS84 via ETRS89 grid
+// 3. Transform OSGB36 to WGS84 (7-parameter Helmert from the OSGB36 datum)
 double[] wgs84 = Proj4.proj4(
     "EPSG:4277",  // OSGB36
     "EPSG:4326",  // WGS84

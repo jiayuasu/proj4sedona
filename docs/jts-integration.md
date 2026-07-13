@@ -4,7 +4,7 @@ Proj4Sedona integrates with the [JTS Topology Suite](https://github.com/location
 
 ## Setup
 
-The JTS integration uses the `org.locationtech.jts` library. Make sure it is on your classpath (it is included as a dependency of Proj4Sedona).
+The JTS integration uses the `org.locationtech.jts:jts-core` library. Proj4Sedona declares it as an *optional* dependency, so it is not pulled in transitively — add `org.locationtech.jts:jts-core` (1.20.0 or compatible) to your own build to use the integration.
 
 ## Creating a Transformer
 

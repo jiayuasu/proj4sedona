@@ -91,15 +91,16 @@ Build a provider for your own CRS service:
 
 ```java
 import org.datasyslab.proj4sedona.defs.UrlCRSProvider;
+import org.datasyslab.proj4sedona.defs.CRSResult;
 
-UrlCRSProvider myProvider = new UrlCRSProvider.Builder()
-    .name("my-crs-service")
+UrlCRSProvider myProvider = UrlCRSProvider.builder("my-crs-service")
     .baseUrl("https://crs.example.com/api")
     .pathTemplate("/{authority}/{code}.proj4")
     .authorities("EPSG", "ESRI")
     .format(CRSResult.Format.PROJ4)
-    .timeout(5000)
-    .retries(2)
+    .connectTimeout(5)   // seconds
+    .readTimeout(5)      // seconds
+    .maxRetries(2)
     .build();
 ```
 

@@ -126,10 +126,10 @@ UPS.UPSCoordinate ups = UPS.fromLatLon(85.0, 10.0);
 // ups.easting, ups.northing, ups.zone
 
 // Convert back to lat/lon
-double[] latLon = UPS.toLatLon("N", ups.easting, ups.northing);
+double[] latLon = UPS.toLatLon(ups);
 
-// Get UPS zone letter
-String zone = UPS.getZoneLetter(85.0, 10.0); // "Z" (North Pole)
+// Get the UPS zone letter
+char zone = UPS.getZone(85.0, 10.0); // 'Z' (North Pole)
 ```
 
 ## Round-Trip Example

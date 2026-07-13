@@ -90,7 +90,7 @@ Retrieved via `Ellipsoid.get(code)`. Each ellipsoid defines the shape of the Ear
 | `walbeck` | 6376896 | b=6355834.8467 | Walbeck |
 | `WGS60` | 6378165 | rf=298.3 | WGS 60 |
 | `WGS66` | 6378145 | rf=298.25 | WGS 66 |
-| `WGS72` | 6378135 | rf=298.26 | WGS 72 |
+| `WGS7` | 6378135 | rf=298.26 | WGS 72 |
 | `WGS84` | 6378137 | rf=298.257223563 | WGS 84 |
 | `sphere` | 6370997 | b=6370997 | Normal Sphere (r=6370997) |
 
