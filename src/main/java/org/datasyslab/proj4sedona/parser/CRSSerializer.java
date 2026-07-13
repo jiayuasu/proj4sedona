@@ -431,11 +431,10 @@ public final class CRSSerializer {
     }
 
     private static void appendEllipsoidParams(StringBuilder sb, ProjectionParams params) {
-        // Try to find matching ellipsoid by parameters
-        String ellpsCode = findEllipsoidCode(params.a, params.b, params.rf);
-        
-        if (ellpsCode != null) {
-            sb.append(" +ellps=").append(ellpsCode);
+        Ellipsoid resolved = resolveEllipsoid(params);
+
+        if (resolved != null) {
+            sb.append(" +ellps=").append(resolved.getCode());
         } else if (params.a > 0) {
             // Use explicit a/b or a/rf
             sb.append(" +a=").append(params.a);
@@ -542,7 +541,7 @@ public final class CRSSerializer {
         String ellpsName = getEllipsoidName(params);
         sb.append("SPHEROID[\"").append(ellpsName).append("\",");
         sb.append(params.a).append(",");
-        sb.append(params.rf > 0 ? params.rf : 0);
+        sb.append(effectiveRf(params));
         sb.append("]");
 
         // TOWGS84 if present
@@ -739,7 +738,7 @@ public final class CRSSerializer {
         String ellpsName = getEllipsoidName(params);
         sb.append("ELLIPSOID[\"").append(ellpsName).append("\",");
         sb.append(params.a).append(",");
-        sb.append(params.rf > 0 ? params.rf : 0);
+        sb.append(effectiveRf(params));
         sb.append(",LENGTHUNIT[\"metre\",1]]");
 
         sb.append("]");
@@ -1036,10 +1035,16 @@ public final class CRSSerializer {
         Map<String, Object> ellipsoid = new LinkedHashMap<>();
         ellipsoid.put("name", getEllipsoidName(params));
         ellipsoid.put("semi_major_axis", params.a);
-        if (params.rf > 0) {
+        // Emit the rf literal only when it is consistent with the effective
+        // semi-minor axis; b is authoritative when both are present, so a stale
+        // conflicting rf must not be re-imported as the ellipsoid shape. The
+        // semi_minor_axis form is schema-valid and exact.
+        if (params.rf > 0 && rfConsistentWithB(params)) {
             ellipsoid.put("inverse_flattening", params.rf);
         } else if (params.b > 0) {
             ellipsoid.put("semi_minor_axis", params.b);
+        } else if (params.rf > 0) {
+            ellipsoid.put("inverse_flattening", params.rf);
         }
         return ellipsoid;
     }
@@ -1335,20 +1340,92 @@ public final class CRSSerializer {
             return null;
         }
 
-        // Try datumCode (set from PROJJSON datum.name or PROJ +datum flag)
+        // Try datumCode (set from PROJJSON datum.name or PROJ +datum flag).
+        // The name alone is not enough: explicit +a/+b (or +ellps=) override the
+        // datum's ellipsoid at parse, so +datum=WGS84 +a=6378137 +b=6300000 must
+        // not be identified as EPSG:4326, nor +datum=WGS84 +ellps=GRS80. The
+        // mapped candidate is validated against its actual reference definition
+        // (effective axes, rf discrimination, datum and projection parameters) —
+        // a registry-ellipse spot check cannot do this, since most of the mapped
+        // datum names (ETRS89, GDA2020, JGD2011, ...) are not registry datums.
         if (params.datumCode != null) {
             String normalized = params.datumCode.toLowerCase(Locale.ROOT).trim();
             String epsg = DATUM_NAME_TO_EPSG.get(normalized);
-            if (epsg != null) {
-                return epsg;
+            if (epsg == null) {
+                // Also try with underscores replaced by spaces
+                epsg = DATUM_NAME_TO_EPSG.get(normalized.replace('_', ' '));
             }
-            // Also try with underscores replaced by spaces
-            epsg = DATUM_NAME_TO_EPSG.get(normalized.replace('_', ' '));
-            if (epsg != null) {
+            if (epsg != null && matchesExpectedEllipsoid(params, epsg)) {
                 return epsg;
             }
         }
         return null;
+    }
+
+    /**
+     * The ellipsoid of each geographic CRS in DATUM_NAME_TO_EPSG, as canonical
+     * (semi-major axis, inverse flattening) literals from the EPSG definitions.
+     *
+     * <p>Validating the mapped candidate against its actual reference definition
+     * (new Proj(code)) is NOT an option here: only EPSG:4326 and EPSG:4269 are
+     * built-in definitions — the rest resolve through the remote CRS provider, so
+     * toAuthority/toProjJson would perform blocking HTTP during routine
+     * serialization and silently fail offline.</p>
+     *
+     * <p>Each row carries its own inverse-flattening tolerance. Strict 1e-6 is
+     * needed only where a near-twin exists: WGS 84 and GRS 1980 share the
+     * semi-major axis and differ by 1.46e-6 in rf (0.1 mm in b). The unambiguous
+     * families (clrk66, evrst30, airy) use 1e-4 — an implied b window of ~7 mm,
+     * still inside the 0.01 m axis gate — because definitions reach this check
+     * from two sources whose rf disagree at the ~1e-5 level: documents carry the
+     * EPSG-canonical value, while +datum=-built definitions inherit the registry's
+     * proj4js-faithful rounded semi-minor axis (airy b=6356256.91 derives
+     * rf=299.324975 vs canonical 299.3249646).</p>
+     */
+    private static final Map<String, double[]> EPSG_GEOGRAPHIC_ELLIPSOID = new HashMap<>();
+    static {
+        // {semi-major axis, inverse flattening, rf tolerance}
+        double[] wgs84 = {6378137, 298.257223563, 1e-6};
+        double[] grs80 = {6378137, 298.257222101, 1e-6};
+        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4326", wgs84);
+        for (String grs80Crs : new String[]{
+                "EPSG:4269", "EPSG:6318", "EPSG:4759", "EPSG:6783", "EPSG:4152",
+                "EPSG:4258", "EPSG:4171", "EPSG:4283", "EPSG:7844", "EPSG:6668",
+                "EPSG:4490"}) {
+            EPSG_GEOGRAPHIC_ELLIPSOID.put(grs80Crs, grs80);
+        }
+        // NAD27 / Clarke 1866
+        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4267",
+            new double[]{6378206.4, 294.9786982139006, 1e-4});
+        // Indian 1975 / Everest 1830 (1937 Adjustment)
+        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4240",
+            new double[]{6377276.345, 300.8017, 1e-4});
+        // OSGB36 / Airy 1830
+        EPSG_GEOGRAPHIC_ELLIPSOID.put("EPSG:4277",
+            new double[]{6377563.396, 299.3249646, 1e-4});
+    }
+
+    /**
+     * Validate a datum-name authority candidate against the ellipsoid its CRS is
+     * defined on, using only bundled metadata (no reference construction — see
+     * EPSG_GEOGRAPHIC_ELLIPSOID). Effective values are compared, so a stale rf
+     * that contradicts an explicit b cannot vouch for the wrong ellipsoid.
+     */
+    private static boolean matchesExpectedEllipsoid(ProjectionParams params, String epsg) {
+        double[] expected = EPSG_GEOGRAPHIC_ELLIPSOID.get(epsg);
+        if (expected == null) {
+            return false;
+        }
+        double expectedA = expected[0];
+        double expectedRf = expected[1];
+        double rfTolerance = expected[2];
+        double expectedB = expectedA * (1 - 1 / expectedRf);
+        if (Math.abs(params.a - expectedA) > 0.1
+                || Math.abs(params.b - expectedB) > 0.01) {
+            return false;
+        }
+        double effRf = effectiveRf(params);
+        return effRf <= 0 || Math.abs(effRf - expectedRf) < rfTolerance;
     }
 
     /**
@@ -1460,13 +1537,20 @@ public final class CRSSerializer {
                 return false;
             }
 
-            // Check inverse flattening (distinguishes GRS 1980 from WGS 84)
-            if (params.rf != 0 && refParams.rf != 0) {
-                if (Math.abs(params.rf - refParams.rf) > 1e-6) {
-                    return false;
-                }
-            } else if (Math.abs(params.b - refParams.b) > 0.01) {
-                // Fall back to semi-minor axis comparison
+            // Check the effective semi-minor axis unconditionally: b is
+            // authoritative when both b and rf are present, so a matching rf must
+            // not accept a conflicting ellipsoid shape (+datum=WGS84 +a=... +b=6300000
+            // +rf=298.257223563 is not EPSG:4326).
+            if (Math.abs(params.b - refParams.b) > 0.01) {
+                return false;
+            }
+            // rf as fine discrimination when both sides carry it: GRS 1980 and
+            // WGS 84 differ by only 0.1 mm in b, far below the axis tolerance. The
+            // effective rf is compared — a stale raw rf that contradicts an
+            // explicit b (which wins at parse time) must not vouch for a match.
+            double prf = effectiveRf(params);
+            double rrf = effectiveRf(refParams);
+            if (prf > 0 && rrf > 0 && Math.abs(prf - rrf) > 1e-6) {
                 return false;
             }
 
@@ -1755,27 +1839,108 @@ public final class CRSSerializer {
     }
 
     private static String getEllipsoidName(ProjectionParams params) {
-        String code = findEllipsoidCode(params.a, params.b, params.rf);
-        if (code != null) {
-            Ellipsoid ellps = Ellipsoid.get(code);
-            if (ellps != null) {
-                return ellps.getEllipseName();
-            }
-            return code;
-        }
-        return "Custom";
+        Ellipsoid resolved = resolveEllipsoid(params);
+        return resolved != null ? resolved.getEllipseName() : "Custom";
     }
 
-    private static String findEllipsoidCode(double a, double b, double rf) {
-        // Check all registered ellipsoids (LinkedHashMap ensures deterministic order)
-        for (Map.Entry<String, Ellipsoid> entry : Ellipsoid.getAll().entrySet()) {
-            Ellipsoid ellps = entry.getValue();
-            if (Math.abs(ellps.getA() - a) < 0.1 && 
-                (Math.abs(ellps.getB() - b) < 0.1 || Math.abs(ellps.getRf() - rf) < 1e-6)) {
-                return ellps.getCode();
+    /**
+     * Whether the stored inverse flattening agrees with the effective semi-minor
+     * axis. b wins over rf at parse time (here and in proj4js), so a definition can
+     * carry a stale rf that describes a different ellipsoid than its axes do.
+     */
+    private static boolean rfConsistentWithB(ProjectionParams params) {
+        if (params.b <= 0 || params.rf <= 0) {
+            return true;
+        }
+        return Math.abs(params.a * (1 - 1 / params.rf) - params.b) < 1e-6;
+    }
+
+    /**
+     * The inverse flattening implied by the effective axes, for the WKT SPHEROID/
+     * ELLIPSOID nodes (which cannot carry a semi-minor axis): the stored rf when
+     * consistent with b (keeps the clean literal), the value derived from a and b
+     * when they conflict, and 0 for spheres, per WKT convention.
+     */
+    private static double effectiveRf(ProjectionParams params) {
+        if (params.b > 0 && !rfConsistentWithB(params)) {
+            return params.a == params.b ? 0 : params.a / (params.a - params.b);
+        }
+        if (params.rf > 0) {
+            return params.rf;
+        }
+        if (params.b > 0 && params.a != params.b) {
+            return params.a / (params.a - params.b);
+        }
+        return 0;
+    }
+
+    /**
+     * Resolve the definition's ellipsoid to a registry entry (issue #101).
+     *
+     * <p>Preference order:</p>
+     * <ol>
+     *   <li>The ellipsoid the definition itself names (the +ellps= code or the
+     *       WKT/PROJJSON ellipsoid name), when its parameters match the
+     *       definition's — this keeps the stated identity for twins with identical
+     *       parameters (NWL9D/WGS66) and rejects Proj's "wgs84" placeholder on
+     *       custom-parameter definitions.</li>
+     *   <li>An exact parameter match over the registry.</li>
+     *   <li>The closest entry within the legacy tolerance (0.1 m on both axes).
+     *       First-match-in-registry-order is what shadowed WGS84 behind MERIT,
+     *       whose semi-minor axis differs by only 1.6 cm.</li>
+     * </ol>
+     */
+    private static Ellipsoid resolveEllipsoid(ProjectionParams params) {
+        double a = params.a;
+        double b = params.b > 0 ? params.b
+            : (params.rf > 0 ? a * (1 - 1 / params.rf) : a);
+
+        // 1. The definition's own ellipsoid, validated against its parameters.
+        if (params.ellps != null) {
+            Ellipsoid named = Ellipsoid.get(params.ellps);
+            if (named == null) {
+                for (Ellipsoid candidate : Ellipsoid.getAll().values()) {
+                    if (params.ellps.equalsIgnoreCase(candidate.getEllipseName())) {
+                        named = candidate;
+                        break;
+                    }
+                }
+            }
+            // Exact-match epsilon: a looser tolerance here would let the stated
+            // identity swallow near-twins — +datum=WGS84 with an explicit GRS80
+            // semi-minor axis (0.105 mm away) must fall through to the exact
+            // parameter pass below and resolve as GRS80.
+            if (named != null
+                    && Math.abs(named.getA() - a) < 1e-6
+                    && Math.abs(named.getB() - b) < 1e-6) {
+                return named;
             }
         }
-        return null;
+
+        // 2. Exact parameter match on the effective axes (registry b is always
+        //    derived the same way the definition's is, so equal source values
+        //    compare equal). rf is only ever used to derive b when b is absent —
+        //    an rf equality must not override a conflicting explicit b
+        //    (+a=6378137 +b=6300000 +rf=298.257223563 is not WGS84).
+        for (Ellipsoid candidate : Ellipsoid.getAll().values()) {
+            if (Math.abs(candidate.getA() - a) < 1e-6
+                    && Math.abs(candidate.getB() - b) < 1e-6) {
+                return candidate;
+            }
+        }
+
+        // 3. Closest within the legacy tolerance.
+        Ellipsoid best = null;
+        double bestScore = Double.MAX_VALUE;
+        for (Ellipsoid candidate : Ellipsoid.getAll().values()) {
+            double da = Math.abs(candidate.getA() - a);
+            double db = Math.abs(candidate.getB() - b);
+            if (da < 0.1 && db < 0.1 && da + db < bestScore) {
+                best = candidate;
+                bestScore = da + db;
+            }
+        }
+        return best;
     }
 
     private static String getWktMethodName(String projName) {

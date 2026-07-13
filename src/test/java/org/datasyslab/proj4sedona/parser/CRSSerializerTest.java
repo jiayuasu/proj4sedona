@@ -1354,6 +1354,294 @@ class CRSSerializerTest {
         assertTrue(projString.contains("+proj=eck6"), "re-export uses short code: " + projString);
     }
 
+    // ========== Ellipsoid resolution (issues #101, #105) ==========
+
+    @Test
+    @DisplayName("Issue #105: every registered +ellps code parses with its own axes")
+    void testAllEllipsoidCodesParse() {
+        // A hardcoded 10-entry switch shadowed the 45-entry registry, silently
+        // defaulting the rest to WGS84 (+ellps=clrk80ign parsed 112 m off in a).
+        for (org.datasyslab.proj4sedona.constants.Ellipsoid e :
+                org.datasyslab.proj4sedona.constants.Ellipsoid.getAll().values()) {
+            Proj p = new Proj("+proj=longlat +ellps=" + e.getCode() + " +no_defs");
+            assertEquals(e.getA(), p.getParams().a, 1e-6, e.getCode() + " semi-major");
+            assertEquals(e.getB(), p.getParams().b, 1e-6, e.getCode() + " semi-minor");
+        }
+    }
+
+    @Test
+    @DisplayName("Issue #105: parsed clrk80ign transforms match pyproj")
+    void testClrk80ignTransform() {
+        // Reference from pyproj 3.7.2/PROJ 9.5.1; with the WGS84 fallback this was
+        // ~100 m off.
+        Point p = org.datasyslab.proj4sedona.Proj4
+            .proj4("+proj=longlat +ellps=clrk80ign +no_defs",
+                   "+proj=utm +zone=31 +ellps=clrk80ign +no_defs")
+            .forward(new Point(2.5, 46.0));
+        assertEquals(461282.081634, p.x, 0.01);
+        assertEquals(5093857.024237, p.y, 0.01);
+    }
+
+    @Test
+    @DisplayName("Ellipsoid codes resolve with match.js normalization (separators ignored)")
+    void testEllipsoidCodeNormalization() {
+        // proj4js resolves registry keys through match.js, which ignores whitespace,
+        // underscores, hyphens, slashes and parentheses — +ellps=bess-nam is
+        // Bessel Namibia upstream, and previously parsed here as WGS84 silently.
+        Proj p = new Proj("+proj=longlat +ellps=bess-nam +no_defs");
+        assertEquals(6377483.865, p.getParams().a, 1e-6, "bess-nam resolves to bess_nam");
+
+        // The legacy clark80 alias spelling resolves to clrk80 (carthage's ellipse).
+        assertEquals(6378249.145,
+            new Proj("+proj=longlat +ellps=clark80 +no_defs").getParams().a, 1e-6);
+
+        // Datum codes get the same normalization (+datum=s-jtsk -> s_jtsk).
+        assertEquals("bessel",
+            org.datasyslab.proj4sedona.constants.Datum.get("s-jtsk").getEllipse());
+    }
+
+    @Test
+    @DisplayName("A matching rf must not override a conflicting explicit b")
+    void testRfDoesNotOverrideConflictingB() {
+        // b wins over rf when both are given (here and in proj4js); the resolver
+        // previously accepted the rf equality and emitted +ellps=WGS84, silently
+        // moving the effective semi-minor axis by 56.8 km on re-parse.
+        Proj p = new Proj("+proj=longlat +a=6378137 +b=6300000 +rf=298.257223563 +no_defs");
+        assertEquals(6300000.0, p.getParams().b, 0, "explicit b is the effective b");
+        String out = CRSSerializer.toProjString(p);
+        assertFalse(out.contains("+ellps="), out);
+        assertTrue(out.contains("+a=6378137") && out.contains("+b=6300000"), out);
+        assertEquals(6300000.0, new Proj(out).getParams().b, 0,
+            "effective semi-minor axis survives the round-trip");
+    }
+
+    @Test
+    @DisplayName("A stale conflicting rf does not survive WKT or PROJJSON either")
+    void testStaleRfAllFormats() {
+        // b is authoritative when both b and rf are present; the WKT writers and the
+        // PROJJSON exporter emitted the stale rf literal, so re-import changed the
+        // effective semi-minor axis by 56.8 km even though the proj-string
+        // round-trip was already fixed.
+        Proj p = new Proj("+proj=longlat +a=6378137 +b=6300000 +rf=298.257223563 +no_defs");
+        assertEquals(6300000.0, new Proj(CRSSerializer.toWkt1(p)).getParams().b, 1e-6, "WKT1");
+        assertEquals(6300000.0, new Proj(CRSSerializer.toWkt2(p)).getParams().b, 1e-6, "WKT2");
+        assertEquals(6300000.0, new Proj(CRSSerializer.toProjJson(p)).getParams().b, 1e-6, "PROJJSON");
+        assertEquals(6300000.0, new Proj(CRSSerializer.toProjString(p)).getParams().b, 1e-6, "proj string");
+
+        // A consistent rf keeps its clean literal in WKT.
+        assertTrue(CRSSerializer.toWkt2(new Proj("+proj=longlat +ellps=WGS84 +no_defs"))
+            .contains("298.257223563"));
+    }
+
+    @Test
+    @DisplayName("Authority matching validates the effective semi-minor axis")
+    void testAuthorityRejectsConflictingEllipsoid() {
+        // The datum name and rf both said WGS84, but the explicit b overrides the
+        // ellipsoid at parse — toAuthority returned EPSG:4326 and the PROJJSON
+        // export carried the 4326 id for a non-WGS84 ellipsoid.
+        Proj q = new Proj("+proj=longlat +datum=WGS84 +a=6378137 +b=6300000 +rf=298.257223563 +no_defs");
+        assertNull(CRSSerializer.toAuthority(q.getParams()), "conflicting b must not identify");
+        assertFalse(CRSSerializer.toProjJson(q).contains("4326"), "no EPSG:4326 id");
+
+        // Genuine WGS84 still identifies, and the rf discrimination still separates
+        // GRS 1980 (b only 0.1 mm away) from WGS 84.
+        String[] wgs = CRSSerializer.toAuthority(
+            new Proj("+proj=longlat +datum=WGS84 +no_defs").getParams());
+        assertNotNull(wgs);
+        assertEquals("4326", wgs[1]);
+        String[] grs80 = CRSSerializer.toAuthority(
+            new Proj("+proj=longlat +ellps=GRS80 +no_defs").getParams());
+        assertFalse(grs80 != null && "4326".equals(grs80[1]),
+            "GRS80 must not identify as EPSG:4326");
+    }
+
+    @Test
+    @DisplayName("Datum-name authority candidates are validated against their reference")
+    void testDatumNameCandidateValidated() {
+        // The datum-name shortcut previously validated the ellipsoid only when the
+        // datum resolved in the registry — 15 of the 27 mapped names (ETRS89,
+        // GDA2020, JGD2011, CGCS2000, ...) do not, so a conflicting definition was
+        // stamped with the mapped EPSG id unchecked. Candidates now validate through
+        // matchesDefinition (effective axes, rf, datum, projection parameters).
+        Proj conflict = new Proj("+proj=longlat +datum=ETRS89 +a=6378137 +b=6300000 +no_defs");
+        assertNull(CRSSerializer.toAuthority(conflict.getParams()),
+            "conflicting axes must not identify as EPSG:4258");
+
+        // rf discrimination now applies to the shortcut too: GRS80's semi-minor axis
+        // is only 0.1 mm from WGS84's, so the coarse axis check alone cannot see it.
+        Proj mixed = new Proj("+proj=longlat +datum=WGS84 +ellps=GRS80 +no_defs");
+        String[] auth = CRSSerializer.toAuthority(mixed.getParams());
+        assertFalse(auth != null && "4326".equals(auth[1]),
+            "a GRS80 ellipsoid must not identify as EPSG:4326");
+
+        // Positive control: the realistic carrier of these names — a document with
+        // the datum name and its proper ellipsoid — still identifies.
+        String etrs89 = "{\"type\": \"GeographicCRS\", \"name\": \"ETRS89\","
+            + "\"datum\": {\"type\": \"GeodeticReferenceFrame\","
+            + " \"name\": \"European Terrestrial Reference System 1989\","
+            + " \"ellipsoid\": {\"name\": \"GRS 1980\", \"semi_major_axis\": 6378137,"
+            + "  \"inverse_flattening\": 298.257222101}},"
+            + "\"coordinate_system\": {\"subtype\": \"ellipsoidal\", \"axis\": ["
+            + " {\"name\": \"Geodetic latitude\", \"abbreviation\": \"Lat\", \"direction\": \"north\", \"unit\": \"degree\"},"
+            + " {\"name\": \"Geodetic longitude\", \"abbreviation\": \"Lon\", \"direction\": \"east\", \"unit\": \"degree\"}]}}";
+        String[] pos = CRSSerializer.toAuthority(new Proj(etrs89).getParams());
+        assertNotNull(pos, "genuine ETRS89 with GRS80 still identifies");
+        assertEquals("4258", pos[1]);
+    }
+
+    private static String geographicDoc(String datumName, double a, double rf) {
+        return "{\"type\": \"GeographicCRS\", \"name\": \"" + datumName + "\","
+            + "\"datum\": {\"type\": \"GeodeticReferenceFrame\", \"name\": \"" + datumName + "\","
+            + " \"ellipsoid\": {\"name\": \"e\", \"semi_major_axis\": " + a + ","
+            + "  \"inverse_flattening\": " + rf + "}},"
+            + "\"coordinate_system\": {\"subtype\": \"ellipsoidal\", \"axis\": ["
+            + " {\"name\": \"Geodetic latitude\", \"abbreviation\": \"Lat\", \"direction\": \"north\", \"unit\": \"degree\"},"
+            + " {\"name\": \"Geodetic longitude\", \"abbreviation\": \"Lon\", \"direction\": \"east\", \"unit\": \"degree\"}]}}";
+    }
+
+    @Test
+    @DisplayName("Datum-name authority identification is fully offline")
+    void testDatumNameAuthorityOffline() {
+        // Phase-2 validation previously constructed the mapped EPSG reference via
+        // new Proj(code); only EPSG:4326 and EPSG:4269 are built-in definitions, so
+        // 13 of the 15 mapped codes triggered blocking HTTP through the remote CRS
+        // provider inside toAuthority/toProjJson — and failed silently offline.
+        // Validation now uses bundled ellipsoid metadata; this test runs with the
+        // remote provider removed to guard against reintroducing the construction.
+        org.datasyslab.proj4sedona.defs.Defs.globals();
+        org.datasyslab.proj4sedona.defs.Defs.removeProvider("spatialreference.org");
+        try {
+            // One name per mapped ellipsoid family, plus the previously failing
+            // spellings (CGCS2000 rejected via the reference's "China 2000" datum
+            // name; ETRS89/GDA2020/JGD2011 unvalidatable in the datum registry).
+            Object[][] sweep = {
+                {"World Geodetic System 1984", 6378137.0, 298.257223563, "4326"},
+                {"NAD83 (National Spatial Reference System 2011)", 6378137.0, 298.257222101, "6318"},
+                {"European Terrestrial Reference System 1989", 6378137.0, 298.257222101, "4258"},
+                {"Geocentric Datum of Australia 2020", 6378137.0, 298.257222101, "7844"},
+                {"Japanese Geodetic Datum 2011", 6378137.0, 298.257222101, "6668"},
+                {"China Geodetic Coordinate System 2000", 6378137.0, 298.257222101, "4490"},
+                {"North American Datum 1927", 6378206.4, 294.9786982139006, "4267"},
+                {"Indian 1975", 6377276.345, 300.8017, "4240"},
+                {"Ordnance Survey of Great Britain 1936", 6377563.396, 299.3249646, "4277"},
+            };
+            for (Object[] c : sweep) {
+                String doc = geographicDoc((String) c[0], (Double) c[1], (Double) c[2]);
+                String[] auth = CRSSerializer.toAuthority(new Proj(doc).getParams());
+                assertNotNull(auth, c[0] + " identifies offline");
+                assertEquals(c[3], auth[1], (String) c[0]);
+            }
+
+            // Registry-sourced definitions identify too: +datum=OSGB36 inherits the
+            // proj4js-faithful rounded airy semi-minor axis (b=6356256.91), whose
+            // derived rf sits ~1e-5 from the EPSG-canonical literal — the per-row
+            // tolerance must accommodate both sources.
+            String[] osgb = CRSSerializer.toAuthority(new Proj(
+                "+proj=longlat +datum=OSGB36 +no_defs").getParams());
+            assertNotNull(osgb, "registry-sourced OSGB36 identifies");
+            assertEquals("4277", osgb[1]);
+            String[] nad27 = CRSSerializer.toAuthority(new Proj(
+                "+proj=longlat +datum=NAD27 +no_defs").getParams());
+            assertNotNull(nad27, "registry-sourced NAD27 identifies");
+            assertEquals("4267", nad27[1]);
+
+            // The conflict rejections hold offline too.
+            assertNull(CRSSerializer.toAuthority(new Proj(
+                "+proj=longlat +datum=ETRS89 +a=6378137 +b=6300000 +no_defs").getParams()));
+        } finally {
+            org.datasyslab.proj4sedona.defs.Defs.registerProvider(
+                org.datasyslab.proj4sedona.defs.UrlCRSProvider.spatialReference(), 101);
+        }
+    }
+
+    @Test
+    @DisplayName("A stale matching rf cannot vouch for the wrong authority")
+    void testStaleRfCannotVouchAuthority() {
+        // Effective b is GRS80's, the stale raw rf is WGS84's: the rf discrimination
+        // previously trusted the raw value and stamped EPSG:4326 onto an effectively
+        // GRS80 ellipsoid. The effective rf (derived from the authoritative axes)
+        // is compared instead.
+        Proj p = new Proj("+proj=longlat +datum=WGS84 +a=6378137 "
+            + "+b=6356752.314140356 +rf=298.257223563 +no_defs");
+        assertNull(CRSSerializer.toAuthority(p.getParams()),
+            "effectively-GRS80 ellipsoid must not identify as EPSG:4326");
+        assertFalse(CRSSerializer.toProjJson(p).contains("4326"));
+    }
+
+    @Test
+    @DisplayName("The stated ellipsoid identity does not swallow near-twins")
+    void testStatedIdentityDoesNotSwallowNearTwins() {
+        // +datum=WGS84 states the WGS84 identity, but the explicit semi-minor axis
+        // is GRS80's (0.105 mm away). The identity validation previously used a 1 mm
+        // tolerance, serializing +ellps=WGS84 and changing b on re-parse; the
+        // exact-parameter pass now wins and keeps the axes bit-identical.
+        Proj p = new Proj("+proj=longlat +datum=WGS84 +a=6378137 +b=6356752.314140356 +no_defs");
+        String out = CRSSerializer.toProjString(p);
+        assertTrue(out.contains("+ellps=GRS80"), out);
+        assertEquals(6356752.314140356, new Proj(out).getParams().b, 0,
+            "semi-minor axis is preserved exactly");
+    }
+
+    @Test
+    @DisplayName("plessis matches PROJ, not proj4js's rf typo")
+    void testPlessisMatchesProj() {
+        // Documented divergence: proj4js stores plessis's 6355863 as the inverse
+        // flattening (deriving the near-sphere b=6376521.997, 20.7 km off); PROJ
+        // defines a=6376523, b=6355863, which this registry matches.
+        Proj p = new Proj("+proj=longlat +ellps=plessis +no_defs");
+        assertEquals(6376523.0, p.getParams().a, 1e-6);
+        assertEquals(6355863.0, p.getParams().b, 1e-6, "b per PROJ's table");
+    }
+
+    @Test
+    @DisplayName("Issue #101: every registered +ellps code round-trips through toProjString")
+    void testAllEllipsoidCodesRoundTrip() {
+        // First-tolerance-match resolution shadowed WGS84 behind MERIT (semi-minor
+        // axes 1.6 cm apart) and could never round-trip parameter-identical twins
+        // (NWL9D/WGS66); the definition's own code now wins when its parameters
+        // match, then exact parameter match, then closest-in-tolerance.
+        for (org.datasyslab.proj4sedona.constants.Ellipsoid e :
+                org.datasyslab.proj4sedona.constants.Ellipsoid.getAll().values()) {
+            String out = CRSSerializer.toProjString(
+                new Proj("+proj=longlat +ellps=" + e.getCode() + " +no_defs"));
+            assertTrue(out.contains("+ellps=" + e.getCode()), e.getCode() + " -> " + out);
+        }
+    }
+
+    @Test
+    @DisplayName("Issue #101: WGS84 is no longer shadowed by MERIT")
+    void testWgs84NotShadowedByMerit() {
+        assertTrue(CRSSerializer.toProjString(new Proj("+proj=longlat +datum=WGS84 +no_defs"))
+            .contains("+ellps=WGS84"));
+        assertTrue(CRSSerializer.toProjString(new Proj("EPSG:4326"))
+            .contains("+ellps=WGS84"));
+        assertTrue(CRSSerializer.toProjString(new Proj("+proj=utm +zone=10 +datum=NAD83 +no_defs"))
+            .contains("+ellps=GRS80"));
+
+        // The WKT ellipsoid *name* resolves through the registry too.
+        String wkt = "GEOGCRS[\"WGS 84\",DATUM[\"World Geodetic System 1984\","
+            + "ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]]],"
+            + "CS[ellipsoidal,2],AXIS[\"lat\",north],AXIS[\"lon\",east],"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433],ID[\"EPSG\",4326]]";
+        assertTrue(CRSSerializer.toProjString(new Proj(wkt)).contains("+ellps=WGS84"));
+    }
+
+    @Test
+    @DisplayName("Issue #101: custom parameters are not snapped to a registry ellipsoid")
+    void testCustomParametersStayExplicit() {
+        // Proj assigns the "wgs84" ellps placeholder when none is given; the resolver
+        // must reject it when the actual parameters differ.
+        String custom = CRSSerializer.toProjString(
+            new Proj("+proj=longlat +a=6378137 +b=6356000 +no_defs"));
+        assertFalse(custom.contains("+ellps="), custom);
+        assertTrue(custom.contains("+a=6378137") && custom.contains("+b=6356000"), custom);
+
+        String sphere = CRSSerializer.toProjString(
+            new Proj("+proj=longlat +R=6371000 +no_defs"));
+        assertFalse(sphere.contains("+ellps="), sphere);
+        assertTrue(sphere.contains("+a=6371000") && sphere.contains("+b=6371000"), sphere);
+    }
+
     // ========== Datum token normalization (issue #98) ==========
 
     @Test

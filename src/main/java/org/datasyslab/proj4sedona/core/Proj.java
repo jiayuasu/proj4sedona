@@ -335,6 +335,7 @@ public class Proj {
         // Original
         p.srsCode = def.getSrsCode();
         p.datumCode = def.getDatumCode();
+        p.ellps = def.getEllps();
 
         return p;
     }

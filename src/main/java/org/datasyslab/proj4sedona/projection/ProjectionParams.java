@@ -186,6 +186,13 @@ public class ProjectionParams {
     /** Datum code from definition (e.g., "WGS84") */
     public String datumCode;
 
+    /**
+     * The ellipsoid as stated by the definition: the +ellps= code, or the WKT/PROJJSON
+     * ellipsoid name. May be the "wgs84" placeholder Proj assigns when no ellipsoid
+     * was given, so consumers must validate it against a/b before trusting it.
+     */
+    public String ellps;
+
     // ==================== Accessor Methods ====================
 
     /**

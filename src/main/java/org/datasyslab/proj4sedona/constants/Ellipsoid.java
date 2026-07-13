@@ -87,6 +87,12 @@ public final class Ellipsoid {
     public static final Ellipsoid LERCH = register("lerch", 6378139, 298.257, "Lerch 1979");
     public static final Ellipsoid MPRTS = register("mprts", 6397300, 191, "Maupertius 1738");
     public static final Ellipsoid NEW_INTL = registerWithB("new_intl", 6378157.5, 6356772.2, "New International 1967");
+    /**
+     * Plessis 1817. Documented divergence from proj4js, whose table stores 6355863
+     * as the inverse flattening (a typo — it is the semi-minor axis; the derived
+     * b there is 6376521.997, a near-sphere 20.7 km off). PROJ defines plessis as
+     * a=6376523, b=6355863, which this entry matches.
+     */
     public static final Ellipsoid PLESSIS = registerWithB("plessis", 6376523, 6355863, "Plessis 1817 (France)");
     /** Krassovsky 1942 - used in Russia and Eastern Europe */
     public static final Ellipsoid KRASS = register("krass", 6378245, 298.3, "Krassovsky, 1942");
@@ -99,6 +105,12 @@ public final class Ellipsoid {
     public static final Ellipsoid WGS84 = register("WGS84", 6378137, 298.257223563, "WGS 84");
     /** Perfect sphere - used for some projections and approximate calculations */
     public static final Ellipsoid SPHERE = registerWithB("sphere", 6370997, 6370997, "Normal Sphere (r=6370997)");
+
+    static {
+        // Legacy alias: the datum registry's carthage entry (ported from proj4js
+        // constants/Datum.js) spells Clarke 1880 mod. as "clark80".
+        ELLIPSOIDS.put("clark80", CLRK80);
+    }
 
     private final String code;
     private final double a;           // Semi-major axis (equatorial radius) in meters
@@ -156,7 +168,24 @@ public final class Ellipsoid {
         if (code == null) {
             return null;
         }
-        return ELLIPSOIDS.get(code.toLowerCase());
+        Ellipsoid direct = ELLIPSOIDS.get(code.toLowerCase());
+        if (direct != null) {
+            return direct;
+        }
+        // Fuzzy fallback, as proj4js's match.js applies to its ellipsoid table:
+        // whitespace, underscores, hyphens, slashes and parentheses are ignored,
+        // so +ellps=bess-nam resolves to bess_nam.
+        String normalized = normalizeKey(code);
+        for (Map.Entry<String, Ellipsoid> entry : ELLIPSOIDS.entrySet()) {
+            if (normalizeKey(entry.getKey()).equals(normalized)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private static String normalizeKey(String key) {
+        return key.toLowerCase().replaceAll("[\\s_\\-/()]", "");
     }
 
     /**
