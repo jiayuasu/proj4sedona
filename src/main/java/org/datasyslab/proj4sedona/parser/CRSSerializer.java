@@ -9,7 +9,6 @@ import org.datasyslab.proj4sedona.constants.Values;
 import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.defs.Defs;
-import org.datasyslab.proj4sedona.projection.Projection;
 import org.datasyslab.proj4sedona.projection.ProjectionParams;
 import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
 
@@ -219,7 +218,7 @@ public final class CRSSerializer {
         // normalized form when it resolved to a known short code; otherwise keep the
         // original projName verbatim (unchanged behavior for custom/unknown names).
         if (params.projName != null) {
-            String emit = (normProj != null && PROJ_TO_WKT_METHOD.containsKey(normProj))
+            String emit = (normProj != null && ProjectionRegistry.isValidProjCode(normProj))
                 ? normProj : params.projName;
             sb.append("+proj=").append(emit);
         }
@@ -1501,18 +1500,14 @@ public final class CRSSerializer {
         if (projShort != null) {
             return projShort;
         }
-        // Final fallback: resolve through the projection registry, so any registered
-        // alias (e.g. GeoTools' canonical "Albers_Conic_Equal_Area") maps to its PROJ
-        // short code — the alias that is a known +proj= method key. This is
-        // self-maintaining: every projection's aliases already live in its NAMES.
-        Projection projection = ProjectionRegistry.get(projName);
-        if (projection != null && projection.getNames() != null) {
-            for (String alias : projection.getNames()) {
-                String key = alias.toLowerCase(Locale.ROOT);
-                if (PROJ_TO_WKT_METHOD.containsKey(key)) {
-                    return key;
-                }
-            }
+        // Final fallback: the registry owns the canonical PROJ short codes. It maps
+        // any registered alias (e.g. GeoTools' "Albers_Conic_Equal_Area", or the
+        // typo alias "gstmerg") to the projection's preferred code, and preserves an
+        // input that is already a declared code. Returns null for unknown/custom
+        // names, which then keep their original spelling.
+        String code = ProjectionRegistry.resolveProjCode(projName);
+        if (code != null) {
+            return code;
         }
         return lower;
     }
