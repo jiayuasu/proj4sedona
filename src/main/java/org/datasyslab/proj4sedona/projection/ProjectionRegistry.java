@@ -90,12 +90,17 @@ public final class ProjectionRegistry {
         if (index < 0 || projCodes == null || projCodes.isEmpty()) {
             return;
         }
-        codesByIndex.put(index, new ArrayList<>(projCodes));
+        // Canonicalize declared codes (lower-case, trimmed) at storage, so the
+        // preferred code returned by resolveProjCode is consistent with validCodes
+        // and the names map regardless of how the caller spelled them.
+        List<String> canonical = new ArrayList<>(projCodes.size());
         for (String code : projCodes) {
-            String key = code.toLowerCase(Locale.ROOT);
+            String key = code.toLowerCase(Locale.ROOT).trim();
+            canonical.add(key);
             names.putIfAbsent(key, index);
             validCodes.add(key);
         }
+        codesByIndex.put(index, canonical);
     }
 
     private static int registerProjection(Supplier<Projection> projSupplier) {

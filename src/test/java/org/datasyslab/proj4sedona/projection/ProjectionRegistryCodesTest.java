@@ -97,6 +97,26 @@ class ProjectionRegistryCodesTest {
   }
 
   @Test
+  void declaredCodesAreCanonicalizedAtStorage() {
+    // A caller passing a mixed-case / whitespace-padded code must not leak that
+    // spelling: resolveProjCode's preserve path and its alias path must agree.
+    ProjectionRegistry.reset();
+    ProjectionRegistry.add(List.of("  MyCode  ", "Alt_Code"), () -> new Projection() {
+      public String[] getNames() { return new String[] {"MyCode", "Alt_Code", "My Custom"}; }
+      public void init(ProjectionParams params) {}
+      public org.datasyslab.proj4sedona.core.Point forward(org.datasyslab.proj4sedona.core.Point p) { return p; }
+      public org.datasyslab.proj4sedona.core.Point inverse(org.datasyslab.proj4sedona.core.Point p) { return p; }
+    });
+    // preferred code is stored canonical (lower-case, trimmed)
+    assertEquals("mycode", ProjectionRegistry.resolveProjCode("My Custom"),
+        "alias resolves to the canonical preferred code");
+    assertEquals("mycode", ProjectionRegistry.resolveProjCode("  MyCode  "),
+        "the declared code itself canonicalizes");
+    assertTrue(ProjectionRegistry.isValidProjCode("mycode"));
+    assertTrue(ProjectionRegistry.isValidProjCode("alt_code"));
+  }
+
+  @Test
   void unknownNamesReturnNull() {
     assertNull(ProjectionRegistry.resolveProjCode("Totally_Unknown_Projection"));
     assertNull(ProjectionRegistry.resolveProjCode(null));
