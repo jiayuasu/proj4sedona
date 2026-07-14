@@ -257,8 +257,13 @@ public final class CRSSerializer {
             }
         }
 
-        // Latitude of true scale (for Mercator)
-        if (params.latTs != null && params.latTs != 0.0) {
+        // Latitude of true scale (Mercator variant B, CEA, EQC, and Polar
+        // Stereographic variant B). Suppressed for Polar Stereographic variant A,
+        // which is defined by the scale factor below — emitting both a pole-latitude
+        // lat_ts and a k_0 is contradictory and breaks the round trip.
+        boolean polarStereoVariantA = isPolarStereographic(normProj, params)
+                && !isPolarStereographicVariantB(normProj, params);
+        if (params.latTs != null && params.latTs != 0.0 && !polarStereoVariantA) {
             sb.append(" +lat_ts=").append(formatAngle(params.latTs * RAD_TO_DEG));
         }
 
@@ -1964,11 +1969,9 @@ public final class CRSSerializer {
      */
     private static String getWktMethodName(String proj, ProjectionParams params) {
         if (isPolarStereographic(proj, params)) {
-            // Polar Stereographic: use variant B when latTs is present, variant A otherwise
-            if (params.latTs != null && params.latTs != 0.0) {
-                return "Polar Stereographic (variant B)";
-            }
-            return "Polar Stereographic (variant A)";
+            return isPolarStereographicVariantB(proj, params)
+                ? "Polar Stereographic (variant B)"
+                : "Polar Stereographic (variant A)";
         }
         if ("merc".equals(proj) && params.latTs != null && params.latTs != 0.0) {
             return "Mercator (variant B)";
@@ -2025,7 +2028,35 @@ public final class CRSSerializer {
         if ("merc".equals(proj) || "cea".equals(proj) || "eqc".equals(proj)) {
             return true;
         }
-        return isPolarStereographic(proj, params);
+        // Polar Stereographic carries latTs as the standard parallel only in variant B;
+        // variant A is defined by the scale factor and emits no standard parallel.
+        return isPolarStereographicVariantB(proj, params);
+    }
+
+    /**
+     * Whether a Polar Stereographic CRS is variant B (defined by a standard parallel
+     * / latitude of true scale) rather than variant A (defined by a scale factor).
+     *
+     * <p>Variant B requires a real standard parallel: latTs present, not zero, and not
+     * at the pole (a "standard parallel" coincident with the origin pole is degenerate
+     * and equivalent to variant A with k=1). A meaningful scale factor (k0 != 1) means
+     * the CRS is scale-defined — variant A — so the two never both apply. Keeping the
+     * variant label and the emitted parameters (scale_factor vs standard_parallel, and
+     * +k_0 vs +lat_ts) consistent is what makes the round trip stable: a CRS that
+     * arrives with both latTs and k0 (e.g. GeoTools adds latTs=90 to a variant-A polar
+     * CRS) is serialized as variant A and re-imports unchanged (apache/sedona#3103).</p>
+     */
+    private static boolean isPolarStereographicVariantB(String proj, ProjectionParams params) {
+        if (!isPolarStereographic(proj, params)) {
+            return false;
+        }
+        if (params.latTs == null || params.latTs == 0.0) {
+            return false;
+        }
+        if (params.k0 != 1.0) {
+            return false;
+        }
+        return Math.abs(Math.abs(params.latTs) - Math.PI / 2) >= 1e-10;
     }
 
     /**
