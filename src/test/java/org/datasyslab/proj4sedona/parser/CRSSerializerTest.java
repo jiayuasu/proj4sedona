@@ -3,6 +3,7 @@ package org.datasyslab.proj4sedona.parser;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
+import org.datasyslab.proj4sedona.Proj4;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
@@ -1759,6 +1760,68 @@ class CRSSerializerTest {
         assertTrue(projStr.contains("+proj=lcc"), projStr);
         assertTrue(projStr.contains("+lat_1=33"), "first parallel: " + projStr);
         assertTrue(projStr.contains("+lat_2=45"), "second parallel: " + projStr);
+    }
+
+    // ========== Polar Stereographic variant consistency (apache/sedona#3103) ==========
+
+    @Test
+    @DisplayName("Polar stereographic with both lat_ts (at pole) and k_0 serializes as stable variant A")
+    void testPolarStereoVariantABothPresent() {
+        // GeoTools adds a redundant lat_ts=90 to a variant-A polar CRS (k_0 at the
+        // pole). The scale factor defines the CRS, so it must serialize as variant A:
+        // +k_0 kept, the degenerate lat_ts dropped, and idempotent on re-export.
+        Proj p = new Proj("+proj=stere +lat_0=90 +lat_ts=90 +k_0=0.994 "
+            + "+x_0=2000000 +y_0=2000000 +ellps=WGS84 +no_defs");
+        String proj1 = CRSSerializer.toProjString(p);
+        assertTrue(proj1.contains("+k_0=0.994"), proj1);
+        assertFalse(proj1.contains("+lat_ts="), "degenerate lat_ts dropped: " + proj1);
+        assertEquals(proj1, CRSSerializer.toProjString(new Proj(proj1)), "proj string idempotent");
+
+        // WKT1 is internally consistent: variant A carries a scale_factor and no
+        // standard parallel, so a strict consumer cannot drop the scale.
+        String wkt1 = CRSSerializer.toWkt1(p);
+        assertTrue(wkt1.contains("Polar Stereographic (variant A)"), wkt1);
+        assertTrue(wkt1.contains("scale_factor"), wkt1);
+        assertFalse(wkt1.contains("standard_parallel"), wkt1);
+        // Full WKT1 -> re-parse -> proj string keeps k_0.
+        assertTrue(CRSSerializer.toProjString(new Proj(wkt1)).contains("+k_0=0.994"));
+    }
+
+    @Test
+    @DisplayName("Opposite-pole spherical lat_ts is preserved (derives a different scale)")
+    void testPolarStereoOppositePoleLatTsPreserved() {
+        // +proj=stere +lat_0=90 +lat_ts=-90 derives k=0 (degenerate zero-scale), unlike
+        // lat_ts=+90 which derives k=1. Dropping lat_ts here (treating it as the
+        // same-pole degenerate case) would silently change the transform — so it must
+        // stay variant B with lat_ts preserved. Regression compares the forward result
+        // before and after a proj-string round trip.
+        String src = "+proj=longlat +R=6371000 +no_defs";
+        String def = "+proj=stere +lat_0=90 +lat_ts=-90 +R=6371000 +no_defs";
+        String serialized = CRSSerializer.toProjString(new Proj(def));
+        assertTrue(serialized.contains("+lat_ts=-90"), "opposite-pole lat_ts kept: " + serialized);
+
+        Point before = Proj4.proj4(src, def).forward(new Point(10, 80));
+        Point after = Proj4.proj4(src, serialized).forward(new Point(10, 80));
+        assertEquals(before.x, after.x, 1e-6, "x unchanged by serialization");
+        assertEquals(before.y, after.y, 1e-6, "y unchanged by serialization");
+    }
+
+    @Test
+    @DisplayName("Polar stereographic variant B (real standard parallel) is preserved")
+    void testPolarStereoVariantBPreserved() {
+        // Antarctic Polar Stereographic (EPSG:3031-style): defined by a standard
+        // parallel at -71, k=1. Must stay variant B — lat_ts kept, no k_0, WKT carries
+        // a standard parallel and no scale factor.
+        Proj p = new Proj("+proj=stere +lat_0=-90 +lat_ts=-71 +x_0=0 +y_0=0 "
+            + "+ellps=WGS84 +no_defs");
+        String proj = CRSSerializer.toProjString(p);
+        assertTrue(proj.contains("+lat_ts=-71"), proj);
+        assertFalse(proj.contains("+k_0="), "variant B has no scale factor: " + proj);
+
+        String wkt1 = CRSSerializer.toWkt1(p);
+        assertTrue(wkt1.contains("Polar Stereographic (variant B)"), wkt1);
+        assertTrue(wkt1.contains("standard_parallel"), wkt1);
+        assertFalse(wkt1.contains("scale_factor"), wkt1);
     }
 
     // ========== Datum token normalization (issue #98) ==========
