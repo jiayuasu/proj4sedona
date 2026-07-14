@@ -21,6 +21,9 @@ import org.junit.jupiter.api.Test;
  * registry — the deliberately-registered typo alias {@code gstmerg} re-parses here
  * but PROJ rejects it — so valid codes are declared at registration and resolved via
  * {@link ProjectionRegistry#resolveProjCode(String)}.</p>
+ *
+ * <p>Coverage is derived from the live registry (not a hand-maintained list), so a
+ * new built-in that omits canonical codes is caught rather than silently skipped.</p>
  */
 class ProjectionRegistryCodesTest {
 
@@ -30,51 +33,50 @@ class ProjectionRegistryCodesTest {
     ProjectionRegistry.start();
   }
 
-  /** The declared PROJ codes for every built-in projection (preferred first). */
-  private static final String[][] BUILTIN_CODES = {
-    {"longlat"}, {"merc"}, {"tmerc", "etmerc"}, {"utm"}, {"eqc"}, {"cea"},
-    {"somerc"}, {"omerc"}, {"cass"}, {"mill"}, {"gstmerc"}, {"lcc"}, {"aea"},
-    {"eqdc"}, {"poly"}, {"krovak"}, {"bonne"}, {"stere"}, {"sterea"}, {"laea"},
-    {"aeqd"}, {"gnom"}, {"ortho"}, {"tpers"}, {"sinu"}, {"moll"}, {"robin"},
-    {"vandg"}, {"eqearth"}, {"eck6"}, {"geos"}, {"nzmg"}, {"geocent"}, {"qsc"},
-    {"ob_tran"},
-  };
+  @Test
+  void everyBuiltinDeclaresACanonicalCode() {
+    // The registry, freshly started, holds only built-ins; every one must declare a
+    // PROJ code. This is what makes the suite exhaustive: a projection added via
+    // add(Supplier) — or via add(List, ...) but forgotten — surfaces here.
+    List<String> missing = ProjectionRegistry.projectionsMissingProjCodes();
+    assertTrue(missing.isEmpty(), "built-in projections without a declared PROJ code: " + missing);
+  }
 
   @Test
-  void everyDeclaredCodeResolvesToItsProjection() {
-    // Each declared code resolves to a registered projection and is preserved
-    // (a valid code supplied directly is returned unchanged).
-    for (String[] codes : BUILTIN_CODES) {
+  void everyDeclaredCodeResolvesAndIsPreserved() {
+    // Iterates the live registry. Each declared code registers a projection, is a
+    // valid code, and is returned as its canonical (lower-case) form when supplied
+    // directly — including projections with several codes (e.g. tmerc / etmerc).
+    for (List<String> codes : ProjectionRegistry.declaredCodeLists()) {
       for (String code : codes) {
         assertNotNull(ProjectionRegistry.get(code), "registered: " + code);
         assertTrue(ProjectionRegistry.isValidProjCode(code), "valid code: " + code);
-        assertEquals(code, ProjectionRegistry.resolveProjCode(code),
-            "declared code preserved verbatim: " + code);
+        assertEquals(code.toLowerCase(), ProjectionRegistry.resolveProjCode(code),
+            "declared code preserved: " + code);
       }
     }
   }
 
   @Test
   void everyAliasResolvesToThePreferredCode() {
-    // Every non-code alias in a projection's NAMES resolves to that projection's
-    // preferred (first) declared code.
-    List<String> missing = new ArrayList<>();
-    for (String[] codes : BUILTIN_CODES) {
-      String preferred = codes[0];
+    // Iterates the live registry: every non-code alias in a projection's NAMES
+    // resolves to that projection's preferred (first) declared code; an alias that is
+    // itself a declared code is preserved as-is.
+    List<String> mismatches = new ArrayList<>();
+    for (List<String> codes : ProjectionRegistry.declaredCodeLists()) {
+      String preferred = codes.get(0);
       Projection p = ProjectionRegistry.get(preferred);
       assertNotNull(p, preferred);
       for (String alias : p.getNames()) {
         String resolved = ProjectionRegistry.resolveProjCode(alias);
-        // An alias that is itself a declared valid code is preserved as-is; any
-        // other alias must map to the preferred code.
-        boolean aliasIsCode = ProjectionRegistry.isValidProjCode(alias);
-        String expected = aliasIsCode ? alias.toLowerCase() : preferred;
+        String expected =
+            ProjectionRegistry.isValidProjCode(alias) ? alias.toLowerCase() : preferred;
         if (!expected.equals(resolved)) {
-          missing.add(alias + " -> " + resolved + " (expected " + expected + ")");
+          mismatches.add(alias + " -> " + resolved + " (expected " + expected + ")");
         }
       }
     }
-    assertTrue(missing.isEmpty(), "alias resolution mismatches: " + missing);
+    assertTrue(mismatches.isEmpty(), "alias resolution mismatches: " + mismatches);
   }
 
   @Test
@@ -111,7 +113,8 @@ class ProjectionRegistryCodesTest {
   @Test
   void customProjectionsHaveNoDeclaredCodes() {
     // A projection registered via add(Supplier) declares no codes, so resolveProjCode
-    // returns null and callers keep the original spelling.
+    // returns null and callers keep the original spelling. It is also reported by
+    // projectionsMissingProjCodes (only built-ins are expected to declare codes).
     ProjectionRegistry.reset();
     ProjectionRegistry.add(() -> new Projection() {
       public String[] getNames() { return new String[] {"MyCustom_Proj"}; }
@@ -122,5 +125,6 @@ class ProjectionRegistryCodesTest {
     assertNotNull(ProjectionRegistry.get("MyCustom_Proj"));
     assertNull(ProjectionRegistry.resolveProjCode("MyCustom_Proj"));
     assertFalse(ProjectionRegistry.isValidProjCode("MyCustom_Proj"));
+    assertTrue(ProjectionRegistry.projectionsMissingProjCodes().contains("MyCustom_Proj"));
   }
 }

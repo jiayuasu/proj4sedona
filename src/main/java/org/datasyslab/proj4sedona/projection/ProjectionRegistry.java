@@ -150,6 +150,37 @@ public final class ProjectionRegistry {
     }
 
     /**
+     * Test support: the declared PROJ-code list of every registered projection that
+     * has codes (preferred first). Derived from the live registry, so callers need
+     * not maintain a parallel list.
+     */
+    static List<List<String>> declaredCodeLists() {
+        start();
+        List<List<String>> out = new ArrayList<>();
+        for (List<String> codes : codesByIndex.values()) {
+            out.add(new ArrayList<>(codes));
+        }
+        return out;
+    }
+
+    /**
+     * Test support: the primary name of every registered projection that declares no
+     * PROJ code. Empty for a registry of only built-ins (each is registered with
+     * codes); non-empty flags a built-in added without canonical-code support.
+     */
+    static List<String> projectionsMissingProjCodes() {
+        start();
+        List<String> missing = new ArrayList<>();
+        for (int i = 0; i < projStore.size(); i++) {
+            if (!codesByIndex.containsKey(i)) {
+                String[] projNames = projStore.get(i).get().getNames();
+                missing.add(projNames != null && projNames.length > 0 ? projNames[0] : "index " + i);
+            }
+        }
+        return missing;
+    }
+
+    /**
      * Get a projection by name.
      * 
      * <p>Lookup is case-insensitive. If direct lookup fails, the name is normalized
