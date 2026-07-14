@@ -1708,7 +1708,8 @@ class CRSSerializerTest {
         String proj2 = CRSSerializer.toProjString(new Proj(geotoolsWkt));
         String proj3 = CRSSerializer.toProjString(new Proj(proj2));
         assertEquals(proj2, proj3, "PROJ string is idempotent");
-        assertTrue(new Proj(proj2) != null && proj2.startsWith("+proj=tmerc"), proj2);
+        assertDoesNotThrow(() -> new Proj(proj2), "re-exported PROJ string is parseable");
+        assertTrue(proj2.startsWith("+proj=tmerc"), proj2);
         // The human-unit TOWGS84 matches OSGB36's canonical values, so it collapses to
         // the compact +datum=OSGB36 token (issue #102 behavior) rather than +towgs84=.
         // The point of this test: no internal-unit (radian/multiplier) leak survives.

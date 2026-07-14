@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -91,7 +92,7 @@ public final class ProjectionRegistry {
         }
         codesByIndex.put(index, new ArrayList<>(projCodes));
         for (String code : projCodes) {
-            String key = code.toLowerCase();
+            String key = code.toLowerCase(Locale.ROOT);
             names.putIfAbsent(key, index);
             validCodes.add(key);
         }
@@ -106,7 +107,7 @@ public final class ProjectionRegistry {
         int index = projStore.size();
         projStore.add(projSupplier);
         for (String name : projNames) {
-            names.put(name.toLowerCase(), index);
+            names.put(name.toLowerCase(Locale.ROOT), index);
         }
         return index;
     }
@@ -123,7 +124,7 @@ public final class ProjectionRegistry {
             return null;
         }
         start();
-        String lower = name.toLowerCase();
+        String lower = name.toLowerCase(Locale.ROOT);
         if (validCodes.contains(lower)) {
             return lower;
         }
@@ -146,7 +147,7 @@ public final class ProjectionRegistry {
             return false;
         }
         start();
-        return validCodes.contains(name.toLowerCase());
+        return validCodes.contains(name.toLowerCase(Locale.ROOT));
     }
 
     /**
@@ -195,7 +196,7 @@ public final class ProjectionRegistry {
         }
 
         // Try direct lookup (case-insensitive)
-        String n = name.toLowerCase();
+        String n = name.toLowerCase(Locale.ROOT);
         Integer index = names.get(n);
         if (index != null) {
             return projStore.get(index).get();
