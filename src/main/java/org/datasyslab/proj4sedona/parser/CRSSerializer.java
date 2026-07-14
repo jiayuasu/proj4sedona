@@ -10,6 +10,7 @@ import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.defs.Defs;
 import org.datasyslab.proj4sedona.projection.ProjectionParams;
+import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
 
 import java.util.*;
 
@@ -209,17 +210,17 @@ public final class CRSSerializer {
         String normProj = normalizeProjName(params.projName);
         boolean isOmerc = "omerc".equals(normProj);
 
-        // Projection name
-        String projName = params.projName;
-        if (projName != null) {
-            // Normalize WKT method names back to PROJ short codes
-            String lookupKey = projName.toLowerCase(Locale.ROOT);
-            String shortCode = WKT_TO_PROJ_METHOD.get(lookupKey);
-            // Some WKT method names use underscores instead of spaces (e.g., "Mercator_Variant_B")
-            if (shortCode == null && projName.indexOf('_') >= 0) {
-                shortCode = WKT_TO_PROJ_METHOD.get(lookupKey.replace('_', ' '));
-            }
-            sb.append("+proj=").append(shortCode != null ? shortCode : projName);
+        // Projection name. normalizeProjName maps any WKT/GeoTools method name or
+        // registered alias to the PROJ short code, so a CRS that round-tripped
+        // through GeoTools (projName e.g. "Albers_Conic_Equal_Area") re-exports as
+        // "+proj=aea" — a parseable string whose short code also drives the
+        // standard-parallel emission below (issue apache/sedona#3103). Only emit the
+        // normalized form when it resolved to a known short code; otherwise keep the
+        // original projName verbatim (unchanged behavior for custom/unknown names).
+        if (params.projName != null) {
+            String emit = (normProj != null && ProjectionRegistry.isValidProjCode(normProj))
+                ? normProj : params.projName;
+            sb.append("+proj=").append(emit);
         }
 
         // UTM zone
@@ -544,17 +545,14 @@ public final class CRSSerializer {
         sb.append(effectiveRf(params));
         sb.append("]");
 
-        // TOWGS84 if present
-        if (params.datum != null && params.datum.getDatumParams() != null) {
-            double[] dp = params.datum.getDatumParams();
-            if (dp.length >= 3) {
-                sb.append(",TOWGS84[");
-                for (int i = 0; i < dp.length; i++) {
-                    if (i > 0) sb.append(",");
-                    sb.append(formatNumber(dp[i]));
-                }
-                sb.append("]");
-            }
+        // TOWGS84 if present. WKT's TOWGS84 uses the same human units as PROJ's
+        // +towgs84= (arc-seconds for rotations, ppm for scale); DatumParams stores
+        // the 7-parameter tail in internal units (radians/multiplier), so re-encode
+        // before emitting — otherwise a consumer that ingests this WKT1 (e.g.
+        // GeoTools) sees near-zero rotations and a bogus scale (issue apache/sedona#3103).
+        if (params.datum != null && params.datum.getDatumParams() != null
+                && params.datum.getDatumParams().length >= 3) {
+            sb.append(",TOWGS84[").append(formatTowgs84(params.datum)).append("]");
         }
 
         sb.append("]");
@@ -1501,6 +1499,15 @@ public final class CRSSerializer {
         projShort = WKT_TO_PROJ_METHOD.get(lower.replace('_', ' '));
         if (projShort != null) {
             return projShort;
+        }
+        // Final fallback: the registry owns the canonical PROJ short codes. It maps
+        // any registered alias (e.g. GeoTools' "Albers_Conic_Equal_Area", or the
+        // typo alias "gstmerg") to the projection's preferred code, and preserves an
+        // input that is already a declared code. Returns null for unknown/custom
+        // names, which then keep their original spelling.
+        String code = ProjectionRegistry.resolveProjCode(projName);
+        if (code != null) {
+            return code;
         }
         return lower;
     }

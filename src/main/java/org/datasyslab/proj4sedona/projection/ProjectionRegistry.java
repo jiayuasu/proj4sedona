@@ -2,8 +2,11 @@ package org.datasyslab.proj4sedona.projection;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
@@ -37,6 +40,16 @@ public final class ProjectionRegistry {
     
     /** Map from projection name (lowercase) to index in projStore */
     private static final Map<String, Integer> names = new HashMap<>();
+
+    /**
+     * Declared valid PROJ short codes per projection index (first entry is the
+     * preferred code). Only built-in projections registered with explicit codes
+     * appear here; custom projections registered via {@link #add(Supplier)} do not.
+     */
+    private static final Map<Integer, List<String>> codesByIndex = new HashMap<>();
+
+    /** All declared valid PROJ short codes (lower-case), across every projection. */
+    private static final Set<String> validCodes = new HashSet<>();
     
     /** Flag indicating whether the registry has been initialized */
     private static boolean started = false;
@@ -54,18 +67,123 @@ public final class ProjectionRegistry {
      * @param projSupplier Supplier that creates new instances of the projection
      */
     public static void add(Supplier<Projection> projSupplier) {
+        registerProjection(projSupplier);
+    }
+
+    /**
+     * Register a built-in projection along with its valid PROJ short codes.
+     *
+     * <p>The first code is the projection's <em>preferred</em> code — the canonical
+     * {@code +proj=} value used when a non-code alias (a WKT/GeoTools method name)
+     * is resolved back to this projection. Every listed code is a valid external
+     * PROJ token and is returned as its canonical (lower-case) code when supplied
+     * directly. External
+     * validity cannot be inferred from the alias set (e.g. the registered typo
+     * alias {@code gstmerg} re-parses internally but PROJ rejects it), so it is
+     * declared here rather than guessed.</p>
+     *
+     * @param projCodes   valid PROJ short codes, preferred first
+     * @param projSupplier supplier that creates new instances of the projection
+     */
+    public static void add(List<String> projCodes, Supplier<Projection> projSupplier) {
+        int index = registerProjection(projSupplier);
+        if (index < 0 || projCodes == null || projCodes.isEmpty()) {
+            return;
+        }
+        // Canonicalize declared codes (lower-case, trimmed) at storage, so the
+        // preferred code returned by resolveProjCode is consistent with validCodes
+        // and the names map regardless of how the caller spelled them.
+        List<String> canonical = new ArrayList<>(projCodes.size());
+        for (String code : projCodes) {
+            String key = code.toLowerCase(Locale.ROOT).trim();
+            canonical.add(key);
+            names.putIfAbsent(key, index);
+            validCodes.add(key);
+        }
+        codesByIndex.put(index, canonical);
+    }
+
+    private static int registerProjection(Supplier<Projection> projSupplier) {
         Projection sample = projSupplier.get();
         String[] projNames = sample.getNames();
         if (projNames == null || projNames.length == 0) {
-            return;
+            return -1;
         }
-
         int index = projStore.size();
         projStore.add(projSupplier);
-
         for (String name : projNames) {
-            names.put(name.toLowerCase(), index);
+            names.put(name.toLowerCase(Locale.ROOT), index);
         }
+        return index;
+    }
+
+    /**
+     * Resolve a projection name to a canonical PROJ short code (see
+     * {@link #add(List, Supplier)}). Starts the registry if needed. An input that is
+     * already a declared valid code is preserved; any other registered alias resolves
+     * to its projection's preferred code; unknown or custom names (no declared codes)
+     * return null, so callers can keep the original spelling.
+     */
+    public static String resolveProjCode(String name) {
+        if (name == null || name.isEmpty()) {
+            return null;
+        }
+        start();
+        String lower = name.toLowerCase(Locale.ROOT);
+        if (validCodes.contains(lower)) {
+            return lower;
+        }
+        Integer index = names.get(lower);
+        if (index == null) {
+            index = names.get(getNormalizedProjName(lower));
+        }
+        if (index != null) {
+            List<String> codes = codesByIndex.get(index);
+            if (codes != null && !codes.isEmpty()) {
+                return codes.get(0);
+            }
+        }
+        return null;
+    }
+
+    /** Whether {@code name} is a declared valid PROJ short code. Starts the registry. */
+    public static boolean isValidProjCode(String name) {
+        if (name == null) {
+            return false;
+        }
+        start();
+        return validCodes.contains(name.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * Test support: the declared PROJ-code list of every registered projection that
+     * has codes (preferred first). Derived from the live registry, so callers need
+     * not maintain a parallel list.
+     */
+    static List<List<String>> declaredCodeLists() {
+        start();
+        List<List<String>> out = new ArrayList<>();
+        for (List<String> codes : codesByIndex.values()) {
+            out.add(new ArrayList<>(codes));
+        }
+        return out;
+    }
+
+    /**
+     * Test support: the primary name of every registered projection that declares no
+     * PROJ code. Empty for a registry of only built-ins (each is registered with
+     * codes); non-empty flags a built-in added without canonical-code support.
+     */
+    static List<String> projectionsMissingProjCodes() {
+        start();
+        List<String> missing = new ArrayList<>();
+        for (int i = 0; i < projStore.size(); i++) {
+            if (!codesByIndex.containsKey(i)) {
+                String[] projNames = projStore.get(i).get().getNames();
+                missing.add(projNames != null && projNames.length > 0 ? projNames[0] : "index " + i);
+            }
+        }
+        return missing;
     }
 
     /**
@@ -83,7 +201,7 @@ public final class ProjectionRegistry {
         }
 
         // Try direct lookup (case-insensitive)
-        String n = name.toLowerCase();
+        String n = name.toLowerCase(Locale.ROOT);
         Integer index = names.get(n);
         if (index != null) {
             return projStore.get(index).get();
@@ -144,51 +262,51 @@ public final class ProjectionRegistry {
         started = true;
         
         // Identity / Geographic
-        add(LongLat::new);
+        add(List.of("longlat"), LongLat::new);
         
         // Cylindrical projections
-        add(Mercator::new);
-        add(ExtendedTransverseMercator::new);
-        add(UTM::new);
-        add(EquidistantCylindrical::new);
-        add(CylindricalEqualArea::new);
-        add(SwissObliqueMercator::new);
-        add(ObliqueMercator::new);
-        add(CassiniSoldner::new);
-        add(MillerCylindrical::new);
-        add(GaussSchreiberTransverseMercator::new);
+        add(List.of("merc"), Mercator::new);
+        add(List.of("tmerc", "etmerc"), ExtendedTransverseMercator::new);
+        add(List.of("utm"), UTM::new);
+        add(List.of("eqc"), EquidistantCylindrical::new);
+        add(List.of("cea"), CylindricalEqualArea::new);
+        add(List.of("somerc"), SwissObliqueMercator::new);
+        add(List.of("omerc"), ObliqueMercator::new);
+        add(List.of("cass"), CassiniSoldner::new);
+        add(List.of("mill"), MillerCylindrical::new);
+        add(List.of("gstmerc"), GaussSchreiberTransverseMercator::new);
 
         // Conic projections
-        add(LambertConformalConic::new);
-        add(AlbersEqualArea::new);
-        add(EquidistantConic::new);
-        add(Polyconic::new);
-        add(Krovak::new);
-        add(Bonne::new);
+        add(List.of("lcc"), LambertConformalConic::new);
+        add(List.of("aea"), AlbersEqualArea::new);
+        add(List.of("eqdc"), EquidistantConic::new);
+        add(List.of("poly"), Polyconic::new);
+        add(List.of("krovak"), Krovak::new);
+        add(List.of("bonne"), Bonne::new);
 
         // Azimuthal projections
-        add(Stereographic::new);
-        add(StereographicAlternative::new);
-        add(LambertAzimuthalEqualArea::new);
-        add(AzimuthalEquidistant::new);
-        add(Gnomonic::new);
-        add(Orthographic::new);
-        add(TiltedPerspective::new);
+        add(List.of("stere"), Stereographic::new);
+        add(List.of("sterea"), StereographicAlternative::new);
+        add(List.of("laea"), LambertAzimuthalEqualArea::new);
+        add(List.of("aeqd"), AzimuthalEquidistant::new);
+        add(List.of("gnom"), Gnomonic::new);
+        add(List.of("ortho"), Orthographic::new);
+        add(List.of("tpers"), TiltedPerspective::new);
 
         // Pseudocylindrical projections
-        add(Sinusoidal::new);
-        add(Mollweide::new);
-        add(Robinson::new);
-        add(VanDerGrinten::new);
-        add(EqualEarth::new);
-        add(EckertVI::new);
+        add(List.of("sinu"), Sinusoidal::new);
+        add(List.of("moll"), Mollweide::new);
+        add(List.of("robin"), Robinson::new);
+        add(List.of("vandg"), VanDerGrinten::new);
+        add(List.of("eqearth"), EqualEarth::new);
+        add(List.of("eck6"), EckertVI::new);
 
         // Miscellaneous projections
-        add(Geostationary::new);
-        add(NewZealandMapGrid::new);
-        add(Geocentric::new);
-        add(QuadrilateralizedSphericalCube::new);
-        add(GeneralObliqueTransformation::new);
+        add(List.of("geos"), Geostationary::new);
+        add(List.of("nzmg"), NewZealandMapGrid::new);
+        add(List.of("geocent"), Geocentric::new);
+        add(List.of("qsc"), QuadrilateralizedSphericalCube::new);
+        add(List.of("ob_tran"), GeneralObliqueTransformation::new);
     }
 
     /**
@@ -209,6 +327,8 @@ public final class ProjectionRegistry {
     public static synchronized void reset() {
         projStore.clear();
         names.clear();
+        codesByIndex.clear();
+        validCodes.clear();
         started = false;
     }
 }

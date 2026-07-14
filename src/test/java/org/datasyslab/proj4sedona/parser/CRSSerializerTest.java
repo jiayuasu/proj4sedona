@@ -1642,6 +1642,125 @@ class CRSSerializerTest {
         assertTrue(sphere.contains("+a=6371000") && sphere.contains("+b=6371000"), sphere);
     }
 
+    // ========== WKT datum + method-name interop (apache/sedona#3103) ==========
+
+    @Test
+    @DisplayName("toWkt1 emits TOWGS84 in human units (arc-seconds/ppm), not internal")
+    void testWkt1Towgs84HumanUnits() {
+        // DatumParams stores the 7-parameter tail internally as radians + a scale
+        // multiplier; WKT's TOWGS84 (like PROJ's +towgs84=) uses arc-seconds and ppm.
+        // Emitting the internal values made a consumer that ingests this WKT1 (GeoTools,
+        // in Sedona's raster CRS bridge) see near-zero rotations and a bogus scale.
+        String wkt1 = CRSSerializer.toWkt1(new Proj(
+            "+proj=tmerc +lat_0=49 +lon_0=-2 +k_0=0.9996012717 +x_0=400000 +y_0=-100000 "
+                + "+ellps=airy +datum=OSGB36 +no_defs"));
+        assertTrue(wkt1.contains("TOWGS84[446.448,-125.157,542.06,0.1502,0.247,0.8421,-20.4894]"),
+            "OSGB36 TOWGS84 in arc-seconds/ppm: " + wkt1);
+        assertFalse(wkt1.contains("7.28"), "no radian-form rotations: " + wkt1);
+
+        // Idempotent through a WKT1 re-parse (what the GeoTools bridge does): the
+        // datum survives unchanged.
+        String wkt1b = CRSSerializer.toWkt1(new Proj(wkt1));
+        assertEquals(wkt1, wkt1b, "WKT1 is stable across a re-parse");
+    }
+
+    @Test
+    @DisplayName("A GeoTools WKT1 method name re-exports to the PROJ short code with all parameters")
+    void testWktMethodNameNormalizesToShortCode() {
+        // A CRS that round-tripped through GeoTools carries the WKT/GeoTools method
+        // name (PROJECTION["Albers_Conic_Equal_Area"]) rather than the PROJ short
+        // code. toProjString previously emitted the method name verbatim (unparseable)
+        // and dropped the standard parallels, because parallel emission is gated on the
+        // short code. normalizeProjName now resolves the alias through the registry.
+        String geotoolsWkt = "PROJCS[\"NAD83 / Conus Albers\","
+            + "GEOGCS[\"NAD83\",DATUM[\"North_American_Datum_1983\","
+            + "SPHEROID[\"GRS 1980\",6378137.0,298.257222101],TOWGS84[0,0,0,0,0,0,0]],"
+            + "PRIMEM[\"Greenwich\",0.0],UNIT[\"degree\",0.017453292519943295]],"
+            + "PROJECTION[\"Albers_Conic_Equal_Area\"],"
+            + "PARAMETER[\"central_meridian\",-96.0],PARAMETER[\"latitude_of_origin\",23.0],"
+            + "PARAMETER[\"standard_parallel_1\",29.5],PARAMETER[\"standard_parallel_2\",45.5],"
+            + "PARAMETER[\"false_easting\",0.0],PARAMETER[\"false_northing\",0.0],"
+            + "UNIT[\"m\",1.0]]";
+        String projStr = CRSSerializer.toProjString(new Proj(geotoolsWkt));
+        assertTrue(projStr.contains("+proj=aea"), "short code, not method name: " + projStr);
+        assertFalse(projStr.contains("Albers_Conic_Equal_Area"), projStr);
+        assertTrue(projStr.contains("+lat_1=29.5"), "first standard parallel kept: " + projStr);
+        assertTrue(projStr.contains("+lat_2=45.5"), "second standard parallel kept: " + projStr);
+        // Re-parseable (the round-trip is now closed).
+        assertNotNull(new Proj(projStr));
+    }
+
+    @Test
+    @DisplayName("A projected CRS parsed from a GeoTools WKT1 round-trips its PROJ string")
+    void testGeoToolsWkt1ProjStringRoundTrip() {
+        // export2 == export3 in Sedona's CrsRoundTripComplianceTest: parsing a
+        // GeoTools-shaped WKT1 and re-exporting to PROJ must be idempotent.
+        String geotoolsWkt = "PROJCS[\"OSGB\",GEOGCS[\"OSGB\","
+            + "DATUM[\"Ordnance Survey of Great Britain 1936\","
+            + "SPHEROID[\"Airy 1830\",6377563.396,299.3249646],"
+            + "TOWGS84[446.448,-125.157,542.06,0.1502,0.247,0.8421,-20.4894]],"
+            + "PRIMEM[\"Greenwich\",0.0],UNIT[\"degree\",0.017453292519943295]],"
+            + "PROJECTION[\"Transverse_Mercator\"],"
+            + "PARAMETER[\"central_meridian\",-2.0],PARAMETER[\"latitude_of_origin\",49.0],"
+            + "PARAMETER[\"scale_factor\",0.9996012717],"
+            + "PARAMETER[\"false_easting\",400000.0],PARAMETER[\"false_northing\",-100000.0],"
+            + "UNIT[\"m\",1.0]]";
+        String proj2 = CRSSerializer.toProjString(new Proj(geotoolsWkt));
+        String proj3 = CRSSerializer.toProjString(new Proj(proj2));
+        assertEquals(proj2, proj3, "PROJ string is idempotent");
+        assertDoesNotThrow(() -> new Proj(proj2), "re-exported PROJ string is parseable");
+        assertTrue(proj2.startsWith("+proj=tmerc"), proj2);
+        // The human-unit TOWGS84 matches OSGB36's canonical values, so it collapses to
+        // the compact +datum=OSGB36 token (issue #102 behavior) rather than +towgs84=.
+        // The point of this test: no internal-unit (radian/multiplier) leak survives.
+        assertTrue(proj2.contains("+datum=OSGB36"), "datum recognized: " + proj2);
+        assertFalse(proj2.matches(".*towgs84=[^ ]*[0-9]E-[0-9].*"),
+            "no radian-form rotations leak: " + proj2);
+    }
+
+    @Test
+    @DisplayName("Registry fallback maps GeoTools method names to short codes across projections")
+    void testMethodNameNormalizationAcrossProjections() {
+        // The registry fallback is not aea-specific: any registered alias resolves to
+        // its PROJ short code. One WKT1 per family, all GeoTools underscore names.
+        String[][] cases = {
+            {"Lambert_Conformal_Conic_2SP", "lcc"},
+            {"Lambert_Azimuthal_Equal_Area", "laea"},
+            {"Cassini_Soldner", "cass"},
+            {"Transverse_Mercator", "tmerc"},
+        };
+        for (String[] c : cases) {
+            String wkt = "PROJCS[\"x\",GEOGCS[\"x\",DATUM[\"World Geodetic System 1984\","
+                + "SPHEROID[\"WGS 84\",6378137.0,298.257223563],TOWGS84[0,0,0,0,0,0,0]],"
+                + "PRIMEM[\"Greenwich\",0.0],UNIT[\"degree\",0.017453292519943295]],"
+                + "PROJECTION[\"" + c[0] + "\"],"
+                + "PARAMETER[\"central_meridian\",0.0],PARAMETER[\"latitude_of_origin\",0.0],"
+                + "PARAMETER[\"standard_parallel_1\",30.0],PARAMETER[\"standard_parallel_2\",50.0],"
+                + "PARAMETER[\"false_easting\",0.0],PARAMETER[\"false_northing\",0.0],UNIT[\"m\",1.0]]";
+            String projStr = CRSSerializer.toProjString(new Proj(wkt));
+            assertTrue(projStr.contains("+proj=" + c[1]), c[0] + " -> " + projStr);
+            assertFalse(projStr.contains(c[0]), "no raw method name: " + projStr);
+        }
+    }
+
+    @Test
+    @DisplayName("LCC standard parallels survive re-export through a GeoTools method name")
+    void testLccParallelsSurviveMethodName() {
+        // lcc is the projection where dropped standard parallels matter most; assert
+        // the short-code path keeps both.
+        String wkt = "PROJCS[\"x\",GEOGCS[\"x\",DATUM[\"North_American_Datum_1983\","
+            + "SPHEROID[\"GRS 1980\",6378137.0,298.257222101],TOWGS84[0,0,0,0,0,0,0]],"
+            + "PRIMEM[\"Greenwich\",0.0],UNIT[\"degree\",0.017453292519943295]],"
+            + "PROJECTION[\"Lambert_Conformal_Conic_2SP\"],"
+            + "PARAMETER[\"central_meridian\",-96.0],PARAMETER[\"latitude_of_origin\",39.0],"
+            + "PARAMETER[\"standard_parallel_1\",33.0],PARAMETER[\"standard_parallel_2\",45.0],"
+            + "PARAMETER[\"false_easting\",0.0],PARAMETER[\"false_northing\",0.0],UNIT[\"m\",1.0]]";
+        String projStr = CRSSerializer.toProjString(new Proj(wkt));
+        assertTrue(projStr.contains("+proj=lcc"), projStr);
+        assertTrue(projStr.contains("+lat_1=33"), "first parallel: " + projStr);
+        assertTrue(projStr.contains("+lat_2=45"), "second parallel: " + projStr);
+    }
+
     // ========== Datum token normalization (issue #98) ==========
 
     @Test
