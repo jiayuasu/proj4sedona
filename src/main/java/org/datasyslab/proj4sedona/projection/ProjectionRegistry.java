@@ -75,7 +75,8 @@ public final class ProjectionRegistry {
      * <p>The first code is the projection's <em>preferred</em> code — the canonical
      * {@code +proj=} value used when a non-code alias (a WKT/GeoTools method name)
      * is resolved back to this projection. Every listed code is a valid external
-     * PROJ token and is preserved verbatim when supplied directly. External
+     * PROJ token and is returned as its canonical (lower-case) code when supplied
+     * directly. External
      * validity cannot be inferred from the alias set (e.g. the registered typo
      * alias {@code gstmerg} re-parses internally but PROJ rejects it), so it is
      * declared here rather than guessed.</p>
