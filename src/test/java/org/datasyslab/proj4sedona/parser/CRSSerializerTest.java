@@ -3,6 +3,7 @@ package org.datasyslab.proj4sedona.parser;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
+import org.datasyslab.proj4sedona.Proj4;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
@@ -1784,6 +1785,25 @@ class CRSSerializerTest {
         assertFalse(wkt1.contains("standard_parallel"), wkt1);
         // Full WKT1 -> re-parse -> proj string keeps k_0.
         assertTrue(CRSSerializer.toProjString(new Proj(wkt1)).contains("+k_0=0.994"));
+    }
+
+    @Test
+    @DisplayName("Opposite-pole spherical lat_ts is preserved (derives a different scale)")
+    void testPolarStereoOppositePoleLatTsPreserved() {
+        // +proj=stere +lat_0=90 +lat_ts=-90 derives k=0 (degenerate zero-scale), unlike
+        // lat_ts=+90 which derives k=1. Dropping lat_ts here (treating it as the
+        // same-pole degenerate case) would silently change the transform — so it must
+        // stay variant B with lat_ts preserved. Regression compares the forward result
+        // before and after a proj-string round trip.
+        String src = "+proj=longlat +R=6371000 +no_defs";
+        String def = "+proj=stere +lat_0=90 +lat_ts=-90 +R=6371000 +no_defs";
+        String serialized = CRSSerializer.toProjString(new Proj(def));
+        assertTrue(serialized.contains("+lat_ts=-90"), "opposite-pole lat_ts kept: " + serialized);
+
+        Point before = Proj4.proj4(src, def).forward(new Point(10, 80));
+        Point after = Proj4.proj4(src, serialized).forward(new Point(10, 80));
+        assertEquals(before.x, after.x, 1e-6, "x unchanged by serialization");
+        assertEquals(before.y, after.y, 1e-6, "y unchanged by serialization");
     }
 
     @Test

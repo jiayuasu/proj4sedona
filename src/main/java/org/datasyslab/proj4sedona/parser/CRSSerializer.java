@@ -2056,7 +2056,11 @@ public final class CRSSerializer {
         if (params.k0 != 1.0) {
             return false;
         }
-        return Math.abs(Math.abs(params.latTs) - Math.PI / 2) >= 1e-10;
+        // Degenerate (drop latTs) only when the standard parallel coincides with the
+        // origin pole (lat0), where the derived scale is 1. A standard parallel at the
+        // opposite pole derives a different scale (lat_0=90, lat_ts=-90 gives k=0), so
+        // it must stay variant B — dropping it would silently change the transform.
+        return params.lat0 == null || Math.abs(params.latTs - params.lat0) >= 1e-10;
     }
 
     /**
