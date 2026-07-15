@@ -88,8 +88,8 @@ class KrovakTest {
     @Test
     void testDefaultScaleFactor() {
         // With +k omitted, Krovak's 0.9999 scale factor must be used (as PROJ does), not the
-        // generic 1.0 default. (proj4js gets this wrong and projects with 1.0; the expected
-        // values below are PROJ's, matching an explicit +k=0.9999.)
+        // generic 1.0 default. (proj4js 2.20.9 uses k0=1.0 here; the expected values below match
+        // an explicit +k=0.9999, as in testKnownValues.)
         Converter conv = Proj4.proj4(BESSEL_LL,
             "+proj=krovak +lat_0=49.5 +lon_0=24.83333333333333 +ellps=bessel "
                 + "+pm=greenwich +units=m +no_defs");
