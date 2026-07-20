@@ -173,6 +173,14 @@ class CRSSerializerTest {
     }
 
     @Test
+    @DisplayName("WKT export rejects a zero linear-unit conversion factor")
+    void testWktRejectsZeroToMeter() {
+        Proj proj = new Proj("+proj=tmerc +x_0=100 +to_meter=0");
+        assertThrows(IllegalArgumentException.class, () -> CRSSerializer.toWkt1(proj));
+        assertThrows(IllegalArgumentException.class, () -> CRSSerializer.toWkt2(proj));
+    }
+
+    @Test
     @DisplayName("toProjString: geographic CRS with any angular unit emits no unit token")
     void testToProjStringGeographicAngularUnitNoToken() {
         // PROJ branches on the unit's kind, not its name — a geographic CRS's unit is

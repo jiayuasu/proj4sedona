@@ -90,7 +90,20 @@ public final class CfGridMapping {
      * @throws IllegalArgumentException if the grid mapping is unsupported or malformed
      */
     public static Proj toProj(Map<String, ?> cfAttributes, String xyUnits) {
-        return new Proj(toProjString(cfAttributes, xyUnits));
+        return toProj(cfAttributes, xyUnits, xyUnits);
+    }
+
+    /**
+     * Translate CF grid mapping attributes to a {@link Proj}.
+     *
+     * @param cfAttributes The grid mapping variable's attributes, keyed by attribute name
+     * @param xUnits The {@code units} attribute of the projection x coordinate variable
+     * @param yUnits The {@code units} attribute of the projection y coordinate variable
+     * @return The corresponding projection
+     * @throws IllegalArgumentException if the mapping is malformed or the coordinate units differ
+     */
+    public static Proj toProj(Map<String, ?> cfAttributes, String xUnits, String yUnits) {
+        return new Proj(toProjString(cfAttributes, xUnits, yUnits));
     }
 
     /**
@@ -123,6 +136,26 @@ public final class CfGridMapping {
      * @throws IllegalArgumentException if the grid mapping is unsupported or malformed
      */
     public static String toProjString(Map<String, ?> cfAttributes, String xyUnits) {
+        return toProjString(cfAttributes, xyUnits, xyUnits);
+    }
+
+    /**
+     * Translate CF grid mapping attributes to a PROJ string, validating the units of both
+     * projection coordinate axes.
+     *
+     * <p>A projected CRS has one linear coordinate unit. CF records the false easting in the
+     * x-coordinate unit and the false northing in the y-coordinate unit, so equivalent unit
+     * spellings are accepted but incompatible x/y units are rejected rather than silently
+     * misscaling one axis.</p>
+     *
+     * @param cfAttributes The grid mapping variable's attributes, keyed by attribute name
+     * @param xUnits The {@code units} attribute of the projection x coordinate variable
+     * @param yUnits The {@code units} attribute of the projection y coordinate variable
+     * @return The corresponding PROJ string
+     * @throws IllegalArgumentException if the mapping is malformed or the coordinate units differ
+     */
+    public static String toProjString(
+            Map<String, ?> cfAttributes, String xUnits, String yUnits) {
         if (cfAttributes == null) {
             throw new IllegalArgumentException("CF grid mapping attributes cannot be null");
         }
@@ -137,7 +170,8 @@ public final class CfGridMapping {
         EarthShape earth = resolveEarthShape(cfAttributes);
         // A geographic grid has angular coordinates; its units say nothing about a
         // false origin, so they are not interpreted (or validated) as linear units.
-        LinearUnit unit = geographic ? LinearUnit.METRE : LinearUnit.resolve(xyUnits);
+        LinearUnit unit = geographic
+            ? LinearUnit.METRE : LinearUnit.resolveCompatible(xUnits, yUnits);
 
         List<String> parts = new ArrayList<>();
         switch (gridMappingName) {
@@ -306,7 +340,7 @@ public final class CfGridMapping {
             parts.add("+lat_2=" + num(parallels[1]));
             parts.add("+lat_0=" + num(doubleAttr(cf, "latitude_of_projection_origin", 0.0)));
         } else {
-            Double scale = optionalDouble(cf, "scale_factor_at_projection_origin");
+            Double scale = optionalPositiveDouble(cf, "scale_factor_at_projection_origin");
             double lat0;
             if (scale == null) {
                 if (parallels == null) {
@@ -337,10 +371,10 @@ public final class CfGridMapping {
      */
     private static void lambertCylindricalEqualArea(
             Map<String, ?> cf, LinearUnit unit, EarthShape earth, List<String> parts) {
-        Double scale = optionalDouble(cf, "scale_factor_at_projection_origin");
+        Double scale = optionalPositiveDouble(cf, "scale_factor_at_projection_origin");
         double latTs;
         if (scale != null) {
-            if (scale <= 0 || scale > 1) {
+            if (scale > 1) {
                 throw new IllegalArgumentException(
                     "CF lambert_cylindrical_equal_area mapping has invalid "
                         + "scale_factor_at_projection_origin: " + scale);
@@ -348,8 +382,13 @@ public final class CfGridMapping {
             double sinSq = (1 - scale * scale) / (1 - scale * scale * earth.es);
             latTs = Math.toDegrees(Math.asin(Math.sqrt(sinSq)));
         } else {
-            double[] parallels = optionalParallels(cf);
-            latTs = parallels != null ? parallels[0] : 0.0;
+            Double parallel = optionalSingleParallel(cf, "lambert_cylindrical_equal_area");
+            if (parallel == null) {
+                throw new IllegalArgumentException(
+                    "CF lambert_cylindrical_equal_area mapping needs 'standard_parallel' or"
+                        + " 'scale_factor_at_projection_origin'");
+            }
+            latTs = parallel;
         }
         parts.add("+proj=cea");
         parts.add("+lat_ts=" + num(latTs));
@@ -368,12 +407,17 @@ public final class CfGridMapping {
      */
     private static void mercator(Map<String, ?> cf, LinearUnit unit, List<String> parts) {
         parts.add("+proj=merc");
-        Double scale = optionalDouble(cf, "scale_factor_at_projection_origin");
+        Double scale = optionalPositiveDouble(cf, "scale_factor_at_projection_origin");
         if (scale != null) {
             parts.add("+k_0=" + num(scale));
         } else {
-            double[] parallels = optionalParallels(cf);
-            parts.add("+lat_ts=" + num(parallels != null ? parallels[0] : 0.0));
+            Double parallel = optionalSingleParallel(cf, "mercator");
+            if (parallel == null) {
+                throw new IllegalArgumentException(
+                    "CF mercator mapping needs 'standard_parallel' or"
+                        + " 'scale_factor_at_projection_origin'");
+            }
+            parts.add("+lat_ts=" + num(parallel));
         }
         parts.add("+lon_0=" + num(doubleAttr(cf, "longitude_of_projection_origin", 0.0)));
         falseOrigin(cf, unit, parts);
@@ -387,24 +431,27 @@ public final class CfGridMapping {
      * it to be ±90) and otherwise from the standard parallel's hemisphere, as pyproj
      * derives it. Without a standard parallel, variant A applies:
      * {@code latitude_of_projection_origin} must be ±90 and
-     * {@code scale_factor_at_projection_origin} (default 1) becomes {@code +k_0}.
-     * {@code straight_vertical_longitude_from_pole} defaults to 0 as in GDAL (pyproj
-     * requires it).</p>
+     * {@code scale_factor_at_projection_origin} becomes {@code +k_0}. The current
+     * {@code longitude_of_projection_origin} name takes precedence over the deprecated
+     * {@code straight_vertical_longitude_from_pole}; either defaults to 0 as in GDAL
+     * when absent (pyproj requires it).</p>
      */
     private static void polarStereographic(
             Map<String, ?> cf, LinearUnit unit, List<String> parts) {
-        double lon0 = doubleAttr(cf, "straight_vertical_longitude_from_pole", 0.0);
+        Double longitude = optionalDouble(cf, "longitude_of_projection_origin");
+        double lon0 = longitude != null
+            ? longitude : doubleAttr(cf, "straight_vertical_longitude_from_pole", 0.0);
         Double latProjOrigin = optionalDouble(cf, "latitude_of_projection_origin");
         if (latProjOrigin != null && latProjOrigin != 90.0 && latProjOrigin != -90.0) {
             throw new IllegalArgumentException(
                 "CF polar_stereographic mapping requires latitude_of_projection_origin"
                     + " = +90 or -90, got: " + latProjOrigin);
         }
-        double[] parallels = optionalParallels(cf);
+        Double parallel = optionalSingleParallel(cf, "polar_stereographic");
         parts.add("+proj=stere");
-        if (parallels != null) {
+        if (parallel != null) {
             // Variant B: standard parallel, k = 1
-            double latTs = parallels[0];
+            double latTs = parallel;
             double pole = latProjOrigin != null ? latProjOrigin : (latTs < 0 ? -90.0 : 90.0);
             parts.add("+lat_0=" + num(pole));
             parts.add("+lat_ts=" + num(latTs));
@@ -416,8 +463,13 @@ public final class CfGridMapping {
                         + " 'latitude_of_projection_origin'");
             }
             parts.add("+lat_0=" + num(latProjOrigin));
-            parts.add("+k_0="
-                + num(doubleAttr(cf, "scale_factor_at_projection_origin", 1.0)));
+            Double scale = optionalPositiveDouble(cf, "scale_factor_at_projection_origin");
+            if (scale == null) {
+                throw new IllegalArgumentException(
+                    "CF polar_stereographic mapping needs 'standard_parallel' or"
+                        + " 'scale_factor_at_projection_origin'");
+            }
+            parts.add("+k_0=" + num(scale));
         }
         parts.add("+lon_0=" + num(lon0));
         falseOrigin(cf, unit, parts);
@@ -432,20 +484,30 @@ public final class CfGridMapping {
 
     /** CF {@code stereographic} — PROJ {@code stere} (oblique/equatorial, EPSG 9809). */
     private static void stereographic(Map<String, ?> cf, LinearUnit unit, List<String> parts) {
+        Double scale = optionalPositiveDouble(cf, "scale_factor_at_projection_origin");
+        if (scale == null) {
+            throw new IllegalArgumentException(
+                "CF stereographic mapping missing 'scale_factor_at_projection_origin'");
+        }
         parts.add("+proj=stere");
         parts.add("+lat_0=" + num(doubleAttr(cf, "latitude_of_projection_origin", 0.0)));
         parts.add("+lon_0=" + num(doubleAttr(cf, "longitude_of_projection_origin", 0.0)));
-        parts.add("+k_0=" + num(doubleAttr(cf, "scale_factor_at_projection_origin", 1.0)));
+        parts.add("+k_0=" + num(scale));
         falseOrigin(cf, unit, parts);
     }
 
     /** CF {@code transverse_mercator} — PROJ {@code tmerc}. */
     private static void transverseMercator(
             Map<String, ?> cf, LinearUnit unit, List<String> parts) {
+        Double scale = optionalPositiveDouble(cf, "scale_factor_at_central_meridian");
+        if (scale == null) {
+            throw new IllegalArgumentException(
+                "CF transverse_mercator mapping missing 'scale_factor_at_central_meridian'");
+        }
         parts.add("+proj=tmerc");
         parts.add("+lat_0=" + num(doubleAttr(cf, "latitude_of_projection_origin", 0.0)));
         parts.add("+lon_0=" + num(doubleAttr(cf, "longitude_of_central_meridian", 0.0)));
-        parts.add("+k_0=" + num(doubleAttr(cf, "scale_factor_at_central_meridian", 1.0)));
+        parts.add("+k_0=" + num(scale));
         falseOrigin(cf, unit, parts);
     }
 
@@ -465,7 +527,12 @@ public final class CfGridMapping {
             throw new IllegalArgumentException(
                 "CF universal_transverse_mercator mapping missing 'utm_zone_number'");
         }
-        int zone = (int) (double) zoneValue;
+        if (zoneValue != Math.rint(zoneValue)) {
+            throw new IllegalArgumentException(
+                "CF universal_transverse_mercator mapping requires an integer "
+                    + "utm_zone_number, got: " + num(zoneValue));
+        }
+        int zone = (int) Math.rint(zoneValue);
         boolean south = zone < 0;
         zone = Math.abs(zone);
         if (zone < 1 || zone > 60) {
@@ -754,17 +821,18 @@ public final class CfGridMapping {
     }
 
     /**
-     * The {@code towgs84} attribute (3 or 7 Helmert parameters) is not CF but is written
-     * by some producers and read by pyproj's {@code from_cf}.
+     * The CF {@code towgs84} attribute: 3, 6, or 7 Helmert parameters. CF defines a
+     * missing seventh value in the six-parameter form as zero, while PROJ accepts only
+     * 3- or 7-value lists, so the six-parameter form is padded during translation.
      */
     private static void towgs84(Map<String, ?> cf, List<String> parts) {
         if (!cf.containsKey("towgs84")) {
             return;
         }
         double[] values = doubleListAttr(cf, "towgs84");
-        if (values.length != 3 && values.length != 7) {
+        if (values.length != 3 && values.length != 6 && values.length != 7) {
             throw new IllegalArgumentException(
-                "CF grid mapping 'towgs84' must have 3 or 7 values, got " + values.length);
+                "CF grid mapping 'towgs84' must have 3, 6, or 7 values, got " + values.length);
         }
         StringBuilder joined = new StringBuilder("+towgs84=");
         for (int i = 0; i < values.length; i++) {
@@ -772,6 +840,9 @@ public final class CfGridMapping {
                 joined.append(',');
             }
             joined.append(num(values[i]));
+        }
+        if (values.length == 6) {
+            joined.append(",0");
         }
         parts.add(joined.toString());
     }
@@ -824,6 +895,16 @@ public final class CfGridMapping {
                         "Unsupported projection coordinate unit: " + units);
             }
         }
+
+        static LinearUnit resolveCompatible(String xUnits, String yUnits) {
+            LinearUnit x = resolve(xUnits);
+            LinearUnit y = resolve(yUnits);
+            if (x.projCode == null ? y.projCode != null : !x.projCode.equals(y.projCode)) {
+                throw new IllegalArgumentException(
+                    "Projection coordinate units differ: x='" + xUnits + "', y='" + yUnits + "'");
+            }
+            return x;
+        }
     }
 
     // ==================== Attribute coercion ====================
@@ -840,7 +921,16 @@ public final class CfGridMapping {
                 "CF attribute '" + key + "' must be a single number, got "
                     + values.length + " values");
         }
-        return values[0];
+        return finite(values[0], key);
+    }
+
+    private static Double optionalPositiveDouble(Map<String, ?> cf, String key) {
+        Double value = optionalDouble(cf, key);
+        if (value != null && value <= 0) {
+            throw new IllegalArgumentException(
+                "CF attribute '" + key + "' must be greater than zero, got: " + value);
+        }
+        return value;
     }
 
     private static double doubleAttr(Map<String, ?> cf, String key, double defaultValue) {
@@ -867,6 +957,20 @@ public final class CfGridMapping {
         return values;
     }
 
+    /** A standard parallel for mappings which permit exactly one value. */
+    private static Double optionalSingleParallel(Map<String, ?> cf, String gridMappingName) {
+        double[] parallels = optionalParallels(cf);
+        if (parallels == null) {
+            return null;
+        }
+        if (parallels.length != 1) {
+            throw new IllegalArgumentException(
+                "CF " + gridMappingName + " mapping requires exactly one 'standard_parallel', got "
+                    + parallels.length);
+        }
+        return parallels[0];
+    }
+
     private static double[] requireParallels(Map<String, ?> cf, String gridMappingName) {
         double[] parallels = optionalParallels(cf);
         if (parallels == null) {
@@ -881,7 +985,11 @@ public final class CfGridMapping {
         if (value == null) {
             throw new IllegalArgumentException("CF attribute '" + key + "' is missing");
         }
-        return coerceDoubles(value, key);
+        double[] values = coerceDoubles(value, key);
+        for (int i = 0; i < values.length; i++) {
+            values[i] = finite(values[i], key);
+        }
+        return values;
     }
 
     /**
@@ -970,8 +1078,20 @@ public final class CfGridMapping {
         }
     }
 
+    private static double finite(double value, String key) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException(
+                "CF attribute '" + key + "' must be finite, got: " + value);
+        }
+        return value;
+    }
+
     /** Plain decimal rendering: integral values without ".0", never scientific notation. */
     private static String num(double value) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException(
+                "CF grid mapping produced a non-finite numeric value: " + value);
+        }
         if (value == Math.rint(value) && Math.abs(value) < 1e15) {
             return Long.toString((long) value);
         }

@@ -344,6 +344,19 @@ class CfGridMappingTest {
     }
 
     @Test
+    @DisplayName("polar_stereographic: current longitude attribute takes precedence over legacy")
+    void testPolarStereographicCurrentLongitudeAttribute() {
+        Map<String, Object> attrs = cf(
+            "grid_mapping_name", "polar_stereographic",
+            "standard_parallel", 70.0,
+            "longitude_of_projection_origin", -45.0,
+            "straight_vertical_longitude_from_pole", 10.0,
+            "latitude_of_projection_origin", 90.0);
+        assertEquals("+proj=stere +lat_0=90 +lat_ts=70 +lon_0=-45 +datum=WGS84 +no_defs",
+            CfGridMapping.toProjString(attrs));
+    }
+
+    @Test
     @DisplayName("polar_stereographic variant B: pole derived from the parallel's hemisphere")
     void testPolarStereographicVariantBSouth() {
         Map<String, Object> attrs = cf(
@@ -705,6 +718,15 @@ class CfGridMappingTest {
     }
 
     @Test
+    @DisplayName("towgs84: CF six-parameter form is padded to PROJ's seven values")
+    void testTowgs84SixParameters() {
+        assertEquals("+proj=longlat +ellps=WGS84 +towgs84=1,2,3,4,5,6,0 +no_defs",
+            CfGridMapping.toProjString(cf(
+                "grid_mapping_name", "latitude_longitude",
+                "towgs84", new double[]{1, 2, 3, 4, 5, 6})));
+    }
+
+    @Test
     @DisplayName("km coordinates: false origin converted to metres, +units=km emitted")
     void testKilometreUnits() {
         Map<String, Object> attrs = cf(
@@ -746,12 +768,25 @@ class CfGridMappingTest {
     void testUnitSpellings() {
         Map<String, Object> attrs = cf(
             "grid_mapping_name", "transverse_mercator",
-            "longitude_of_central_meridian", -123.0);
+            "longitude_of_central_meridian", -123.0,
+            "scale_factor_at_central_meridian", 1.0);
         assertFalse(CfGridMapping.toProjString(attrs, "meters").contains("+units="));
         assertTrue(CfGridMapping.toProjString(attrs, "US_survey_foot").contains("+units=us-ft"));
         assertTrue(CfGridMapping.toProjString(attrs, "foot").contains("+units=ft"));
         assertThrows(IllegalArgumentException.class,
             () -> CfGridMapping.toProjString(attrs, "furlongs"));
+    }
+
+    @Test
+    @DisplayName("projection coordinate axes must use compatible linear units")
+    void testCoordinateUnitCompatibility() {
+        Map<String, Object> attrs = cf(
+            "grid_mapping_name", "transverse_mercator",
+            "longitude_of_central_meridian", -123.0,
+            "scale_factor_at_central_meridian", 1.0);
+        assertTrue(CfGridMapping.toProjString(attrs, "km", "kilometres").contains("+units=km"));
+        assertThrows(IllegalArgumentException.class,
+            () -> CfGridMapping.toProjString(attrs, "km", "m"));
     }
 
     // ==================== attribute value coercion ====================
@@ -842,6 +877,34 @@ class CfGridMappingTest {
             CfGridMapping.toProjString(cf(
                 "grid_mapping_name", "universal_transverse_mercator",
                 "utm_zone_number", 61)));
+        assertThrows(IllegalArgumentException.class, () ->
+            CfGridMapping.toProjString(cf(
+                "grid_mapping_name", "universal_transverse_mercator",
+                "utm_zone_number", 33.7)));
+        // Variant-defining scale/parallel parameters are required
+        assertThrows(IllegalArgumentException.class, () ->
+            CfGridMapping.toProjString(cf(
+                "grid_mapping_name", "mercator",
+                "longitude_of_projection_origin", 0.0)));
+        assertThrows(IllegalArgumentException.class, () ->
+            CfGridMapping.toProjString(cf(
+                "grid_mapping_name", "transverse_mercator",
+                "longitude_of_central_meridian", 0.0)));
+        assertThrows(IllegalArgumentException.class, () ->
+            CfGridMapping.toProjString(cf(
+                "grid_mapping_name", "stereographic",
+                "latitude_of_projection_origin", 45.0)));
+        // Non-finite numeric metadata is rejected at coercion
+        assertThrows(IllegalArgumentException.class, () ->
+            CfGridMapping.toProjString(cf(
+                "grid_mapping_name", "mercator",
+                "standard_parallel", Double.NaN,
+                "longitude_of_projection_origin", 0.0)));
+        assertThrows(IllegalArgumentException.class, () ->
+            CfGridMapping.toProjString(cf(
+                "grid_mapping_name", "mercator",
+                "standard_parallel", "Infinity",
+                "longitude_of_projection_origin", 0.0)));
     }
 
     // ==================== downstream serialization ====================

@@ -627,13 +627,22 @@ public final class CRSSerializer {
      * else metres.
      */
     private static double linearUnitToMeter(ProjectionParams params) {
+        double toMeter;
         if (params.units != null) {
             Double tm = Units.getToMeter(params.units);
             if (tm != null) {
-                return tm;
+                toMeter = tm;
+            } else {
+                toMeter = params.toMeter != null ? params.toMeter : 1.0;
             }
+        } else {
+            toMeter = params.toMeter != null ? params.toMeter : 1.0;
         }
-        return params.toMeter != null ? params.toMeter : 1.0;
+        if (!Double.isFinite(toMeter) || toMeter <= 0) {
+            throw new IllegalArgumentException(
+                "Linear unit conversion factor must be finite and greater than zero: " + toMeter);
+        }
+        return toMeter;
     }
 
     private static void appendWkt1OmercParams(StringBuilder sb, ProjectionParams params) {
