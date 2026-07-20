@@ -237,6 +237,13 @@ class CfGridMappingTest {
     }
 
     @Test
+    @DisplayName("transverse_mercator: omitted origins and scale use oracle defaults")
+    void testTransverseMercatorDefaults() {
+        assertEquals("+proj=tmerc +lat_0=0 +lon_0=0 +k_0=1 +datum=WGS84 +no_defs",
+            CfGridMapping.toProjString(cf("grid_mapping_name", "transverse_mercator")));
+    }
+
+    @Test
     @DisplayName("universal_transverse_mercator: positive zone is north")
     void testUtmNorth() {
         Map<String, Object> attrs = cf(
@@ -344,6 +351,17 @@ class CfGridMappingTest {
     }
 
     @Test
+    @DisplayName("polar_stereographic: current longitude attribute without legacy alias")
+    void testPolarStereographicCurrentLongitudeOnly() {
+        assertEquals("+proj=stere +lat_0=90 +lat_ts=70 +lon_0=-45 +datum=WGS84 +no_defs",
+            CfGridMapping.toProjString(cf(
+                "grid_mapping_name", "polar_stereographic",
+                "standard_parallel", 70.0,
+                "longitude_of_projection_origin", -45.0,
+                "latitude_of_projection_origin", 90.0)));
+    }
+
+    @Test
     @DisplayName("polar_stereographic: current longitude attribute takes precedence over legacy")
     void testPolarStereographicCurrentLongitudeAttribute() {
         Map<String, Object> attrs = cf(
@@ -414,6 +432,13 @@ class CfGridMappingTest {
             "inverse_flattening", 299.1528128);
         // pyproj: (5, 52) -> (128383.70882521641, 445698.7003830712)
         assertProjects(attrs, null, 5.0, 52.0, 128383.70882521641, 445698.7003830712, 1e-3);
+    }
+
+    @Test
+    @DisplayName("stereographic: omitted origins and scale use oracle defaults")
+    void testStereographicDefaults() {
+        assertEquals("+proj=stere +lat_0=0 +lon_0=0 +k_0=1 +datum=WGS84 +no_defs",
+            CfGridMapping.toProjString(cf("grid_mapping_name", "stereographic")));
     }
 
     // ==================== albers_conical_equal_area ====================
@@ -706,10 +731,16 @@ class CfGridMappingTest {
         assertTrue(CfGridMapping.identifiesEarthShape(cf(
             "grid_mapping_name", "latitude_longitude",
             "towgs84", new double[]{1, 2, 3})));
+        assertThrows(IllegalArgumentException.class,
+            () -> CfGridMapping.identifiesEarthShape(null));
+        assertThrows(IllegalArgumentException.class, () ->
+            CfGridMapping.identifiesEarthShape(cf(
+                "grid_mapping_name", "latitude_longitude",
+                "towgs84", new double[]{1, 2, 3, 4, 5})));
     }
 
     @Test
-    @DisplayName("towgs84: only 3 or 7 parameters are meaningful")
+    @DisplayName("towgs84: only 3, 6, or 7 parameters are meaningful")
     void testTowgs84Validation() {
         assertThrows(IllegalArgumentException.class, () ->
             CfGridMapping.toProjString(cf(
@@ -785,8 +816,52 @@ class CfGridMappingTest {
             "longitude_of_central_meridian", -123.0,
             "scale_factor_at_central_meridian", 1.0);
         assertTrue(CfGridMapping.toProjString(attrs, "km", "kilometres").contains("+units=km"));
+        assertTrue(CfGridMapping.toProjString(attrs, "km", null).contains("+units=km"));
+        assertTrue(CfGridMapping.toProjString(attrs, null, "kilometres").contains("+units=km"));
         assertThrows(IllegalArgumentException.class,
             () -> CfGridMapping.toProjString(attrs, "km", "m"));
+    }
+
+    @Test
+    @DisplayName("single-parallel mappings reject two standard parallels")
+    void testSingleParallelMappingsRejectTwoParallels() {
+        assertThrows(IllegalArgumentException.class, () ->
+            CfGridMapping.toProjString(cf(
+                "grid_mapping_name", "mercator",
+                "standard_parallel", new double[]{10, 20})));
+        assertThrows(IllegalArgumentException.class, () ->
+            CfGridMapping.toProjString(cf(
+                "grid_mapping_name", "lambert_cylindrical_equal_area",
+                "standard_parallel", new double[]{10, 20})));
+        assertThrows(IllegalArgumentException.class, () ->
+            CfGridMapping.toProjString(cf(
+                "grid_mapping_name", "polar_stereographic",
+                "standard_parallel", new double[]{70, 71},
+                "latitude_of_projection_origin", 90.0)));
+    }
+
+    @Test
+    @DisplayName("non-physical ellipsoid parameters are rejected")
+    void testInvalidEarthShapeParameters() {
+        for (double inverseFlattening : new double[]{-298.0, 0.5, 1.0}) {
+            assertThrows(IllegalArgumentException.class, () ->
+                CfGridMapping.toProjString(cf(
+                    "grid_mapping_name", "latitude_longitude",
+                    "semi_major_axis", 6378137.0,
+                    "inverse_flattening", inverseFlattening)));
+        }
+        for (double semiMinor : new double[]{0.0, -1.0, 6378138.0}) {
+            assertThrows(IllegalArgumentException.class, () ->
+                CfGridMapping.toProjString(cf(
+                    "grid_mapping_name", "latitude_longitude",
+                    "semi_major_axis", 6378137.0,
+                    "semi_minor_axis", semiMinor)));
+        }
+        assertEquals("+proj=longlat +R=6378137 +no_defs",
+            CfGridMapping.toProjString(cf(
+                "grid_mapping_name", "latitude_longitude",
+                "semi_major_axis", 6378137.0,
+                "inverse_flattening", 0.0)));
     }
 
     // ==================== attribute value coercion ====================
@@ -881,19 +956,20 @@ class CfGridMappingTest {
             CfGridMapping.toProjString(cf(
                 "grid_mapping_name", "universal_transverse_mercator",
                 "utm_zone_number", 33.7)));
-        // Variant-defining scale/parallel parameters are required
+        // Mercator's variant-defining scale/parallel parameter is required
         assertThrows(IllegalArgumentException.class, () ->
             CfGridMapping.toProjString(cf(
                 "grid_mapping_name", "mercator",
                 "longitude_of_projection_origin", 0.0)));
+        // Explicit scale factors must remain positive even when omission defaults to one
         assertThrows(IllegalArgumentException.class, () ->
             CfGridMapping.toProjString(cf(
                 "grid_mapping_name", "transverse_mercator",
-                "longitude_of_central_meridian", 0.0)));
+                "scale_factor_at_central_meridian", 0.0)));
         assertThrows(IllegalArgumentException.class, () ->
             CfGridMapping.toProjString(cf(
                 "grid_mapping_name", "stereographic",
-                "latitude_of_projection_origin", 45.0)));
+                "scale_factor_at_projection_origin", -1.0)));
         // Non-finite numeric metadata is rejected at coercion
         assertThrows(IllegalArgumentException.class, () ->
             CfGridMapping.toProjString(cf(

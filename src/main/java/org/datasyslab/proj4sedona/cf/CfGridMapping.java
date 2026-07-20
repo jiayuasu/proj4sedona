@@ -145,7 +145,8 @@ public final class CfGridMapping {
      *
      * <p>A projected CRS has one linear coordinate unit. CF records the false easting in the
      * x-coordinate unit and the false northing in the y-coordinate unit, so equivalent unit
-     * spellings are accepted but incompatible x/y units are rejected rather than silently
+     * spellings are accepted. When only one axis declares a unit, that unit is used for the
+     * projected CRS; two explicitly incompatible units are rejected rather than silently
      * misscaling one axis.</p>
      *
      * @param cfAttributes The grid mapping variable's attributes, keyed by attribute name
@@ -482,32 +483,30 @@ public final class CfGridMapping {
         falseOrigin(cf, unit, parts);
     }
 
-    /** CF {@code stereographic} — PROJ {@code stere} (oblique/equatorial, EPSG 9809). */
+    /**
+     * CF {@code stereographic} — PROJ {@code stere} (oblique/equatorial, EPSG 9809).
+     * Missing origins and scale use the GDAL/pyproj defaults of 0 and 1.
+     */
     private static void stereographic(Map<String, ?> cf, LinearUnit unit, List<String> parts) {
         Double scale = optionalPositiveDouble(cf, "scale_factor_at_projection_origin");
-        if (scale == null) {
-            throw new IllegalArgumentException(
-                "CF stereographic mapping missing 'scale_factor_at_projection_origin'");
-        }
         parts.add("+proj=stere");
         parts.add("+lat_0=" + num(doubleAttr(cf, "latitude_of_projection_origin", 0.0)));
         parts.add("+lon_0=" + num(doubleAttr(cf, "longitude_of_projection_origin", 0.0)));
-        parts.add("+k_0=" + num(scale));
+        parts.add("+k_0=" + num(scale != null ? scale : 1.0));
         falseOrigin(cf, unit, parts);
     }
 
-    /** CF {@code transverse_mercator} — PROJ {@code tmerc}. */
+    /**
+     * CF {@code transverse_mercator} — PROJ {@code tmerc}. Missing origins and scale
+     * use the GDAL/pyproj defaults of 0 and 1.
+     */
     private static void transverseMercator(
             Map<String, ?> cf, LinearUnit unit, List<String> parts) {
         Double scale = optionalPositiveDouble(cf, "scale_factor_at_central_meridian");
-        if (scale == null) {
-            throw new IllegalArgumentException(
-                "CF transverse_mercator mapping missing 'scale_factor_at_central_meridian'");
-        }
         parts.add("+proj=tmerc");
         parts.add("+lat_0=" + num(doubleAttr(cf, "latitude_of_projection_origin", 0.0)));
         parts.add("+lon_0=" + num(doubleAttr(cf, "longitude_of_central_meridian", 0.0)));
-        parts.add("+k_0=" + num(scale));
+        parts.add("+k_0=" + num(scale != null ? scale : 1.0));
         falseOrigin(cf, unit, parts);
     }
 
@@ -613,6 +612,9 @@ public final class CfGridMapping {
      * @throws IllegalArgumentException if a figure attribute is present but malformed
      */
     public static boolean identifiesEarthShape(Map<String, ?> cfAttributes) {
+        if (cfAttributes == null) {
+            throw new IllegalArgumentException("CF grid mapping attributes cannot be null");
+        }
         return resolveIdentifiedEarthShape(cfAttributes) != null;
     }
 
@@ -650,6 +652,9 @@ public final class CfGridMapping {
      */
     private static EarthShape resolveIdentifiedEarthShape(Map<String, ?> cf) {
         boolean hasTowgs84 = cf.containsKey("towgs84");
+        if (hasTowgs84) {
+            towgs84Values(cf);
+        }
         Datum datum = lookupDatum(stringAttr(cf, "horizontal_datum_name"));
         if (datum != null && figureConsistentWithDatum(cf, datum)) {
             return EarthShape.ofDatum(datum, hasTowgs84);
@@ -664,13 +669,39 @@ public final class CfGridMapping {
         }
         if (semiMajor != null || semiMinor != null || inverseFlattening != null
                 || radius != null) {
+            if (semiMajor != null && semiMajor <= 0) {
+                throw new IllegalArgumentException(
+                    "CF attribute 'semi_major_axis' must be greater than zero, got: " + semiMajor);
+            }
+            if (radius != null && radius <= 0) {
+                throw new IllegalArgumentException(
+                    "CF Earth radius must be greater than zero, got: " + radius);
+            }
+            if (semiMinor != null && semiMinor <= 0) {
+                throw new IllegalArgumentException(
+                    "CF attribute 'semi_minor_axis' must be greater than zero, got: " + semiMinor);
+            }
+            if (inverseFlattening != null && inverseFlattening != 0
+                    && inverseFlattening <= 1) {
+                throw new IllegalArgumentException(
+                    "CF attribute 'inverse_flattening' must be zero or greater than one, got: "
+                        + inverseFlattening);
+            }
             double a = semiMajor != null ? semiMajor : (radius != null ? radius : 0);
             if (a <= 0) {
                 throw new IllegalArgumentException(
                     "CF grid mapping has a semi_minor_axis or inverse_flattening but no "
                         + "semi_major_axis or earth_radius");
             }
-            if (inverseFlattening != null && inverseFlattening != 0) {
+            if (semiMinor != null && semiMinor > a) {
+                throw new IllegalArgumentException(
+                    "CF attribute 'semi_minor_axis' cannot exceed semi_major_axis or earth_radius: "
+                        + semiMinor + " > " + a);
+            }
+            if (inverseFlattening != null) {
+                if (inverseFlattening == 0) {
+                    return new EarthShape(List.of("+R=" + num(a)), 0);
+                }
                 double b = a * (1 - 1 / inverseFlattening);
                 return new EarthShape(
                     List.of("+a=" + num(a), "+rf=" + num(inverseFlattening)),
@@ -829,11 +860,7 @@ public final class CfGridMapping {
         if (!cf.containsKey("towgs84")) {
             return;
         }
-        double[] values = doubleListAttr(cf, "towgs84");
-        if (values.length != 3 && values.length != 6 && values.length != 7) {
-            throw new IllegalArgumentException(
-                "CF grid mapping 'towgs84' must have 3, 6, or 7 values, got " + values.length);
-        }
+        double[] values = towgs84Values(cf);
         StringBuilder joined = new StringBuilder("+towgs84=");
         for (int i = 0; i < values.length; i++) {
             if (i > 0) {
@@ -845,6 +872,15 @@ public final class CfGridMapping {
             joined.append(",0");
         }
         parts.add(joined.toString());
+    }
+
+    private static double[] towgs84Values(Map<String, ?> cf) {
+        double[] values = doubleListAttr(cf, "towgs84");
+        if (values.length != 3 && values.length != 6 && values.length != 7) {
+            throw new IllegalArgumentException(
+                "CF grid mapping 'towgs84' must have 3, 6, or 7 values, got " + values.length);
+        }
+        return values;
     }
 
     // ==================== Linear units ====================
@@ -897,8 +933,16 @@ public final class CfGridMapping {
         }
 
         static LinearUnit resolveCompatible(String xUnits, String yUnits) {
-            LinearUnit x = resolve(xUnits);
-            LinearUnit y = resolve(yUnits);
+            boolean xMissing = xUnits == null || xUnits.trim().isEmpty();
+            boolean yMissing = yUnits == null || yUnits.trim().isEmpty();
+            LinearUnit x = xMissing ? null : resolve(xUnits);
+            LinearUnit y = yMissing ? null : resolve(yUnits);
+            if (x == null) {
+                return y != null ? y : METRE;
+            }
+            if (y == null) {
+                return x;
+            }
             if (x.projCode == null ? y.projCode != null : !x.projCode.equals(y.projCode)) {
                 throw new IllegalArgumentException(
                     "Projection coordinate units differ: x='" + xUnits + "', y='" + yUnits + "'");

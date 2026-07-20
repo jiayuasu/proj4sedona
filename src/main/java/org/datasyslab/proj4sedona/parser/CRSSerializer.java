@@ -661,18 +661,8 @@ public final class CRSSerializer {
     }
 
     private static void appendWkt1Unit(StringBuilder sb, ProjectionParams params) {
-        String unitName = "metre";
-        double toMeter = 1.0;
-
-        if (params.units != null) {
-            unitName = getUnitName(params.units);
-            Double tm = Units.getToMeter(params.units);
-            if (tm != null) {
-                toMeter = tm;
-            }
-        } else if (params.toMeter != null) {
-            toMeter = params.toMeter;
-        }
+        String unitName = params.units != null ? getUnitName(params.units) : "metre";
+        double toMeter = linearUnitToMeter(params);
 
         sb.append(",UNIT[\"").append(unitName).append("\",").append(toMeter).append("]");
     }
@@ -882,36 +872,16 @@ public final class CRSSerializer {
     }
 
     private static void appendWkt2Unit(StringBuilder sb, ProjectionParams params) {
-        String unitName = "metre";
-        double toMeter = 1.0;
-
-        if (params.units != null) {
-            unitName = getUnitName(params.units);
-            Double tm = Units.getToMeter(params.units);
-            if (tm != null) {
-                toMeter = tm;
-            }
-        } else if (params.toMeter != null) {
-            toMeter = params.toMeter;
-        }
+        String unitName = params.units != null ? getUnitName(params.units) : "metre";
+        double toMeter = linearUnitToMeter(params);
 
         sb.append("LENGTHUNIT[\"").append(unitName).append("\",").append(toMeter).append("]");
     }
 
     private static void appendWkt2LengthUnit(StringBuilder sb, ProjectionParams params) {
-        double toMeter = 1.0;
-        String unitName = "metre";
-        
-        if (params.units != null) {
-            unitName = getUnitName(params.units);
-            Double tm = Units.getToMeter(params.units);
-            if (tm != null) {
-                toMeter = tm;
-            }
-        } else if (params.toMeter != null) {
-            toMeter = params.toMeter;
-        }
-        
+        String unitName = params.units != null ? getUnitName(params.units) : "metre";
+        double toMeter = linearUnitToMeter(params);
+
         sb.append(",LENGTHUNIT[\"").append(unitName).append("\",").append(toMeter).append("]");
     }
 
