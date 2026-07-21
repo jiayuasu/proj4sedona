@@ -609,13 +609,40 @@ public final class CRSSerializer {
             sb.append(",PARAMETER[\"scale_factor\",").append(params.k0).append("]");
         }
 
-        // False easting/northing
+        // False easting/northing. The internal values are metres; WKT1 linear
+        // parameters are expressed in the PROJCS UNIT, and parsers (including our
+        // own WktProcessor, following wkt-parser) scale them back by that unit.
+        double unitToMeter = linearUnitToMeter(params);
         if (params.x0 != 0.0) {
-            sb.append(",PARAMETER[\"false_easting\",").append(params.x0).append("]");
+            sb.append(",PARAMETER[\"false_easting\",").append(params.x0 / unitToMeter).append("]");
         }
         if (params.y0 != 0.0) {
-            sb.append(",PARAMETER[\"false_northing\",").append(params.y0).append("]");
+            sb.append(",PARAMETER[\"false_northing\",").append(params.y0 / unitToMeter).append("]");
         }
+    }
+
+    /**
+     * The metre factor of the CRS's linear unit, with the same precedence the unit
+     * emitters use: a named unit's registry factor first, then an explicit to_meter,
+     * else metres.
+     */
+    private static double linearUnitToMeter(ProjectionParams params) {
+        double toMeter;
+        if (params.units != null) {
+            Double tm = Units.getToMeter(params.units);
+            if (tm != null) {
+                toMeter = tm;
+            } else {
+                toMeter = params.toMeter != null ? params.toMeter : 1.0;
+            }
+        } else {
+            toMeter = params.toMeter != null ? params.toMeter : 1.0;
+        }
+        if (!Double.isFinite(toMeter) || toMeter <= 0) {
+            throw new IllegalArgumentException(
+                "Linear unit conversion factor must be finite and greater than zero: " + toMeter);
+        }
+        return toMeter;
     }
 
     private static void appendWkt1OmercParams(StringBuilder sb, ProjectionParams params) {
@@ -634,18 +661,8 @@ public final class CRSSerializer {
     }
 
     private static void appendWkt1Unit(StringBuilder sb, ProjectionParams params) {
-        String unitName = "metre";
-        double toMeter = 1.0;
-
-        if (params.units != null) {
-            unitName = getUnitName(params.units);
-            Double tm = Units.getToMeter(params.units);
-            if (tm != null) {
-                toMeter = tm;
-            }
-        } else if (params.toMeter != null) {
-            toMeter = params.toMeter;
-        }
+        String unitName = params.units != null ? getUnitName(params.units) : "metre";
+        double toMeter = linearUnitToMeter(params);
 
         sb.append(",UNIT[\"").append(unitName).append("\",").append(toMeter).append("]");
     }
@@ -835,52 +852,36 @@ public final class CRSSerializer {
             sb.append(params.k0).append(",SCALEUNIT[\"unity\",1]]");
         }
 
-        // False easting/northing
+        // False easting/northing. The internal values are metres; a WKT2 parameter
+        // value is expressed in the LENGTHUNIT it is tagged with, and parsers
+        // (including our own WktProcessor, following wkt-parser) scale it back by
+        // that unit's factor.
+        double unitToMeter = linearUnitToMeter(params);
         if (params.x0 != 0.0) {
             sb.append(",PARAMETER[\"False easting\",");
-            sb.append(params.x0);
+            sb.append(params.x0 / unitToMeter);
             appendWkt2LengthUnit(sb, params);
             sb.append("]");
         }
         if (params.y0 != 0.0) {
             sb.append(",PARAMETER[\"False northing\",");
-            sb.append(params.y0);
+            sb.append(params.y0 / unitToMeter);
             appendWkt2LengthUnit(sb, params);
             sb.append("]");
         }
     }
 
     private static void appendWkt2Unit(StringBuilder sb, ProjectionParams params) {
-        String unitName = "metre";
-        double toMeter = 1.0;
-
-        if (params.units != null) {
-            unitName = getUnitName(params.units);
-            Double tm = Units.getToMeter(params.units);
-            if (tm != null) {
-                toMeter = tm;
-            }
-        } else if (params.toMeter != null) {
-            toMeter = params.toMeter;
-        }
+        String unitName = params.units != null ? getUnitName(params.units) : "metre";
+        double toMeter = linearUnitToMeter(params);
 
         sb.append("LENGTHUNIT[\"").append(unitName).append("\",").append(toMeter).append("]");
     }
 
     private static void appendWkt2LengthUnit(StringBuilder sb, ProjectionParams params) {
-        double toMeter = 1.0;
-        String unitName = "metre";
-        
-        if (params.units != null) {
-            unitName = getUnitName(params.units);
-            Double tm = Units.getToMeter(params.units);
-            if (tm != null) {
-                toMeter = tm;
-            }
-        } else if (params.toMeter != null) {
-            toMeter = params.toMeter;
-        }
-        
+        String unitName = params.units != null ? getUnitName(params.units) : "metre";
+        double toMeter = linearUnitToMeter(params);
+
         sb.append(",LENGTHUNIT[\"").append(unitName).append("\",").append(toMeter).append("]");
     }
 
@@ -1343,6 +1344,13 @@ public final class CRSSerializer {
             return null;
         }
 
+        // Every mapped EPSG geographic CRS uses the Greenwich prime meridian, so a
+        // non-zero offset (e.g. +datum=WGS84 +pm=paris) disqualifies the datum-name
+        // shortcut outright.
+        if (params.fromGreenwich != null && params.fromGreenwich != 0.0) {
+            return null;
+        }
+
         // Try datumCode (set from PROJJSON datum.name or PROJ +datum flag).
         // The name alone is not enough: explicit +a/+b (or +ellps=) override the
         // datum's ellipsoid at parse, so +datum=WGS84 +a=6378137 +b=6300000 must
@@ -1571,6 +1579,15 @@ public final class CRSSerializer {
                 return false;
             }
             if (!closeEnough(params.long0, refParams.long0, 1e-9)) {
+                return false;
+            }
+
+            // Check the prime meridian: a null offset means Greenwich (0), and a
+            // non-Greenwich meridian (+pm=paris) must not match a Greenwich-based
+            // definition even when every other parameter agrees.
+            double pmOffset = params.fromGreenwich != null ? params.fromGreenwich : 0.0;
+            double refPmOffset = refParams.fromGreenwich != null ? refParams.fromGreenwich : 0.0;
+            if (Math.abs(pmOffset - refPmOffset) > 1e-9) {
                 return false;
             }
 

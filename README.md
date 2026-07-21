@@ -217,6 +217,41 @@ CompletableFuture<GridData> future = GridCdnFetcher.fetchAndLoadAsync("ca_nrc_nt
 - **Azimuthal**: Lambert Azimuthal Equal Area, Stereographic, Oblique Stereographic Alternative, Azimuthal Equidistant, Orthographic, Gnomonic, Tilted Perspective
 - **Other**: Geostationary Satellite, New Zealand Map Grid, Geocentric (ECEF), Quadrilateralized Spherical Cube, General Oblique Transformation (rotated pole), Identity (longlat)
 
+## NetCDF CF Grid Mappings
+
+`CfGridMapping` translates CF (Climate and Forecast) convention grid mapping attributes —
+the parameter form used by netCDF files that carry no `crs_wkt` — into a PROJ string or
+`Proj`, following CF conventions Appendix F:
+
+```java
+import org.datasyslab.proj4sedona.cf.CfGridMapping;
+
+Map<String, Object> cf = new HashMap<>();
+cf.put("grid_mapping_name", "lambert_conformal_conic");
+cf.put("standard_parallel", new double[]{33.0, 45.0});
+cf.put("longitude_of_central_meridian", -97.0);
+cf.put("latitude_of_projection_origin", 40.0);
+
+String projString = CfGridMapping.toProjString(cf);
+// "+proj=lcc +lat_1=33 +lat_2=45 +lat_0=40 +lon_0=-97 +datum=WGS84 +no_defs"
+Proj proj = CfGridMapping.toProj(cf);
+String wkt = proj.toWkt2();
+```
+
+Supported grid mappings: `latitude_longitude`, `albers_conical_equal_area`,
+`azimuthal_equidistant`, `geostationary`, `lambert_azimuthal_equal_area`,
+`lambert_conformal_conic` (1SP/2SP), `lambert_cylindrical_equal_area`, `mercator`,
+`orthographic`, `polar_stereographic`, `sinusoidal`, `stereographic`,
+`transverse_mercator`, and netCDF-Java's `universal_transverse_mercator`. Ellipsoid and
+datum attributes (`semi_major_axis`, `inverse_flattening`, `earth_radius`,
+`reference_ellipsoid_name`, `horizontal_datum_name`, ...), prime meridians, `towgs84`,
+and non-metre coordinate units (`toProjString(cf, "km")`) are handled; with no
+identifying figure parameters, WGS 84 is assumed, as GDAL and pyproj do.
+
+This module is a Proj4Sedona extension with no proj4js counterpart; its behavior is
+validated against pyproj's `CRS.from_cf` and GDAL's `importFromCF1` (divergences between
+those two are resolved case by case and documented in the Javadoc).
+
 ## Upstream Sync Status
 
 Proj4Sedona tracks three upstream code bases. The port is complete and audited as of the

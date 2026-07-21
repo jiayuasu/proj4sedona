@@ -173,6 +173,34 @@ class CRSSerializerTest {
     }
 
     @Test
+    @DisplayName("WKT export rejects a zero linear-unit conversion factor")
+    void testWktRejectsZeroToMeter() {
+        Proj proj = new Proj("+proj=tmerc +x_0=100 +to_meter=0");
+        assertThrows(IllegalArgumentException.class, () -> CRSSerializer.toWkt1(proj));
+        assertThrows(IllegalArgumentException.class, () -> CRSSerializer.toWkt2(proj));
+    }
+
+    @Test
+    @DisplayName("WKT export uses explicit to_meter for an unknown named unit")
+    void testWktUnknownUnitUsesExplicitToMeter() {
+        Proj proj = new Proj("+proj=tmerc +x_0=100 +units=widget +to_meter=0.5");
+        String wkt1 = CRSSerializer.toWkt1(proj);
+        assertTrue(wkt1.contains("PARAMETER[\"false_easting\",200.0]"), wkt1);
+        assertTrue(wkt1.contains("UNIT[\"widget\",0.5]"), wkt1);
+
+        String wkt2 = CRSSerializer.toWkt2(proj);
+        assertTrue(wkt2.contains(
+            "PARAMETER[\"False easting\",200.0,LENGTHUNIT[\"widget\",0.5]]"), wkt2);
+        assertTrue(wkt2.contains("LENGTHUNIT[\"widget\",0.5]"), wkt2);
+
+        for (String wkt : new String[]{wkt1, wkt2}) {
+            Proj reimported = new Proj(wkt);
+            assertEquals(100.0, reimported.getParams().x0, 1e-9, wkt);
+            assertEquals(0.5, reimported.getParams().toMeter, 0, wkt);
+        }
+    }
+
+    @Test
     @DisplayName("toProjString: geographic CRS with any angular unit emits no unit token")
     void testToProjStringGeographicAngularUnitNoToken() {
         // PROJ branches on the unit's kind, not its name — a geographic CRS's unit is
