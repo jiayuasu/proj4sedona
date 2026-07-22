@@ -70,7 +70,6 @@ public class Proj {
         processDatumDef(def);
 
         // Set defaults
-        if (def.getK0() == null) def.setK0(1.0);
         if (def.getAxis() == null) def.setAxis("enu");
         if (def.getEllps() == null) def.setEllps("wgs84");
         if (def.getLat1() == null && def.getLat0() != null) {
@@ -313,7 +312,8 @@ public class Proj {
         p.sweep = def.getSweep();
 
         // Scale and offsets
-        p.k0 = def.getK0() != null ? def.getK0() : 1.0;
+        p.k0Specified = def.getK0() != null;
+        p.k0 = p.k0Specified ? def.getK0() : 1.0;
         p.x0 = def.getX0() != null ? def.getX0() : 0.0;
         p.y0 = def.getY0() != null ? def.getY0() : 0.0;
 

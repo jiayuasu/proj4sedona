@@ -11,11 +11,21 @@ import org.datasyslab.proj4sedona.core.Point;
  * (S-JTSK / Krovak). Krovak is always defined on the Bessel 1841 ellipsoid, so the
  * ellipsoid constants are fixed here as in proj4js.</p>
  *
- * <p>Following proj4js, the {@code czech} orientation flag is never set, so output
- * uses the south-west (negated) orientation for every Krovak alias — including the
- * "North Orientated" method names.</p>
+ * <p>Following proj4js, the {@code czech} orientation flag is never set. The resulting
+ * negative easting/northing coordinates are the north-orientated form used by
+ * {@code +proj=krovak} and EPSG:5514. The traditional southing/westing form is represented
+ * at the CRS level by {@code +axis=swu}, not by different projection math.</p>
  */
 public class Krovak implements Projection {
+
+    /** Effective angular constants (radians) fixed by the proj4js implementation. */
+    public static final double DEFAULT_LATITUDE_OF_PROJECTION_CENTRE = 0.863937979737193;
+    public static final double DEFAULT_LONGITUDE_OF_ORIGIN =
+        0.7417649320975901 - 0.308341501185665;
+    public static final double CO_LATITUDE_OF_CONE_AXIS =
+        2 * 0.785398163397448 - 1.04216856380474;
+    public static final double LATITUDE_OF_PSEUDO_STANDARD_PARALLEL = 1.37008346281555;
+    public static final double DEFAULT_SCALE_FACTOR = 0.9999;
 
     private static final String[] NAMES = {
         "Krovak", "Krovak Modified", "Krovak (North Orientated)",
@@ -24,9 +34,9 @@ public class Krovak implements Projection {
 
     private double a, e, e2, lat0, long0, k0, x0, y0;
     private double s45, s0, alfa, k, n0, n, ro0, ad;
-    // proj4js never sets the czech (orientation) flag, so it is always false and the
-    // south-west negated orientation is used for every Krovak alias. Kept as a field to
-    // mirror upstream structure.
+    // proj4js never sets the czech flag. Its false branch is the north-orientated
+    // easting/northing form; a CRS with traditional southing/westing axes is handled by
+    // the transform pipeline's +axis=swu adjustment. Kept to mirror upstream structure.
     private final boolean czech = false;
     private Boolean over;
 
@@ -42,24 +52,20 @@ public class Krovak implements Projection {
 
         this.lat0 = params.getLat0();
         if (this.lat0 == 0) {
-            this.lat0 = 0.863937979737193;
+            this.lat0 = DEFAULT_LATITUDE_OF_PROJECTION_CENTRE;
         }
         this.long0 = params.getLong0();
         if (this.long0 == 0) {
-            this.long0 = 0.7417649320975901 - 0.308341501185665;
+            this.long0 = DEFAULT_LONGITUDE_OF_ORIGIN;
         }
-        // Persist the resolved central meridian (like UTM's zone-derived long0), so
-        // wrappers such as ob_tran can compensate for it.
+        // Persist every effective defining parameter so serialization can reproduce
+        // the initialized projection. k0Specified still records whether scale was input.
+        params.lat0 = this.lat0;
         params.long0 = this.long0;
-        // Krovak's scale factor is 0.9999 when +k is omitted (per PROJ). In proj4js 2.20.9,
-        // the global `k0 = k0 || 1.0` default in Proj.js shadows krovak's own 0.9999 fallback,
-        // so an omitted +k projects with k0=1.0. ProjectionParams likewise cannot distinguish
-        // "omitted" from "k=1" (both surface as the 1.0 default), and k=1 is not a real Krovak
-        // definition, so treat 1.0/0 as unset (matching PROJ).
-        this.k0 = params.k0;
-        if (this.k0 == 0 || this.k0 == 1.0) {
-            this.k0 = 0.9999;
-        }
+        this.k0 = resolveScaleFactor(params);
+        params.alpha = CO_LATITUDE_OF_CONE_AXIS;
+        params.lat1 = LATITUDE_OF_PSEUDO_STANDARD_PARALLEL;
+        params.k0 = this.k0;
         // proj4js's krovak ignores +x_0/+y_0; this codebase applies offsets in the
         // projection (Transform does not), and PROJ/pyproj apply them, so apply them here.
         this.x0 = params.x0;
@@ -67,18 +73,23 @@ public class Krovak implements Projection {
         this.over = params.over;
 
         this.s45 = 0.785398163397448; // 45 degrees
-        double s90 = 2 * this.s45;
         double fi0 = this.lat0;
         this.alfa = Math.sqrt(1 + (this.e2 * Math.pow(Math.cos(fi0), 4)) / (1 - this.e2));
-        double uq = 1.04216856380474;
         double u0 = Math.asin(Math.sin(fi0) / this.alfa);
         double g = Math.pow((1 + this.e * Math.sin(fi0)) / (1 - this.e * Math.sin(fi0)), this.alfa * this.e / 2);
         this.k = Math.tan(u0 / 2 + this.s45) / Math.pow(Math.tan(fi0 / 2 + this.s45), this.alfa) * g;
         this.n0 = this.a * Math.sqrt(1 - this.e2) / (1 - this.e2 * Math.pow(Math.sin(fi0), 2));
-        this.s0 = 1.37008346281555;
+        this.s0 = LATITUDE_OF_PSEUDO_STANDARD_PARALLEL;
         this.n = Math.sin(this.s0);
         this.ro0 = this.k0 * this.n0 / Math.tan(this.s0);
-        this.ad = s90 - uq;
+        this.ad = CO_LATITUDE_OF_CONE_AXIS;
+    }
+
+    /** Resolve Krovak's projection-specific scale default, including direct callers. */
+    public static double resolveScaleFactor(ProjectionParams params) {
+        boolean scaleSupplied = params.k0Specified || params.k0 != 1.0;
+        return !scaleSupplied || params.k0 == 0 || Double.isNaN(params.k0)
+            ? DEFAULT_SCALE_FACTOR : params.k0;
     }
 
     @Override

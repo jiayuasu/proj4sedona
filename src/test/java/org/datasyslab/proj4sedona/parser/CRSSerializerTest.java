@@ -657,8 +657,8 @@ class CRSSerializerTest {
             + "\"name\":\"World Geodetic System 1984\","
             + "\"ellipsoid\":{\"name\":\"WGS 84\",\"semi_major_axis\":6378137,\"inverse_flattening\":298.257223563}}},"
             + "\"conversion\":{\"name\":\"UTM zone 32N\",\"method\":{\"name\":\"Transverse Mercator\"},"
-            + "\"parameters\":[{\"name\":\"Latitude of natural origin\",\"value\":0},"
-            + "{\"name\":\"Longitude of natural origin\",\"value\":9},"
+            + "\"parameters\":[{\"name\":\"Latitude of natural origin\",\"value\":0,\"unit\":\"degree\"},"
+            + "{\"name\":\"Longitude of natural origin\",\"value\":9,\"unit\":\"degree\"},"
             + "{\"name\":\"Scale factor at natural origin\",\"value\":0.9996},"
             + "{\"name\":\"False easting\",\"value\":500000},"
             + "{\"name\":\"False northing\",\"value\":0}]},"
@@ -1082,8 +1082,12 @@ class CRSSerializerTest {
     @Test
     @DisplayName("Issue #46: WKT2 round-trip should not drift lat_0 for EPSG:28992 (sterea)")
     void testWkt2RoundTripNoDriftSterea28992() {
-        // EPSG:28992 - Amersfoort / RD New (Oblique Stereographic)
-        Proj proj = new Proj("EPSG:28992");
+        // Projection parameters of EPSG:28992 (Amersfoort / RD New), without its
+        // Helmert operation: this test targets angle drift, while WKT2 export now
+        // correctly rejects CRS definitions whose TOWGS84 operation would be lost.
+        Proj proj = new Proj("+proj=sterea +lat_0=52.15616055555555 "
+            + "+lon_0=5.38763888888889 +k=0.9999079 +x_0=155000 +y_0=463000 "
+            + "+ellps=bessel +units=m +no_defs");
 
         // First conversion: PROJ -> WKT2
         String wkt2First = CRSSerializer.toWkt2(proj);
