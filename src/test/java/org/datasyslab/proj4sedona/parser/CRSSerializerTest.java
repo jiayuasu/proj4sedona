@@ -15,9 +15,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class CRSSerializerTest {
 
-    private static final boolean PROJECTION_PARITY_SEMANTICS_AVAILABLE =
-        detectProjectionParitySemantics();
-
     @BeforeAll
     static void setup() {
         ProjectionRegistry.start();
@@ -1834,9 +1831,8 @@ class CRSSerializerTest {
         String def = "+proj=stere +lat_0=90 +lat_ts=-90 +R=6371000 +no_defs";
         String serialized = CRSSerializer.toProjString(new Proj(def));
         assertFalse(serialized.contains("+lat_ts="), "opposite-pole lat_ts dropped: " + serialized);
-        String expectedScale = PROJECTION_PARITY_SEMANTICS_AVAILABLE
-            ? "+k_0=1.0" : "+k_0=0.0";
-        assertTrue(serialized.contains(expectedScale), "effective scale kept: " + serialized);
+        assertTrue(serialized.contains("+k_0=1.0"),
+            "effective scale kept: " + serialized);
 
         Point before = Proj4.proj4(src, def).forward(new Point(10, 80));
         Point after = Proj4.proj4(src, serialized).forward(new Point(10, 80));
@@ -2149,13 +2145,4 @@ class CRSSerializerTest {
             "the datum transform survives the +towgs84= round-trip");
     }
 
-    private static boolean detectProjectionParitySemantics() {
-        try {
-            Class.forName("org.datasyslab.proj4sedona.projection.ProjectionParams")
-                .getMethod("getK0OrDefault", double.class);
-            return true;
-        } catch (ReflectiveOperationException e) {
-            return false;
-        }
-    }
 }

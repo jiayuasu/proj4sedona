@@ -102,22 +102,13 @@ class CRSSerializerRoundTripSafetyTest {
         assertTrue(projString.contains("+proj=tmerc"), projString);
         assertTrue(projString.contains("+approx"), projString);
 
-        ProjectionRegistry.start();
-        if (!fastTransverseMercatorWkt1Available()) {
-            // Standalone on main: the WKT alias is not executable, so no standard
-            // exporter may silently turn the approximate operation into exact TM.
-            assertAllStandardsReject(approximate);
-        } else {
-            // When the independent projection parity update is also present, WKT1
-            // gains an executable method alias. WKT2 and PROJJSON still have none.
-            String wkt1 = CRSSerializer.toWkt1(approximate);
-            assertTrue(wkt1.contains("PROJECTION[\"Fast_Transverse_Mercator\"]"), wkt1);
-            assertDoesNotThrow(() -> new Proj(wkt1));
-            assertThrows(UnsupportedOperationException.class,
-                () -> CRSSerializer.toWkt2(approximate));
-            assertThrows(UnsupportedOperationException.class,
-                () -> CRSSerializer.toProjJson(approximate));
-        }
+        String wkt1 = CRSSerializer.toWkt1(approximate);
+        assertTrue(wkt1.contains("PROJECTION[\"Fast_Transverse_Mercator\"]"), wkt1);
+        assertDoesNotThrow(() -> new Proj(wkt1));
+        assertThrows(UnsupportedOperationException.class,
+            () -> CRSSerializer.toWkt2(approximate));
+        assertThrows(UnsupportedOperationException.class,
+            () -> CRSSerializer.toProjJson(approximate));
     }
 
     @Test
@@ -367,14 +358,4 @@ class CRSSerializerRoundTripSafetyTest {
         assertThrows(UnsupportedOperationException.class, () -> CRSSerializer.toProjJson(proj));
     }
 
-    private static boolean fastTransverseMercatorWkt1Available() {
-        try {
-            return Proj.class.getClassLoader()
-                    .loadClass("org.datasyslab.proj4sedona.projection.ProjectionParams")
-                    .getMethod("getK0OrDefault", double.class) != null
-                && ProjectionRegistry.get("Fast_Transverse_Mercator") != null;
-        } catch (ReflectiveOperationException e) {
-            return false;
-        }
-    }
 }

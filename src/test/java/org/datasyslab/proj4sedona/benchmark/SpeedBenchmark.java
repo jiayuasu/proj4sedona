@@ -42,9 +42,6 @@ public class SpeedBenchmark {
     private static final double ROBINSON_TOLERANCE = 0.5;     // meters
     /** WKT normalization is deliberately stable to one nanodegree. */
     private static final double ANGLE_SEMANTIC_TOLERANCE = Math.toRadians(1e-9);
-    private static final boolean PROJECTION_PARITY_SEMANTICS_AVAILABLE =
-        detectProjectionParitySemantics();
-
     private static final Map<String, String> TRANSFORM_SKIPS;
     private static final Map<String, String> GRID_SKIPS;
     private static final Set<String> PROJECTION_TOLERANCE_OVERRIDES;
@@ -650,19 +647,14 @@ public class SpeedBenchmark {
 
     private static double effectiveLatitudeOfTrueScale(
             String method, ProjectionParams params) {
-        if (projectionParitySemanticsAvailable()) {
-            if ("eqc".equals(method)) {
-                return params.latTs == null || params.latTs == 0.0
-                        || Double.isNaN(params.latTs) ? 0.0 : params.latTs;
-            }
-            if ("cea".equals(method)
-                    && (params.latTs == null
-                        || (!params.sphere && !Double.isFinite(params.latTs)))) {
-                return 0.0;
-            }
-        } else if (("cea".equals(method) || "eqc".equals(method))
-                && params.latTs == null) {
-            return params.getLatTs();
+        if ("eqc".equals(method)) {
+            return params.latTs == null || params.latTs == 0.0
+                    || Double.isNaN(params.latTs) ? 0.0 : params.latTs;
+        }
+        if ("cea".equals(method)
+                && (params.latTs == null
+                    || (!params.sphere && !Double.isFinite(params.latTs)))) {
+            return 0.0;
         }
         return valueOrZero(params.latTs);
     }
@@ -670,33 +662,27 @@ public class SpeedBenchmark {
     private static double effectiveScaleFactor(String method, ProjectionParams params) {
         String baseMethod = method == null ? null : method.replace(":approx", "");
         if ("merc".equals(baseMethod)) {
-            boolean derives = projectionParitySemanticsAvailable()
-                ? params.latTs != null && params.latTs != 0.0
-                    && !Double.isNaN(params.latTs)
-                : params.latTs != null;
+            boolean derives = params.latTs != null && params.latTs != 0.0
+                && !Double.isNaN(params.latTs);
             if (!derives) {
-                return projectionParitySemanticsAvailable()
-                    ? defaultScaleOne(params.k0) : params.k0;
+                return defaultScaleOne(params.k0);
             }
             double sin = Math.sin(params.latTs);
             double cos = Math.cos(params.latTs);
             if (params.sphere) {
-                return projectionParitySemanticsAvailable()
-                    ? defaultScaleOne(cos) : cos;
+                return defaultScaleOne(cos);
             }
             double ratio = params.b / params.a;
             double eccentricity = Math.sqrt(1.0 - ratio * ratio);
             double scale = ProjMath.msfnz(eccentricity, sin, cos);
-            return projectionParitySemanticsAvailable()
-                ? defaultScaleOne(scale) : scale;
+            return defaultScaleOne(scale);
         }
         if ("stere".equals(baseMethod)) {
             double scale = params.k0;
             double lat0 = params.getLat0();
             boolean derives = params.latTs != null
                 && Math.abs(Math.cos(lat0)) <= Values.EPSLN
-                && (projectionParitySemanticsAvailable()
-                    ? !Double.isNaN(params.latTs) : scale == 1.0);
+                && !Double.isNaN(params.latTs);
             if (derives) {
                 if (params.sphere) {
                     scale = 0.5 * (1.0 + ProjMath.sign(lat0) * Math.sin(params.latTs));
@@ -712,8 +698,7 @@ public class SpeedBenchmark {
                             pole * Math.sin(params.latTs));
                 }
             }
-            return projectionParitySemanticsAvailable()
-                ? defaultScaleOne(scale) : scale;
+            return defaultScaleOne(scale);
         }
         if ("krovak".equals(baseMethod)) {
             return Krovak.resolveScaleFactor(params);
@@ -725,27 +710,13 @@ public class SpeedBenchmark {
                 || "omerc".equals(baseMethod) || "somerc".equals(baseMethod)
                 || "sterea".equals(baseMethod) || "gnom".equals(baseMethod)
                 || "tmerc:approx".equals(method)) {
-            return projectionParitySemanticsAvailable()
-                ? defaultScaleOne(params.k0) : params.k0;
+            return defaultScaleOne(params.k0);
         }
         return params.k0;
     }
 
     private static double defaultScaleOne(double scale) {
         return scale == 0.0 || Double.isNaN(scale) ? 1.0 : scale;
-    }
-
-    private static boolean projectionParitySemanticsAvailable() {
-        return PROJECTION_PARITY_SEMANTICS_AVAILABLE;
-    }
-
-    private static boolean detectProjectionParitySemantics() {
-        try {
-            ProjectionParams.class.getMethod("getK0OrDefault", double.class);
-            return true;
-        } catch (NoSuchMethodException e) {
-            return false;
-        }
     }
 
     private static boolean isFastTransverseMercatorName(String projectionName) {
@@ -764,17 +735,12 @@ public class SpeedBenchmark {
                 : ProjectionRegistry.getNormalizedProjName(
                     params.projName.toLowerCase(Locale.ROOT));
         }
-        String sourceCode = code;
         // UTM is a constrained Transverse Mercator conversion in WKT and PROJJSON.
         if ("utm".equals(code)) {
             code = "tmerc";
         }
         boolean approximate = Boolean.TRUE.equals(params.approx)
-            || isFastTransverseMercatorName(params.projName)
-            || (!projectionParitySemanticsAvailable()
-                && ("tmerc".equals(sourceCode) || "etmerc".equals(sourceCode)
-                    || "utm".equals(sourceCode))
-                && (!Double.isFinite(params.es) || params.es <= 0.0));
+            || isFastTransverseMercatorName(params.projName);
         if ("tmerc".equals(code) && approximate) {
             return "tmerc:approx";
         }

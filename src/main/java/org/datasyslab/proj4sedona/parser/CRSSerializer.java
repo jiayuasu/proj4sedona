@@ -43,8 +43,6 @@ public final class CRSSerializer {
     private static final double RAD_TO_DEG = 180.0 / Math.PI;
     private static final double DEG_TO_RAD = Math.PI / 180.0;
     private static final String DEG_TO_RAD_STR = Double.toString(DEG_TO_RAD);
-    private static final boolean PROJECTION_PARITY_SEMANTICS_AVAILABLE =
-        detectProjectionParitySemantics();
 
     // Projection name mappings: PROJ -> WKT method names (short/generic names)
     private static final Map<String, String> PROJ_TO_WKT_METHOD = new LinkedHashMap<>();
@@ -577,8 +575,8 @@ public final class CRSSerializer {
         // Projection
         String methodName;
         if (isApproximateTransverseMercator(proj, params)) {
-            // This path is admitted only when the runtime projection registry can
-            // execute the Fast_Transverse_Mercator alias (see the preflight gate).
+            // ExtendedTransverseMercator registers this built-in WKT1 method, so it
+            // preserves the traditional approximate algorithm without a runtime probe.
             methodName = "Fast_Transverse_Mercator";
         } else if ("krovak".equals(proj)) {
             // WKT1 uses the legacy Krovak method for either axis orientation; WKT2
@@ -2507,24 +2505,15 @@ public final class CRSSerializer {
     /** Return the latitude of true scale actually consumed by the runtime projection. */
     private static Double latitudeOfTrueScaleForSerialization(
             String proj, ProjectionParams params) {
-        if (projectionParitySemanticsAvailable()) {
-            if ("eqc".equals(proj)) {
-                // The projection parity update follows JavaScript's lat_ts || 0.
-                return params.latTs == null || params.latTs == 0.0
-                        || Double.isNaN(params.latTs) ? 0.0 : params.latTs;
-            }
-            if ("cea".equals(proj)
-                    && (params.latTs == null
-                        || (!params.sphere && !Double.isFinite(params.latTs)))) {
-                return 0.0;
-            }
-        } else if (("eqc".equals(proj) || "cea".equals(proj))
-                && params.latTs == null) {
-            // On the main branch both projections call getLatTs(), which inherits
-            // lat_0 when lat_ts is absent. Keep this standalone exporter faithful to
-            // that initialized behavior; the feature check switches automatically
-            // when the projection parity update is present.
-            return params.getLatTs();
+        if ("eqc".equals(proj)) {
+            // Equidistant Cylindrical follows JavaScript's lat_ts || 0.
+            return params.latTs == null || params.latTs == 0.0
+                    || Double.isNaN(params.latTs) ? 0.0 : params.latTs;
+        }
+        if ("cea".equals(proj)
+                && (params.latTs == null
+                    || (!params.sphere && !Double.isFinite(params.latTs)))) {
+            return 0.0;
         }
         return params.latTs;
     }
@@ -2571,11 +2560,10 @@ public final class CRSSerializer {
         if ("utm".equals(proj)) {
             return 0.9996;
         }
-        if (projectionParitySemanticsAvailable()
-                && ("gstmerc".equals(proj) || "omerc".equals(proj)
-                    || "somerc".equals(proj) || "lcc".equals(proj)
-                    || "sterea".equals(proj) || "gnom".equals(proj)
-                    || isApproximateTransverseMercator(proj, params))) {
+        if ("gstmerc".equals(proj) || "omerc".equals(proj)
+                || "somerc".equals(proj) || "lcc".equals(proj)
+                || "sterea".equals(proj) || "gnom".equals(proj)
+                || isApproximateTransverseMercator(proj, params)) {
             return defaultScaleOne(params.k0);
         }
         return params.k0;
@@ -2585,21 +2573,14 @@ public final class CRSSerializer {
         if (!"merc".equals(proj) || params.latTs == null) {
             return false;
         }
-        // Main currently lets any supplied value drive Mercator.init. The numerical
-        // parity update follows proj4js truthiness and only treats finite, non-zero
-        // lat_ts as the standard-parallel form.
-        return !projectionParitySemanticsAvailable()
-            || (params.latTs != 0.0 && Double.isFinite(params.latTs));
+        return params.latTs != 0.0 && Double.isFinite(params.latTs);
     }
 
     private static double effectiveMercatorScale(ProjectionParams params) {
         Double latTs = params.latTs;
-        boolean derives = projectionParitySemanticsAvailable()
-            ? latTs != null && latTs != 0.0 && !Double.isNaN(latTs)
-            : latTs != null;
+        boolean derives = latTs != null && latTs != 0.0 && !Double.isNaN(latTs);
         if (!derives) {
-            return projectionParitySemanticsAvailable()
-                ? defaultScaleOne(params.k0) : params.k0;
+            return defaultScaleOne(params.k0);
         }
 
         double scale;
@@ -2612,7 +2593,7 @@ public final class CRSSerializer {
             scale = ProjMath.msfnz(
                 eccentricity, Math.sin(latTs), Math.cos(latTs));
         }
-        return projectionParitySemanticsAvailable() ? defaultScaleOne(scale) : scale;
+        return defaultScaleOne(scale);
     }
 
     private static double effectiveStereographicScale(ProjectionParams params) {
@@ -2634,7 +2615,7 @@ public final class CRSSerializer {
                         eccentricity, pole * latTs, pole * Math.sin(latTs));
             }
         }
-        return projectionParitySemanticsAvailable() ? defaultScaleOne(scale) : scale;
+        return defaultScaleOne(scale);
     }
 
     private static double defaultScaleOne(double scale) {
@@ -2694,14 +2675,10 @@ public final class CRSSerializer {
         if (Boolean.TRUE.equals(params.approx) && !approximateTransverseMercator) {
             throw unsupportedStandardParameter("+approx cannot be represented losslessly");
         }
-        if (approximateTransverseMercator) {
-            boolean executableFastWkt1 = format == StandardFormat.WKT1
-                && fastTransverseMercatorWkt1Available();
-            if (!executableFastWkt1) {
-                throw unsupportedStandardParameter(
-                    "Approximate Transverse Mercator has no executable "
-                        + formatName(format) + " representation");
-            }
+        if (approximateTransverseMercator && format != StandardFormat.WKT1) {
+            throw unsupportedStandardParameter(
+                "Approximate Transverse Mercator has no executable "
+                    + formatName(format) + " representation");
         }
         if (params.a > 0.0 && params.b <= 0.0 && !"vandg".equals(proj)) {
             throw unsupportedStandardParameter(
@@ -2904,54 +2881,17 @@ public final class CRSSerializer {
         return false;
     }
 
-    /**
-     * Whether the independent numerical parity update is on the runtime classpath.
-     * Its scale-default helper is a stable, non-spoofable capability marker, unlike a
-     * projection alias that an application can register itself.
-     */
-    private static boolean projectionParitySemanticsAvailable() {
-        return PROJECTION_PARITY_SEMANTICS_AVAILABLE;
-    }
-
-    private static boolean detectProjectionParitySemantics() {
-        // TODO: This reflection-based dual-mode bridge is transitional. Remove the
-        // capability probe and its branches once projection parity semantics are a
-        // permanent dependency; a future helper rename must not silently select legacy
-        // serializer behavior.
-        try {
-            ProjectionParams.class.getMethod("getK0OrDefault", double.class);
-            return true;
-        } catch (NoSuchMethodException e) {
-            return false;
-        }
-    }
-
-    private static boolean fastTransverseMercatorWkt1Available() {
-        if (!projectionParitySemanticsAvailable()) {
-            return false;
-        }
-        ProjectionRegistry.start();
-        return ProjectionRegistry.get("Fast_Transverse_Mercator") != null;
-    }
-
     private static boolean isApproximateTransverseMercator(
             String proj, ProjectionParams params) {
         boolean explicitlyApproximate = Boolean.TRUE.equals(params.approx)
             || isFastTransverseMercatorName(params.projName);
         if ("utm".equals(proj)) {
-            return explicitlyApproximate || (!projectionParitySemanticsAvailable()
-                && (!Double.isFinite(params.es) || params.es <= 0.0));
+            return explicitlyApproximate;
         }
         if (!"etmerc".equals(proj) && !"tmerc".equals(proj)) {
             return false;
         }
-        if (explicitlyApproximate) {
-            return true;
-        }
-        // Before the numerical parity update, spherical ETMERC silently falls back
-        // to the traditional implementation. Preserve that standalone behavior.
-        return !projectionParitySemanticsAvailable()
-            && (!Double.isFinite(params.es) || params.es <= 0.0);
+        return explicitlyApproximate;
     }
 
     private static boolean isFastTransverseMercatorName(String projectionName) {
@@ -3002,11 +2942,7 @@ public final class CRSSerializer {
         if (!isPolarStereographic(proj, params) || params.latTs == null) {
             return false;
         }
-        if (projectionParitySemanticsAvailable()) {
-            return !Double.isNaN(params.latTs)
-                && (params.sphere || Math.abs(Math.cos(params.latTs)) > Values.EPSLN);
-        }
-        return params.k0 == 1.0
+        return !Double.isNaN(params.latTs)
             && (params.sphere || Math.abs(Math.cos(params.latTs)) > Values.EPSLN);
     }
 
