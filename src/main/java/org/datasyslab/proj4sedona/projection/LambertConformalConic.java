@@ -38,7 +38,7 @@ public class LambertConformalConic implements Projection {
         this.lat1 = params.getLat1();
         this.lat2 = params.getLat2();
         this.long0 = params.getLong0();
-        this.k0 = params.k0;
+        this.k0 = params.getK0OrDefault(1.0);
         this.x0 = params.x0;
         this.y0 = params.y0;
         this.over = params.over;

@@ -54,7 +54,7 @@ public class Krovak implements Projection {
         // Krovak supplies a projection-specific 0.9999 default. Preserve an explicit
         // +k/+k_0=1; current proj4js moved its generic scale-one default until after
         // projection initialization for exactly this distinction (71b4ffc).
-        this.k0 = !params.k0Specified || params.k0 == 0 ? 0.9999 : params.k0;
+        this.k0 = resolveScaleFactor(params);
         // proj4js's krovak ignores +x_0/+y_0; this codebase applies offsets in the
         // projection (Transform does not), and PROJ/pyproj apply them, so apply them here.
         this.x0 = params.x0;
@@ -74,6 +74,13 @@ public class Krovak implements Projection {
         this.n = Math.sin(this.s0);
         this.ro0 = this.k0 * this.n0 / Math.tan(this.s0);
         this.ad = s90 - uq;
+    }
+
+    /** Resolve Krovak's projection-specific scale default, including direct callers. */
+    public static double resolveScaleFactor(ProjectionParams params) {
+        boolean scaleSupplied = params.k0Specified || params.k0 != 1.0;
+        return !scaleSupplied || params.k0 == 0 || Double.isNaN(params.k0)
+            ? 0.9999 : params.k0;
     }
 
     @Override

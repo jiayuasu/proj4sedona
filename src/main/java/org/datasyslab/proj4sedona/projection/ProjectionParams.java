@@ -95,6 +95,14 @@ public class ProjectionParams {
 
     /** Whether the source definition explicitly supplied +k_0/+k (including 1.0). */
     public boolean k0Specified;
+
+    /**
+     * Resolve a projection-local scale default using JavaScript numeric truthiness.
+     * Current proj4js treats zero and NaN as absent when applying these defaults.
+     */
+    public double getK0OrDefault(double defaultValue) {
+        return k0 == 0.0 || Double.isNaN(k0) ? defaultValue : k0;
+    }
     
     /** False easting in projection units (+x_0), defaults to 0.0 */
     public double x0 = 0.0;
@@ -227,6 +235,9 @@ public class ProjectionParams {
 
     /**
      * Get second standard parallel (lat2), defaulting to lat1 if not set.
+     * An explicit zero is preserved. This intentionally follows PROJ rather than
+     * proj4js's truthy {@code lat2 || lat1} fallback, which loses an equatorial
+     * second standard parallel.
      * @return Second standard parallel in radians
      */
     public double getLat2() {

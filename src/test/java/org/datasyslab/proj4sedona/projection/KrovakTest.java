@@ -113,6 +113,26 @@ class KrovakTest {
     }
 
     @Test
+    void testDirectParamsNonDefaultScaleIsPreserved() {
+        ProjectionParams params = new ProjectionParams();
+        params.lat0 = 49.5 * Math.PI / 180;
+        params.long0 = 24.83333333333333 * Math.PI / 180;
+        params.k0 = 0.5;
+        // Callers constructing ProjectionParams directly predate k0Specified. A
+        // non-default value is still explicit even when that presence flag is false.
+        assertFalse(params.k0Specified);
+
+        Krovak direct = new Krovak();
+        direct.init(params);
+        Point actual = direct.forward(new Point(14.42 * Math.PI / 180, 50.08 * Math.PI / 180));
+        Point expected = new Proj(KROVAK_NO_SCALE + " +k=0.5")
+            .forward(new Point(14.42 * Math.PI / 180, 50.08 * Math.PI / 180));
+
+        assertEquals(expected.x, actual.x, 1e-8);
+        assertEquals(expected.y, actual.y, 1e-8);
+    }
+
+    @Test
     void testExplicitScaleOneSerializationRoundTrip() {
         Proj original = new Proj(KROVAK_NO_SCALE + " +k=1");
         Point input = new Point(14.42 * Math.PI / 180, 50.08 * Math.PI / 180);

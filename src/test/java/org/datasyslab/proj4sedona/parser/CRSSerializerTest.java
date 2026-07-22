@@ -484,6 +484,20 @@ class CRSSerializerTest {
     }
 
     @Test
+    @DisplayName("toProjJson: coordinate axes include required abbreviations")
+    void testToProjJsonAxisAbbreviations() {
+        String geographic = CRSSerializer.toProjJson(new Proj("EPSG:4326"), false);
+        assertTrue(geographic.contains("\"abbreviation\":\"Lat\""), geographic);
+        assertTrue(geographic.contains("\"abbreviation\":\"Lon\""), geographic);
+
+        String projected = CRSSerializer.toProjJson(new Proj(
+            "+proj=merc +lon_0=0 +k=0.5 +ellps=WGS84 +units=m +no_defs"), false);
+        assertTrue(projected.contains("\"abbreviation\":\"E\""), projected);
+        assertTrue(projected.contains("\"abbreviation\":\"N\""), projected);
+        assertTrue(projected.contains("\"unit\":\"unity\""), projected);
+    }
+
+    @Test
     @DisplayName("toProjJson: Projected CRS")
     void testToProjJsonProjected() {
         Proj proj = new Proj("EPSG:32610");
@@ -923,10 +937,12 @@ class CRSSerializerTest {
         // Export to WKT1
         String wkt1 = CRSSerializer.toWkt1(proj);
         assertNotNull(wkt1);
-        // WKT1 should contain standard_parallel_1 with -71
-        assertTrue(wkt1.contains("standard_parallel_1") || wkt1.contains("Standard_Parallel_1"),
-                "WKT1 should contain standard_parallel_1 parameter");
-        assertTrue(wkt1.contains("-71"), "WKT1 should preserve lat_ts value of -71");
+        // Canonical WKT1 expresses EPSG variant B through Polar_Stereographic with
+        // latitude_of_origin set to the standard parallel.
+        assertTrue(wkt1.contains("PROJECTION[\"Polar_Stereographic\"]"), wkt1);
+        assertTrue(wkt1.contains("PARAMETER[\"latitude_of_origin\",-71"), wkt1);
+        assertFalse(wkt1.contains("standard_parallel"), wkt1);
+        assertFalse(wkt1.contains("scale_factor"), wkt1);
 
         // Re-import and re-export to PROJ
         Proj reimported = new Proj(wkt1);
@@ -1814,22 +1830,109 @@ class CRSSerializerTest {
     }
 
     @Test
-    @DisplayName("Opposite-pole spherical lat_ts is preserved (derives a different scale)")
-    void testPolarStereoOppositePoleLatTsPreserved() {
-        // +proj=stere +lat_0=90 +lat_ts=-90 derives k=0 (degenerate zero-scale), unlike
-        // lat_ts=+90 which derives k=1. Dropping lat_ts here (treating it as the
-        // same-pole degenerate case) would silently change the transform — so it must
-        // stay variant B with lat_ts preserved. Regression compares the forward result
-        // before and after a proj-string round trip.
+    @DisplayName("Spherical polar stereographic lets lat_ts at the pole override k")
+    void testSphericalPolarStereoPoleLatTsPrecedence() {
+        assertPolarStereoProjRoundTrip(
+            "+proj=stere +lat_0=90 +lat_ts=90 +k=0.5 +R=6371000 +no_defs",
+            "+k_0=1.0", "+lat_ts=");
+    }
+
+    @Test
+    @DisplayName("Ellipsoidal polar stereographic keeps k when lat_ts is at a pole")
+    void testEllipsoidalPolarStereoPoleScalePrecedence() {
+        assertPolarStereoProjRoundTrip(
+            "+proj=stere +lat_0=90 +lat_ts=-90 +k=0.5 +ellps=WGS84 +no_defs",
+            "+k_0=0.5", "+lat_ts=");
+    }
+
+    @Test
+    @DisplayName("Ellipsoidal polar stereographic preserves a zero lat_ts")
+    void testEllipsoidalPolarStereoZeroLatTsPrecedence() {
+        assertPolarStereoProjRoundTrip(
+            "+proj=stere +lat_0=90 +lat_ts=0 +k=0.5 +ellps=WGS84 +no_defs",
+            "+k_0=0.5016782776246579", "+lat_ts=");
+    }
+
+    private static void assertPolarStereoProjRoundTrip(
+            String definition, String requiredToken, String forbiddenToken) {
+        Proj original = new Proj(definition);
+        String serialized = CRSSerializer.toProjString(original);
+        assertTrue(serialized.contains(requiredToken), serialized);
+        assertFalse(serialized.contains(forbiddenToken), serialized);
+
+        Point input = new Point(10 * Math.PI / 180, 80 * Math.PI / 180);
+        Point expected = original.forward(new Point(input.x, input.y));
+        assertTrue(Double.isFinite(expected.x) && Double.isFinite(expected.y), definition);
+        String[] standardFormats = {
+            CRSSerializer.toWkt1(original),
+            CRSSerializer.toWkt2(original),
+            CRSSerializer.toProjJson(original)
+        };
+        String compactJson = standardFormats[2].replaceAll("\\s+", "");
+        assertTrue(compactJson.contains("\"abbreviation\":\"E\""), standardFormats[2]);
+        assertTrue(compactJson.contains("\"abbreviation\":\"N\""), standardFormats[2]);
+        assertTrue(compactJson.contains("\"unit\":\"unity\""), standardFormats[2]);
+        for (String standardFormat : standardFormats) {
+            String lower = standardFormat.toLowerCase();
+            assertTrue(standardFormat.contains("Polar Stereographic (variant A)"), standardFormat);
+            assertTrue(lower.contains("scale_factor") || lower.contains("scale factor"), standardFormat);
+            assertFalse(lower.contains("standard_parallel") || lower.contains("standard parallel"),
+                standardFormat);
+        }
+        for (String roundTrip : new String[] {
+                serialized, standardFormats[0], standardFormats[1], standardFormats[2]}) {
+            Point actual = new Proj(roundTrip).forward(new Point(input.x, input.y));
+            assertEquals(expected.x, actual.x, 1e-7, "x after round trip: " + roundTrip);
+            assertEquals(expected.y, actual.y, 1e-7, "y after round trip: " + roundTrip);
+        }
+    }
+
+    @Test
+    @DisplayName("Opposite-pole spherical lat_ts serializes as effective variant A")
+    void testPolarStereoOppositePoleLatTsUsesEffectiveScale() {
+        // On a sphere, supplied lat_ts is the defining parameter even at either pole.
+        // The derived zero for the opposite pole is subsequently normalized by Proj's
+        // generic scale-one fallback, but serializer precedence must still mirror init.
         String src = "+proj=longlat +R=6371000 +no_defs";
         String def = "+proj=stere +lat_0=90 +lat_ts=-90 +R=6371000 +no_defs";
         String serialized = CRSSerializer.toProjString(new Proj(def));
-        assertTrue(serialized.contains("+lat_ts=-90"), "opposite-pole lat_ts kept: " + serialized);
+        assertFalse(serialized.contains("+lat_ts="), "opposite-pole lat_ts dropped: " + serialized);
+        assertTrue(serialized.contains("+k_0=1.0"), "effective scale kept: " + serialized);
 
         Point before = Proj4.proj4(src, def).forward(new Point(10, 80));
         Point after = Proj4.proj4(src, serialized).forward(new Point(10, 80));
         assertEquals(before.x, after.x, 1e-6, "x unchanged by serialization");
         assertEquals(before.y, after.y, 1e-6, "y unchanged by serialization");
+    }
+
+    @Test
+    @DisplayName("Opposite-hemisphere standard parallel serializes as effective variant A")
+    void testPolarStereoOppositeHemisphereLatTsUsesEffectiveScale() {
+        assertPolarStereoProjRoundTrip(
+            "+proj=stere +lat_0=90 +lat_ts=-70 +k=0.5 +ellps=WGS84 +no_defs",
+            "+k_0=", "+lat_ts=");
+    }
+
+    @Test
+    @DisplayName("Explicit zero polar scale serializes as the effective scale one")
+    void testPolarStereoExplicitZeroSerializesScaleOne() {
+        Proj projection = new Proj(
+            "+proj=stere +lat_0=90 +k=0 +ellps=WGS84 +units=m +no_defs");
+        String serialized = CRSSerializer.toProjString(projection);
+        assertTrue(serialized.contains("+k_0=1.0"), serialized);
+        assertFalse(serialized.contains("+k_0=0.0"), serialized);
+    }
+
+    @Test
+    @DisplayName("Omitted polar scale serializes as an explicit variant-A scale one")
+    void testPolarStereoOmittedScaleSerializesScaleOne() {
+        Proj projection = new Proj(
+            "+proj=stere +lat_0=90 +ellps=WGS84 +units=m +no_defs");
+        String serialized = CRSSerializer.toProjString(projection);
+        assertTrue(serialized.contains("+k_0=1.0"), serialized);
+        assertTrue(CRSSerializer.toWkt1(projection).contains("scale_factor"));
+        assertTrue(CRSSerializer.toWkt2(projection).contains("Scale factor at natural origin"));
+        assertTrue(CRSSerializer.toProjJson(projection).contains("Scale factor at natural origin"));
     }
 
     @Test
@@ -1845,9 +1948,22 @@ class CRSSerializerTest {
         assertFalse(proj.contains("+k_0="), "variant B has no scale factor: " + proj);
 
         String wkt1 = CRSSerializer.toWkt1(p);
-        assertTrue(wkt1.contains("Polar Stereographic (variant B)"), wkt1);
-        assertTrue(wkt1.contains("standard_parallel"), wkt1);
+        assertTrue(wkt1.contains("PROJECTION[\"Polar_Stereographic\"]"), wkt1);
+        assertTrue(wkt1.contains("PARAMETER[\"latitude_of_origin\",-71"), wkt1);
+        assertFalse(wkt1.contains("standard_parallel"), wkt1);
         assertFalse(wkt1.contains("scale_factor"), wkt1);
+
+        String wkt2 = CRSSerializer.toWkt2(p);
+        assertTrue(wkt2.contains("Polar Stereographic (variant B)"), wkt2);
+        assertFalse(wkt2.contains("Latitude of natural origin"), wkt2);
+        assertTrue(wkt2.contains("Latitude of standard parallel"), wkt2);
+        assertTrue(wkt2.contains("Longitude of origin"), wkt2);
+
+        String projJson = CRSSerializer.toProjJson(p);
+        assertTrue(projJson.contains("Polar Stereographic (variant B)"), projJson);
+        assertFalse(projJson.contains("Latitude of natural origin"), projJson);
+        assertTrue(projJson.contains("Latitude of standard parallel"), projJson);
+        assertTrue(projJson.contains("Longitude of origin"), projJson);
     }
 
     // ========== Datum token normalization (issue #98) ==========

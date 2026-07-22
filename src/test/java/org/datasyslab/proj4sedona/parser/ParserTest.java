@@ -394,6 +394,7 @@ class ParserTest {
         assertEquals(0, def.getLatTs(), DELTA);
         assertEquals(0, def.getLong0(), DELTA);
         assertEquals(1.0, def.getK0(), DELTA);
+        assertTrue(def.isK0Specified());
     }
 
     // ========== Scientific Notation Tests ==========

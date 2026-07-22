@@ -69,7 +69,16 @@ public final class DeriveConstants {
             rfVal = ellipsoidParams[2];
         } else {
             aVal = a;
-            bVal = b != null ? b : 0;
+            // PROJ treats +a without +b/+rf as spherical shorthand. Current
+            // proj4js happens to carry b=undefined/es=NaN, which selects the same
+            // spherical traditional-TM path but leaves other consumers with
+            // unusable axes. Prefer the executable, serializable PROJ semantics.
+            if (b == null && rf == null) {
+                bVal = aVal;
+                isSphere = true;
+            } else {
+                bVal = b != null ? b : 0;
+            }
             rfVal = rf;
         }
 

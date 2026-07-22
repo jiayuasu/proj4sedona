@@ -40,7 +40,9 @@ public class CylindricalEqualArea implements Projection {
         this.es = params.es;
         this.e = Math.sqrt(es);
         this.lat0 = params.getLat0();
-        this.latTs = params.getLatTs();
+        // CEA reads lat_ts directly upstream; lat_0 is not a fallback true-scale
+        // latitude. Omission therefore means the equator.
+        this.latTs = params.latTs != null ? params.latTs : 0.0;
         this.long0 = params.getLong0();
         this.x0 = params.x0;
         this.y0 = params.y0;
@@ -51,6 +53,12 @@ public class CylindricalEqualArea implements Projection {
             k0 = Math.cos(latTs);
         } else {
             k0 = ProjMath.msfnz(e, Math.sin(latTs), Math.cos(latTs));
+            // Proj applies its generic JavaScript-falsy scale fallback after init.
+            // The spherical formulas use cos(lat_ts) directly upstream, so only the
+            // ellipsoidal derived k0 follows this normalization.
+            if (k0 == 0.0 || Double.isNaN(k0)) {
+                k0 = 1.0;
+            }
             qp = ProjMath.qsfnz(e, 1);
             apa = authset(es);
         }
