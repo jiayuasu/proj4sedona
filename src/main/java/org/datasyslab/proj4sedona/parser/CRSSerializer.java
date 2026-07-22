@@ -9,6 +9,7 @@ import org.datasyslab.proj4sedona.constants.Values;
 import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.defs.Defs;
+import org.datasyslab.proj4sedona.projection.EquidistantCylindrical;
 import org.datasyslab.proj4sedona.projection.ProjectionParams;
 import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
 
@@ -263,8 +264,9 @@ public final class CRSSerializer {
         // lat_ts and a k_0 is contradictory and breaks the round trip.
         boolean polarStereoVariantA = isPolarStereographic(normProj, params)
                 && !isPolarStereographicVariantB(normProj, params);
-        if (params.latTs != null && params.latTs != 0.0 && !polarStereoVariantA) {
-            sb.append(" +lat_ts=").append(formatAngle(params.latTs * RAD_TO_DEG));
+        Double latTs = latitudeOfTrueScaleForSerialization(normProj, params);
+        if (latTs != null && latTs != 0.0 && !polarStereoVariantA) {
+            sb.append(" +lat_ts=").append(formatAngle(latTs * RAD_TO_DEG));
         }
 
         // Scale factor
@@ -587,7 +589,8 @@ public final class CRSSerializer {
         } else if (usesLatTsAsStandardParallel(proj, params)) {
             // Projections using latTs: emit it as standard_parallel_1
             sb.append(",PARAMETER[\"standard_parallel_1\",");
-            sb.append(formatAngle(params.latTs * RAD_TO_DEG)).append("]");
+            sb.append(formatAngle(latitudeOfTrueScaleForSerialization(proj, params)
+                * RAD_TO_DEG)).append("]");
         } else if (usesStandardParallels(proj)) {
             if (params.lat1 != null) {
                 sb.append(",PARAMETER[\"standard_parallel_1\",");
@@ -824,7 +827,8 @@ public final class CRSSerializer {
                     ? "Latitude of standard parallel"
                     : "Latitude of 1st standard parallel";
             sb.append(",PARAMETER[\"" + paramName + "\",");
-            sb.append(formatAngle(params.latTs * RAD_TO_DEG));
+            sb.append(formatAngle(latitudeOfTrueScaleForSerialization(proj, params)
+                * RAD_TO_DEG));
             sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
         } else if (usesStandardParallels(proj)) {
             if (params.lat1 != null) {
@@ -1123,7 +1127,7 @@ public final class CRSSerializer {
                     ? "Latitude of standard parallel"
                     : "Latitude of 1st standard parallel";
             parameters.add(buildProjJsonParam(paramName, 
-                params.latTs * RAD_TO_DEG, "degree"));
+                latitudeOfTrueScaleForSerialization(proj, params) * RAD_TO_DEG, "degree"));
         } else if (usesStandardParallels(proj)) {
             if (params.lat1 != null) {
                 parameters.add(buildProjJsonParam("Latitude of 1st standard parallel", 
@@ -2041,13 +2045,29 @@ public final class CRSSerializer {
      * @param proj pre-normalized projection short name (from normalizeProjName)
      */
     private static boolean usesLatTsAsStandardParallel(String proj, ProjectionParams params) {
-        if (params.latTs == null) return false;
+        if (latitudeOfTrueScaleForSerialization(proj, params) == null) return false;
         if ("merc".equals(proj) || "cea".equals(proj) || "eqc".equals(proj)) {
             return true;
         }
         // Polar Stereographic carries latTs as the standard parallel only in variant B;
         // variant A is defined by the scale factor and emits no standard parallel.
         return isPolarStereographicVariantB(proj, params);
+    }
+
+    /**
+     * Return the effective latitude of true scale for serialization. EQC mirrors
+     * proj4js's {@code lat_ts || 0}; its effective zero is retained for WKT/PROJJSON
+     * so parsers do not incorrectly inherit a nonzero natural origin as lat_ts.
+     */
+    private static Double latitudeOfTrueScaleForSerialization(
+            String proj, ProjectionParams params) {
+        if ("eqc".equals(proj)) {
+            // Keep an explicit zero in WKT/PROJJSON. Their parser otherwise infers
+            // lat_ts from a nonzero natural origin, even though EQC defaults the two
+            // parameters independently. PROJ strings can still omit the zero below.
+            return EquidistantCylindrical.resolveLatitudeOfTrueScale(params.latTs);
+        }
+        return params.latTs;
     }
 
     /** Emit non-default scales and an explicitly supplied scale of exactly one. */
