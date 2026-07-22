@@ -12,9 +12,6 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Integration coverage where serialization depends on projection initialization. */
 class CRSSerializerProjectionSemanticsTest {
 
-    private static final boolean PROJECTION_PARITY_SEMANTICS_AVAILABLE =
-        detectProjectionParitySemantics();
-
     @BeforeAll
     static void setup() {
         ProjectionRegistry.start();
@@ -50,14 +47,9 @@ class CRSSerializerProjectionSemanticsTest {
         assertPointEquals(expected, project(new Proj(projString), 20.0, 50.0),
             1e-8, projString);
 
-        if (fastTransverseMercatorWkt1Available()) {
-            String wkt1 = CRSSerializer.toWkt1(approximate);
-            assertTrue(wkt1.contains("PROJECTION[\"Fast_Transverse_Mercator\"]"), wkt1);
-            assertPointEquals(expected, project(new Proj(wkt1), 20.0, 50.0), 1e-8, wkt1);
-        } else {
-            assertThrows(UnsupportedOperationException.class,
-                () -> CRSSerializer.toWkt1(approximate));
-        }
+        String wkt1 = CRSSerializer.toWkt1(approximate);
+        assertTrue(wkt1.contains("PROJECTION[\"Fast_Transverse_Mercator\"]"), wkt1);
+        assertPointEquals(expected, project(new Proj(wkt1), 20.0, 50.0), 1e-8, wkt1);
         assertThrows(UnsupportedOperationException.class,
             () -> CRSSerializer.toWkt2(approximate));
         assertThrows(UnsupportedOperationException.class,
@@ -65,24 +57,19 @@ class CRSSerializerProjectionSemanticsTest {
     }
 
     @Test
-    void mercatorNonfiniteTrueScaleFollowsTheActiveRuntime() {
+    void mercatorNonfiniteTrueScaleUsesDefaultScale() {
         for (String value : new String[]{"NaN", "Infinity"}) {
             Proj projection = new Proj("+proj=merc +lat_ts=" + value
                 + " +k=0 +lon_0=0 +ellps=WGS84 +units=m +no_defs");
             String projString = CRSSerializer.toProjString(projection);
-            if (projectionParitySemanticsAvailable()) {
-                assertFalse(projString.contains("+lat_ts="), projString);
-                assertTrue(projString.contains("+k_0=1.0"), projString);
-                Point expected = project(projection, 10.0, 50.0);
-                assertTrue(Double.isFinite(expected.x) && Double.isFinite(expected.y), value);
-                for (String standard : standardFormats(projection)) {
-                    assertFalse(standard.contains("Mercator (variant B)"), standard);
-                    assertPointEquals(expected, project(new Proj(standard), 10.0, 50.0),
-                        1e-8, standard);
-                }
-            } else {
-                assertTrue(projString.contains("+lat_ts=" + value), projString);
-                assertAllStandardsReject(projection);
+            assertFalse(projString.contains("+lat_ts="), projString);
+            assertTrue(projString.contains("+k_0=1.0"), projString);
+            Point expected = project(projection, 10.0, 50.0);
+            assertTrue(Double.isFinite(expected.x) && Double.isFinite(expected.y), value);
+            for (String standard : standardFormats(projection)) {
+                assertFalse(standard.contains("Mercator (variant B)"), standard);
+                assertPointEquals(expected, project(new Proj(standard), 10.0, 50.0),
+                    1e-8, standard);
             }
         }
 
@@ -90,11 +77,9 @@ class CRSSerializerProjectionSemanticsTest {
             "+proj=merc +lat_ts=0 +lon_0=0 +ellps=WGS84 +units=m +no_defs");
         String projString = CRSSerializer.toProjString(equatorial);
         assertFalse(projString.contains("+lat_ts="), projString);
-        if (projectionParitySemanticsAvailable()) {
-            assertTrue(projString.contains("+k_0=1.0"), projString);
-            for (String standard : standardFormats(equatorial)) {
-                assertFalse(standard.contains("Mercator (variant B)"), standard);
-            }
+        assertTrue(projString.contains("+k_0=1.0"), projString);
+        for (String standard : standardFormats(equatorial)) {
+            assertFalse(standard.contains("Mercator (variant B)"), standard);
         }
     }
 
@@ -154,7 +139,7 @@ class CRSSerializerProjectionSemanticsTest {
     }
 
     @Test
-    void scaleOneProjectionFallbacksFollowTheActiveRuntime() {
+    void scaleOneProjectionFallbacksDefaultToOne() {
         String[] definitions = {
             "+proj=lcc +lat_0=39 +lat_1=33 +lat_2=45 +lon_0=-96 "
                 + "+ellps=WGS84 +units=m +no_defs",
@@ -174,24 +159,17 @@ class CRSSerializerProjectionSemanticsTest {
             for (String scale : new String[]{"0", "NaN"}) {
                 Proj projection = new Proj(definition + " +k=" + scale);
                 String projString = CRSSerializer.toProjString(projection);
-                if (projectionParitySemanticsAvailable()) {
-                    assertTrue(projString.contains("+k_0=1.0"), projString);
-                    if (approximateTm) {
-                        if (fastTransverseMercatorWkt1Available()) {
-                            assertDoesNotThrow(() -> CRSSerializer.toWkt1(projection));
-                        }
-                        assertThrows(UnsupportedOperationException.class,
-                            () -> CRSSerializer.toWkt2(projection));
-                        assertThrows(UnsupportedOperationException.class,
-                            () -> CRSSerializer.toProjJson(projection));
-                    } else {
-                        for (String standard : standardFormats(projection)) {
-                            assertDoesNotThrow(() -> new Proj(standard), standard);
-                        }
-                    }
+                assertTrue(projString.contains("+k_0=1.0"), projString);
+                if (approximateTm) {
+                    assertDoesNotThrow(() -> CRSSerializer.toWkt1(projection));
+                    assertThrows(UnsupportedOperationException.class,
+                        () -> CRSSerializer.toWkt2(projection));
+                    assertThrows(UnsupportedOperationException.class,
+                        () -> CRSSerializer.toProjJson(projection));
                 } else {
-                    assertTrue(projString.contains("+k_0=" + scale), projString);
-                    assertAllStandardsReject(projection);
+                    for (String standard : standardFormats(projection)) {
+                        assertDoesNotThrow(() -> new Proj(standard), standard);
+                    }
                 }
             }
         }
@@ -216,16 +194,11 @@ class CRSSerializerProjectionSemanticsTest {
         Proj ellipsoidalCeaInfinity = new Proj(
             "+proj=cea +lat_ts=Infinity +ellps=WGS84 +units=m +no_defs");
         String ceaProj = CRSSerializer.toProjString(ellipsoidalCeaInfinity);
-        if (projectionParitySemanticsAvailable()) {
-            assertFalse(ceaProj.contains("+lat_ts="), ceaProj);
-            Point expected = project(ellipsoidalCeaInfinity, 10.0, 20.0);
-            for (String standard : standardFormats(ellipsoidalCeaInfinity)) {
-                assertPointEquals(expected, project(new Proj(standard), 10.0, 20.0),
-                    1e-8, standard);
-            }
-        } else {
-            assertTrue(ceaProj.contains("+lat_ts=Infinity"), ceaProj);
-            assertAllStandardsReject(ellipsoidalCeaInfinity);
+        assertFalse(ceaProj.contains("+lat_ts="), ceaProj);
+        Point expected = project(ellipsoidalCeaInfinity, 10.0, 20.0);
+        for (String standard : standardFormats(ellipsoidalCeaInfinity)) {
+            assertPointEquals(expected, project(new Proj(standard), 10.0, 20.0),
+                1e-8, standard);
         }
 
         for (Proj projOnly : new Proj[]{
@@ -275,35 +248,24 @@ class CRSSerializerProjectionSemanticsTest {
             Proj projection = new Proj(
                 "+proj=stere +lat_0=90 +k=" + scale + " +ellps=WGS84 +no_defs");
             String projString = CRSSerializer.toProjString(projection);
-            if (projectionParitySemanticsAvailable()) {
-                assertTrue(projString.contains("+k_0=1.0"), projString);
-                for (String standard : standardFormats(projection)) {
-                    assertDoesNotThrow(() -> new Proj(standard), standard);
-                }
-            } else {
-                assertTrue(projString.contains("+k_0=" + scale), projString);
-                assertAllStandardsReject(projection);
+            assertTrue(projString.contains("+k_0=1.0"), projString);
+            for (String standard : standardFormats(projection)) {
+                assertDoesNotThrow(() -> new Proj(standard), standard);
             }
         }
     }
 
     @Test
-    void bareSemiMajorAxisRoundTripsItsActiveFigureSemantics() {
+    void bareSemiMajorAxisRoundTripsAsSphere() {
         Proj original = new Proj("+proj=merc +a=6400000 +no_defs");
         String projString = CRSSerializer.toProjString(original);
         assertTrue(projString.contains("+a=6400000.0"), projString);
-        if (projectionParitySemanticsAvailable()) {
-            assertTrue(original.getParams().sphere);
-            assertTrue(projString.contains("+b=6400000.0"), projString);
-        }
+        assertTrue(original.getParams().sphere);
+        assertTrue(projString.contains("+b=6400000.0"), projString);
         Proj projRoundTrip = new Proj(projString);
         assertEquals(original.getParams().a, projRoundTrip.getParams().a, 0.0, projString);
         assertEquals(original.getParams().b, projRoundTrip.getParams().b, 0.0, projString);
         assertEquals(original.getParams().sphere, projRoundTrip.getParams().sphere, projString);
-        if (!projectionParitySemanticsAvailable()) {
-            assertAllStandardsReject(original);
-            return;
-        }
         for (String serialized : standardFormats(original)) {
             Proj reimported = new Proj(serialized);
             assertEquals(original.getParams().a, reimported.getParams().a, 0.0, serialized);
@@ -323,25 +285,6 @@ class CRSSerializerProjectionSemanticsTest {
         for (String serialized : allFormats(explicit)) {
             assertTrue(new Proj(serialized).getParams().k0Specified, serialized);
         }
-    }
-
-    private static boolean projectionParitySemanticsAvailable() {
-        return PROJECTION_PARITY_SEMANTICS_AVAILABLE;
-    }
-
-    private static boolean detectProjectionParitySemantics() {
-        try {
-            Class.forName("org.datasyslab.proj4sedona.projection.ProjectionParams")
-                .getMethod("getK0OrDefault", double.class);
-            return true;
-        } catch (ReflectiveOperationException e) {
-            return false;
-        }
-    }
-
-    private static boolean fastTransverseMercatorWkt1Available() {
-        return projectionParitySemanticsAvailable()
-            && ProjectionRegistry.get("Fast_Transverse_Mercator") != null;
     }
 
     private static String[] standardFormats(Proj projection) {

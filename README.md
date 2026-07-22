@@ -35,8 +35,8 @@ Full documentation is available in the [docs/](docs/) folder:
 `UnsupportedOperationException` instead of returning lossy output for definitions they
 cannot represent. In particular, WKT2 and PROJJSON reject non-zero `+towgs84`, and all
 standard exporters reject grid shifts, `+over`, `+R_A`, and two-point `omerc`. WKT2 and
-PROJJSON also reject `+approx`; WKT1 preserves approximate Transverse Mercator only when
-the executable `Fast_Transverse_Mercator` alias is available and otherwise rejects it.
+PROJJSON also reject `+approx`; WKT1 preserves approximate Transverse Mercator with the
+executable `Fast_Transverse_Mercator` method.
 Use `toProjString()` when those operation semantics must be preserved. The complete list
 is in the [CRS export fidelity guide](docs/crs-formats.md#export-fidelity).
 

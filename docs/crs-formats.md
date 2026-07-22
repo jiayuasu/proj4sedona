@@ -246,8 +246,8 @@ This applies to PROJ-only longitude handling (`+over`, `+lon_wrap`), authalic-ra
 mode (`+R_A`), `ob_tran`, Tilted Perspective, unsupported Oblique Mercator variants
 (`+no_rot` and the two-point form), and grid-shift operations. Approximate Transverse
 Mercator is format-dependent: WKT2 and PROJJSON reject it, while WKT1 emits
-`Fast_Transverse_Mercator` when that executable alias is available and otherwise
-rejects it. Other uses of `+approx` are rejected by all standard exporters. WKT2 and
+the executable `Fast_Transverse_Mercator` method. Other uses of `+approx` are rejected
+by all standard exporters. WKT2 and
 PROJJSON also reject non-zero `+towgs84` operations until bound-CRS export is
 implemented; WKT1 preserves them with `TOWGS84`. Geocentric CRS export is supported as
 a PROJ string or PROJJSON, but not yet as WKT.
