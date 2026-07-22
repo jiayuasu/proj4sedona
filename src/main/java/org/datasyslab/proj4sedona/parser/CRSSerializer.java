@@ -222,6 +222,7 @@ public final class CRSSerializer {
             normProj = "tmerc";
         }
         boolean isOmerc = "omerc".equals(normProj);
+        boolean isKrovak = "krovak".equals(normProj);
 
         // Projection name. normalizeProjName maps any WKT/GeoTools method name or
         // registered alias to the PROJ short code, so a CRS that round-tripped
@@ -245,12 +246,16 @@ public final class CRSSerializer {
         }
 
         // Latitude of origin (convert from radians to degrees)
-        if (params.lat0 != null && params.lat0 != 0.0) {
+        if (isKrovak) {
+            sb.append(" +lat_0=").append(formatAngle(krovakLatitudeOfCentre(params) * RAD_TO_DEG));
+        } else if (params.lat0 != null && params.lat0 != 0.0) {
             sb.append(" +lat_0=").append(formatAngle(params.lat0 * RAD_TO_DEG));
         }
 
         // Central meridian
-        if (params.long0 != null && params.long0 != 0.0) {
+        if (isKrovak) {
+            sb.append(" +lon_0=").append(formatAngle(krovakLongitudeOfOrigin(params) * RAD_TO_DEG));
+        } else if (params.long0 != null && params.long0 != 0.0) {
             sb.append(" +lon_0=").append(formatAngle(params.long0 * RAD_TO_DEG));
         }
 
@@ -292,6 +297,13 @@ public final class CRSSerializer {
         Double scaleFactor = projScaleFactor(normProj, params);
         if (scaleFactor != null) {
             sb.append(" +k_0=").append(scaleFactor);
+        }
+
+        // Krovak's cone-axis co-latitude is a fixed defining parameter in proj4js.
+        // It is called +alpha by PROJ, but is not a generic conic standard parallel.
+        if (isKrovak) {
+            sb.append(" +alpha=").append(formatAngle(
+                Krovak.CO_LATITUDE_OF_CONE_AXIS * RAD_TO_DEG));
         }
 
         // False easting/northing
@@ -558,6 +570,10 @@ public final class CRSSerializer {
         String methodName;
         if (isApproximateTransverseMercator(proj, params)) {
             methodName = "Fast_Transverse_Mercator";
+        } else if ("krovak".equals(proj)) {
+            // WKT1 uses the legacy method name for both orientations; AXIS carries
+            // the distinction. WKT2 and PROJJSON use the orientation-specific names.
+            methodName = "Krovak";
         } else {
             methodName = isPolarStereographicVariantB(proj, params)
                 ? "Polar_Stereographic"
@@ -570,6 +586,10 @@ public final class CRSSerializer {
 
         // Unit
         appendWkt1Unit(sb, params);
+
+        if ("krovak".equals(proj)) {
+            appendWkt1KrovakAxes(sb, params);
+        }
     }
 
     private static void appendWkt1Datum(StringBuilder sb, ProjectionParams params) {
@@ -597,6 +617,11 @@ public final class CRSSerializer {
     }
 
     private static void appendWkt1Parameters(StringBuilder sb, String proj, ProjectionParams params) {
+
+        if ("krovak".equals(proj)) {
+            appendWkt1KrovakParameters(sb, params);
+            return;
+        }
 
         boolean polarStereoVariantB = isPolarStereographicVariantB(proj, params);
 
@@ -660,6 +685,33 @@ public final class CRSSerializer {
         }
         if (params.y0 != 0.0) {
             sb.append(",PARAMETER[\"false_northing\",").append(params.y0 / unitToMeter).append("]");
+        }
+    }
+
+    /** Emit the GDAL WKT1 parameter vocabulary used for EPSG Krovak CRSs. */
+    private static void appendWkt1KrovakParameters(StringBuilder sb, ProjectionParams params) {
+        sb.append(",PARAMETER[\"latitude_of_center\",")
+          .append(formatAngle(krovakLatitudeOfCentre(params) * RAD_TO_DEG)).append("]");
+        sb.append(",PARAMETER[\"longitude_of_center\",")
+          .append(formatAngle(krovakLongitudeOfOrigin(params) * RAD_TO_DEG)).append("]");
+        sb.append(",PARAMETER[\"azimuth\",")
+          .append(formatAngle(Krovak.CO_LATITUDE_OF_CONE_AXIS * RAD_TO_DEG)).append("]");
+        sb.append(",PARAMETER[\"pseudo_standard_parallel_1\",")
+          .append(formatAngle(Krovak.LATITUDE_OF_PSEUDO_STANDARD_PARALLEL * RAD_TO_DEG))
+          .append("]");
+        sb.append(",PARAMETER[\"scale_factor\",")
+          .append(standardScaleFactor("krovak", params)).append("]");
+
+        double unitToMeter = linearUnitToMeter(params);
+        sb.append(",PARAMETER[\"false_easting\",").append(params.x0 / unitToMeter).append("]");
+        sb.append(",PARAMETER[\"false_northing\",").append(params.y0 / unitToMeter).append("]");
+    }
+
+    private static void appendWkt1KrovakAxes(StringBuilder sb, ProjectionParams params) {
+        if (isKrovakNorthOrientated(params)) {
+            sb.append(",AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH]");
+        } else {
+            sb.append(",AXIS[\"Southing\",SOUTH],AXIS[\"Westing\",WEST]");
         }
     }
 
@@ -794,8 +846,13 @@ public final class CRSSerializer {
 
         // Coordinate System
         sb.append("CS[Cartesian,2],");
-        sb.append("AXIS[\"easting\",east,ORDER[1]],");
-        sb.append("AXIS[\"northing\",north,ORDER[2]],");
+        if ("krovak".equals(proj) && !isKrovakNorthOrientated(params)) {
+            sb.append("AXIS[\"southing\",south,ORDER[1]],");
+            sb.append("AXIS[\"westing\",west,ORDER[2]],");
+        } else {
+            sb.append("AXIS[\"easting\",east,ORDER[1]],");
+            sb.append("AXIS[\"northing\",north,ORDER[2]],");
+        }
         appendWkt2Unit(sb, params);
     }
 
@@ -822,6 +879,11 @@ public final class CRSSerializer {
 
         boolean isOmerc = "omerc".equals(proj);
         boolean polarStereoVariantB = isPolarStereographicVariantB(proj, params);
+
+        if ("krovak".equals(proj)) {
+            appendWkt2KrovakParameters(sb, params);
+            return;
+        }
 
         // Latitude of natural origin (omerc emits "Latitude of projection centre" below)
         if (params.lat0 != null && !isOmerc && !polarStereoVariantB) {
@@ -923,6 +985,36 @@ public final class CRSSerializer {
             appendWkt2LengthUnit(sb, params);
             sb.append("]");
         }
+    }
+
+    /** Emit the EPSG parameter vocabulary shared by Krovak methods 9819 and 1041. */
+    private static void appendWkt2KrovakParameters(StringBuilder sb, ProjectionParams params) {
+        appendWkt2AngleParameter(sb, "Latitude of projection centre",
+            krovakLatitudeOfCentre(params));
+        appendWkt2AngleParameter(sb, "Longitude of origin",
+            krovakLongitudeOfOrigin(params));
+        appendWkt2AngleParameter(sb, "Co-latitude of cone axis",
+            Krovak.CO_LATITUDE_OF_CONE_AXIS);
+        appendWkt2AngleParameter(sb, "Latitude of pseudo standard parallel",
+            Krovak.LATITUDE_OF_PSEUDO_STANDARD_PARALLEL);
+        sb.append(",PARAMETER[\"Scale factor on pseudo standard parallel\",")
+          .append(standardScaleFactor("krovak", params))
+          .append(",SCALEUNIT[\"unity\",1]]");
+
+        double unitToMeter = linearUnitToMeter(params);
+        sb.append(",PARAMETER[\"False easting\",").append(params.x0 / unitToMeter);
+        appendWkt2LengthUnit(sb, params);
+        sb.append("]");
+        sb.append(",PARAMETER[\"False northing\",").append(params.y0 / unitToMeter);
+        appendWkt2LengthUnit(sb, params);
+        sb.append("]");
+    }
+
+    private static void appendWkt2AngleParameter(
+            StringBuilder sb, String name, double radians) {
+        sb.append(",PARAMETER[\"").append(name).append("\",")
+          .append(formatAngle(radians * RAD_TO_DEG))
+          .append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
     }
 
     private static void appendWkt2Unit(StringBuilder sb, ProjectionParams params) {
@@ -1135,6 +1227,23 @@ public final class CRSSerializer {
         
         List<Map<String, Object>> parameters = new ArrayList<>();
 
+        if ("krovak".equals(proj)) {
+            parameters.add(buildProjJsonParam("Latitude of projection centre",
+                krovakLatitudeOfCentre(params) * RAD_TO_DEG, "degree"));
+            parameters.add(buildProjJsonParam("Longitude of origin",
+                krovakLongitudeOfOrigin(params) * RAD_TO_DEG, "degree"));
+            parameters.add(buildProjJsonParam("Co-latitude of cone axis",
+                Krovak.CO_LATITUDE_OF_CONE_AXIS * RAD_TO_DEG, "degree"));
+            parameters.add(buildProjJsonParam("Latitude of pseudo standard parallel",
+                Krovak.LATITUDE_OF_PSEUDO_STANDARD_PARALLEL * RAD_TO_DEG, "degree"));
+            parameters.add(buildProjJsonParam("Scale factor on pseudo standard parallel",
+                standardScaleFactor("krovak", params), "unity"));
+            parameters.add(buildProjJsonParam("False easting", params.x0, "metre"));
+            parameters.add(buildProjJsonParam("False northing", params.y0, "metre"));
+            conversion.put("parameters", parameters);
+            return conversion;
+        }
+
         // Oblique Mercator: use projection-centre parameter names
         if ("omerc".equals(proj)) {
             if (params.lat0 != null) {
@@ -1258,10 +1367,18 @@ public final class CRSSerializer {
         cs.put("subtype", "Cartesian");
         
         String unitName = params.units != null ? getUnitName(params.units) : "metre";
-        cs.put("axis", Arrays.asList(
-            createAxis("Easting", "E", "east", unitName),
-            createAxis("Northing", "N", "north", unitName)
-        ));
+        if ("krovak".equals(normalizeProjName(params.projName))
+                && !isKrovakNorthOrientated(params)) {
+            cs.put("axis", Arrays.asList(
+                createAxis("Southing", "S", "south", unitName),
+                createAxis("Westing", "W", "west", unitName)
+            ));
+        } else {
+            cs.put("axis", Arrays.asList(
+                createAxis("Easting", "E", "east", unitName),
+                createAxis("Northing", "N", "north", unitName)
+            ));
+        }
         return cs;
     }
 
@@ -2059,6 +2176,10 @@ public final class CRSSerializer {
      * @param proj pre-normalized projection short name (from normalizeProjName)
      */
     private static String getWktMethodName(String proj, ProjectionParams params) {
+        if ("krovak".equals(proj)) {
+            return isKrovakNorthOrientated(params)
+                ? "Krovak (North Orientated)" : "Krovak";
+        }
         if (isPolarStereographic(proj, params)) {
             return isPolarStereographicVariantB(proj, params)
                 ? "Polar Stereographic (variant B)"
@@ -2238,6 +2359,21 @@ public final class CRSSerializer {
             && !ExtendedTransverseMercator.usesApproximateAlgorithm(params);
     }
 
+    /** The canonical PROJ axis forms distinguish the two EPSG Krovak methods. */
+    private static boolean isKrovakNorthOrientated(ProjectionParams params) {
+        return !"swu".equalsIgnoreCase(params.axis);
+    }
+
+    private static double krovakLatitudeOfCentre(ProjectionParams params) {
+        return params.lat0 != null && params.lat0 != 0.0
+            ? params.lat0 : Krovak.DEFAULT_LATITUDE_OF_PROJECTION_CENTRE;
+    }
+
+    private static double krovakLongitudeOfOrigin(ProjectionParams params) {
+        return params.long0 != null && params.long0 != 0.0
+            ? params.long0 : Krovak.DEFAULT_LONGITUDE_OF_ORIGIN;
+    }
+
     /**
      * Whether a Polar Stereographic CRS is variant B (defined by a standard parallel
      * / latitude of true scale) rather than variant A (defined by a scale factor).
@@ -2285,8 +2421,7 @@ public final class CRSSerializer {
      */
     private static boolean usesStandardParallels(String proj) {
         return "lcc".equals(proj) || "aea".equals(proj)
-                || "eqdc".equals(proj) || "krovak".equals(proj)
-                || "bonne".equals(proj);
+                || "eqdc".equals(proj) || "bonne".equals(proj);
     }
 
     /**
