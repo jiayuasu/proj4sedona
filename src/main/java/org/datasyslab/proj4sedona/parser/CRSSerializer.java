@@ -1602,6 +1602,8 @@ public final class CRSSerializer {
     /**
      * Return the canonical bundled EPSG definition used to validate an asserted
      * identifier, or {@code null} when the identifier is not available offline.
+     * Coverage is an explicit allowlist and does not expand automatically when bundled
+     * definitions are added.
      */
     private static String builtInReferenceCode(String[] authority) {
         if (authority == null || authority.length != 2
@@ -2912,6 +2914,10 @@ public final class CRSSerializer {
     }
 
     private static boolean detectProjectionParitySemantics() {
+        // TODO: This reflection-based dual-mode bridge is transitional. Remove the
+        // capability probe and its branches once projection parity semantics are a
+        // permanent dependency; a future helper rename must not silently select legacy
+        // serializer behavior.
         try {
             ProjectionParams.class.getMethod("getK0OrDefault", double.class);
             return true;

@@ -15,6 +15,11 @@ import org.datasyslab.proj4sedona.core.Point;
  * negative easting/northing coordinates are the north-orientated form used by
  * {@code +proj=krovak} and EPSG:5514. The traditional southing/westing form is represented
  * at the CRS level by {@code +axis=swu}, not by different projection math.</p>
+ *
+ * <p>{@link #init(ProjectionParams)} writes the effective public projection parameters
+ * back for serialization. Explicit nonzero latitude of centre, longitude of origin, and
+ * scale are honored (defaults are filled only when needed), while the cone-axis angle and
+ * pseudo-standard parallel are replaced with the fixed values used by runtime math.</p>
  */
 public class Krovak implements Projection {
 
@@ -58,8 +63,10 @@ public class Krovak implements Projection {
         if (this.long0 == 0) {
             this.long0 = DEFAULT_LONGITUDE_OF_ORIGIN;
         }
-        // Persist every effective defining parameter so serialization can reproduce
-        // the initialized projection. k0Specified still records whether scale was input.
+        // Persist effective public projection parameters for serialization. Explicit
+        // nonzero lat0/long0/k0 remain intact; defaults are filled only when needed,
+        // while alpha/lat1 are fixed by the runtime math. k0Specified still records
+        // whether scale was input.
         params.lat0 = this.lat0;
         params.long0 = this.long0;
         this.k0 = resolveScaleFactor(params);
