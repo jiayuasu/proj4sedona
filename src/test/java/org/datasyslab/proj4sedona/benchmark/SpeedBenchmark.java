@@ -5,9 +5,14 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.datasyslab.proj4sedona.Proj4;
+import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
+import org.datasyslab.proj4sedona.projection.Krovak;
+import org.datasyslab.proj4sedona.projection.Mercator;
+import org.datasyslab.proj4sedona.projection.ProjectionParams;
 import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
+import org.datasyslab.proj4sedona.projection.Stereographic;
 import org.datasyslab.proj4sedona.grid.GridLoader;
 import org.datasyslab.proj4sedona.parser.CRSSerializer;
 import org.datasyslab.proj4sedona.transform.Converter;
@@ -305,6 +310,9 @@ public class SpeedBenchmark {
         final String suite = "serializer";
         final List<String> formats = Arrays.asList(
             "wkt1", "wkt2", "proj_string", "projjson");
+        final List<String> semanticChecks = Arrays.asList(
+            "projection_method", "conversion_parameters", "utm_zone_hemisphere",
+            "prime_meridian", "linear_unit", "axis", "datum_transform");
         Path refFile = Paths.get("target/pyproj-reference/format_export_reference.json");
         if (!Files.exists(refFile)) {
             parity.infrastructureFailure(suite, "reference file is missing: " + refFile);
@@ -322,11 +330,25 @@ public class SpeedBenchmark {
             parity.infrastructureFailure(suite,
                 "expected_formats must be exactly " + formats + ", but was " + declaredFormats);
         }
+        List<String> declaredSemanticChecks = stringList(
+            requiredArray(root, "expected_semantic_checks", "serializer root"),
+            "serializer semantic checks");
+        if (!declaredSemanticChecks.equals(semanticChecks)) {
+            parity.infrastructureFailure(suite,
+                "expected_semantic_checks must be exactly " + semanticChecks
+                    + ", but was " + declaredSemanticChecks);
+        }
+        int declaredSupportedComparisons = requiredInt(
+            root, "expected_supported_comparison_count", "serializer root");
+        int declaredRejections = requiredInt(
+            root, "expected_rejection_count", "serializer root");
         double declaredTolerance = requiredDouble(root, "tolerance_m", "serializer root");
         String rootError = sameDouble(declaredTolerance, PROJECTED_TOLERANCE) ? null
             : "declared tolerance " + declaredTolerance
                 + " does not match audited tolerance " + PROJECTED_TOLERANCE;
         ErrorStats serializer = new ErrorStats("Serializer", "m", PROJECTED_TOLERANCE);
+        int supportedComparisons = 0;
+        int expectedRejections = 0;
 
         for (int caseIndex = 0; caseIndex < cases.size(); caseIndex++) {
             JsonObject testCase = requiredObject(cases.get(caseIndex),
@@ -335,6 +357,21 @@ public class SpeedBenchmark {
                 "serializer case " + caseIndex);
             String input = optionalString(testCase, "input", null);
             String caseError = joinErrors(rootError, nullableError(testCase, "error"));
+            List<String> javaSupportedFormats = stringList(
+                requiredArray(testCase, "java_supported_formats",
+                    "serializer case " + caseIndex),
+                "serializer case " + caseIndex + " java_supported_formats");
+            Set<String> javaSupportedFormatSet = new LinkedHashSet<>(javaSupportedFormats);
+            if (javaSupportedFormatSet.size() != javaSupportedFormats.size()) {
+                caseError = joinErrors(caseError,
+                    "java_supported_formats contains duplicate entries");
+            }
+            if (!formats.containsAll(javaSupportedFormatSet)) {
+                Set<String> unknownFormats = new LinkedHashSet<>(javaSupportedFormatSet);
+                unknownFormats.removeAll(formats);
+                caseError = joinErrors(caseError,
+                    "java_supported_formats contains unknown entries: " + unknownFormats);
+            }
             if (input == null || input.trim().isEmpty()) {
                 caseError = joinErrors(caseError, "input is missing or empty");
             }
@@ -364,6 +401,12 @@ public class SpeedBenchmark {
             for (String format : formats) {
                 String id = caseId + "/" + format;
                 parity.expect(suite, id);
+                boolean javaFormatSupported = javaSupportedFormatSet.contains(format);
+                if (javaFormatSupported) {
+                    supportedComparisons++;
+                } else {
+                    expectedRejections++;
+                }
                 String validationError = caseError;
                 if (exports != null) {
                     JsonElement exported = exports.get(format);
@@ -400,6 +443,23 @@ public class SpeedBenchmark {
                     continue;
                 }
 
+                if (!javaFormatSupported) {
+                    try {
+                        serialize(original, format);
+                        parity.failed(suite, id,
+                            "Java " + format + " export succeeded, but the fixture requires "
+                                + "an explicit unsupported-format rejection");
+                    } catch (UnsupportedOperationException expected) {
+                        serializer.record(0.0);
+                        parity.compared(suite, id, 0.0, PROJECTED_TOLERANCE);
+                    } catch (Exception e) {
+                        parity.failed(suite, id,
+                            "Java " + format + " export did not reject cleanly: "
+                                + describeException(e));
+                    }
+                    continue;
+                }
+
                 try {
                     String serialized = serialize(original, format);
                     if (serialized == null || serialized.trim().isEmpty()) {
@@ -412,6 +472,13 @@ public class SpeedBenchmark {
                     if (!Double.isFinite(reparsedA) || !Double.isFinite(reparsedB)) {
                         parity.failed(suite, id,
                             "Java " + format + " round-trip produced non-finite axes");
+                        continue;
+                    }
+                    String semanticError = serializerSemanticDifference(original, reparsed);
+                    if (semanticError != null) {
+                        parity.failed(suite, id,
+                            "Java " + format + " round-trip changed CRS semantics: "
+                                + semanticError);
                         continue;
                     }
                     double error = Math.max(
@@ -431,6 +498,17 @@ public class SpeedBenchmark {
         parity.reconcileCount(suite, "comparisons",
             requiredInt(root, "expected_comparison_count", "serializer root"),
             cases.size() * formats.size());
+        if (declaredSupportedComparisons != supportedComparisons) {
+            parity.infrastructureFailure(suite,
+                "expected_supported_comparison_count declares "
+                    + declaredSupportedComparisons + ", but " + supportedComparisons
+                    + " were present");
+        }
+        if (declaredRejections != expectedRejections) {
+            parity.infrastructureFailure(suite,
+                "expected_rejection_count declares " + declaredRejections + ", but "
+                    + expectedRejections + " were present");
+        }
         putStats("Serializer", serializer);
         System.out.println("   Serializer correctness: " + serializer.count + " comparisons");
     }
@@ -447,6 +525,285 @@ public class SpeedBenchmark {
                 return CRSSerializer.toProjJson(projection);
             default:
                 throw new IllegalArgumentException("Unsupported serializer format: " + format);
+        }
+    }
+
+    /**
+     * Compare the CRS properties whose loss can change coordinates while leaving
+     * the ellipsoid axes untouched.  Representation-only differences (notably UTM
+     * encoded as its defining Transverse Mercator conversion) are normalized.
+     */
+    static String serializerSemanticDifference(Proj expected, Proj actual) {
+        ProjectionParams expectedParams = expected.getParams();
+        ProjectionParams actualParams = actual.getParams();
+        List<String> differences = new ArrayList<>();
+
+        String expectedMethod = normalizedProjectionMethod(expectedParams);
+        String actualMethod = normalizedProjectionMethod(actualParams);
+        if (!Objects.equals(expectedMethod, actualMethod)) {
+            differences.add("projection method " + expectedMethod + " -> " + actualMethod);
+        }
+        compareConversionParameters(
+            expectedParams, actualParams, expectedMethod, actualMethod, differences);
+
+        UtmSemantics expectedUtm = utmSemantics(expectedParams);
+        UtmSemantics actualUtm = utmSemantics(actualParams);
+        if (!Objects.equals(expectedUtm, actualUtm)) {
+            differences.add("UTM zone/hemisphere " + expectedUtm + " -> " + actualUtm);
+        }
+
+        double expectedPrimeMeridian = valueOrZero(expectedParams.fromGreenwich);
+        double actualPrimeMeridian = valueOrZero(actualParams.fromGreenwich);
+        if (!semanticDoubleEquals(expectedPrimeMeridian, actualPrimeMeridian)) {
+            differences.add("prime meridian " + expectedPrimeMeridian + " -> "
+                + actualPrimeMeridian + " radians");
+        }
+
+        if (!"longlat".equals(expectedMethod) || !"longlat".equals(actualMethod)) {
+            double expectedToMeter = effectiveToMeter(expectedParams);
+            double actualToMeter = effectiveToMeter(actualParams);
+            if (!semanticDoubleEquals(expectedToMeter, actualToMeter)) {
+                differences.add("linear unit factor " + expectedToMeter + " -> "
+                    + actualToMeter);
+            }
+        }
+
+        String expectedAxis = effectiveAxis(expectedParams);
+        String actualAxis = effectiveAxis(actualParams);
+        if (!expectedAxis.equals(actualAxis)) {
+            differences.add("axis " + expectedAxis + " -> " + actualAxis);
+        }
+
+        String datumDifference = datumTransformDifference(
+            expectedParams.datum, actualParams.datum);
+        if (datumDifference != null) {
+            differences.add(datumDifference);
+        }
+
+        return differences.isEmpty() ? null : String.join("; ", differences);
+    }
+
+    private static void compareConversionParameters(
+            ProjectionParams expected, ProjectionParams actual,
+            String expectedMethod, String actualMethod, List<String> differences) {
+        if (!Objects.equals(expectedMethod, actualMethod)
+                || "longlat".equals(expectedMethod)) {
+            return;
+        }
+
+        compareAngle("latitude of origin", expected.getLat0(), actual.getLat0(), differences);
+        compareAngle("central meridian", expected.getLong0(), actual.getLong0(), differences);
+
+        if (expected.lat1 != null || actual.lat1 != null) {
+            compareAngle("first standard parallel",
+                expected.getLat1(), actual.getLat1(), differences);
+        }
+        if (expected.lat2 != null || actual.lat2 != null) {
+            compareAngle("second standard parallel",
+                expected.getLat2(), actual.getLat2(), differences);
+        }
+
+        String baseMethod = expectedMethod == null
+            ? null : expectedMethod.replace(":approx", "");
+        // For Mercator and polar stereographic, lat_ts and k0 are interchangeable
+        // parameterizations of the same scale.  Compare their resolved scale below
+        // instead of rejecting a lossless method-variant conversion.
+        if (!"merc".equals(baseMethod) && !"stere".equals(baseMethod)
+                && (expected.latTs != null || actual.latTs != null
+                    || "cea".equals(baseMethod) || "eqc".equals(baseMethod))) {
+            compareAngle("latitude of true scale",
+                effectiveLatitudeOfTrueScale(baseMethod, expected),
+                effectiveLatitudeOfTrueScale(baseMethod, actual), differences);
+        }
+
+        double expectedScale = effectiveScaleFactor(expectedMethod, expected);
+        double actualScale = effectiveScaleFactor(actualMethod, actual);
+        if (!semanticDoubleEquals(expectedScale, actualScale)) {
+            differences.add("effective scale factor " + expectedScale + " -> "
+                + actualScale);
+        }
+        if (Math.abs(expected.x0 - actual.x0) > PROJECTED_TOLERANCE) {
+            differences.add("false easting " + expected.x0 + " -> " + actual.x0
+                + " metres");
+        }
+        if (Math.abs(expected.y0 - actual.y0) > PROJECTED_TOLERANCE) {
+            differences.add("false northing " + expected.y0 + " -> " + actual.y0
+                + " metres");
+        }
+    }
+
+    private static void compareAngle(
+            String label, double expected, double actual, List<String> differences) {
+        if (!semanticDoubleEquals(expected, actual)) {
+            differences.add(label + " " + expected + " -> " + actual + " radians");
+        }
+    }
+
+    private static double effectiveLatitudeOfTrueScale(
+            String method, ProjectionParams params) {
+        if (("cea".equals(method) || "eqc".equals(method)) && params.latTs == null) {
+            return 0.0;
+        }
+        return valueOrZero(params.latTs);
+    }
+
+    private static double effectiveScaleFactor(String method, ProjectionParams params) {
+        String baseMethod = method == null ? null : method.replace(":approx", "");
+        if ("merc".equals(baseMethod)) {
+            return Mercator.resolveScaleFactor(params);
+        }
+        if ("stere".equals(baseMethod)) {
+            return Stereographic.resolveScaleFactor(params);
+        }
+        if ("krovak".equals(baseMethod)) {
+            return Krovak.resolveScaleFactor(params);
+        }
+        if ("cea".equals(baseMethod) || "eqc".equals(baseMethod)) {
+            return 1.0;
+        }
+        if ("lcc".equals(baseMethod) || "gstmerc".equals(baseMethod)
+                || "omerc".equals(baseMethod) || "somerc".equals(baseMethod)
+                || "sterea".equals(baseMethod) || "gnom".equals(baseMethod)
+                || "tmerc:approx".equals(method)) {
+            return params.getK0OrDefault(1.0);
+        }
+        return params.k0;
+    }
+
+    private static String normalizedProjectionMethod(ProjectionParams params) {
+        String code = ProjectionRegistry.resolveProjCode(params.projName);
+        if (code == null) {
+            code = params.projName == null ? null
+                : ProjectionRegistry.getNormalizedProjName(
+                    params.projName.toLowerCase(Locale.ROOT));
+        }
+        // UTM is a constrained Transverse Mercator conversion in WKT and PROJJSON.
+        if ("utm".equals(code)) {
+            code = "tmerc";
+        }
+        if ("tmerc".equals(code) && Boolean.TRUE.equals(params.approx)) {
+            return "tmerc:approx";
+        }
+        return code;
+    }
+
+    private static UtmSemantics utmSemantics(ProjectionParams params) {
+        String method = normalizedProjectionMethod(params);
+        if (method == null || !method.startsWith("tmerc")) {
+            return null;
+        }
+        if (!semanticDoubleEquals(params.getLat0(), 0.0)
+                || !semanticDoubleEquals(params.k0, 0.9996)
+                || Math.abs(params.x0 - 500000.0) > PROJECTED_TOLERANCE
+                || (Math.abs(params.y0) > PROJECTED_TOLERANCE
+                    && Math.abs(params.y0 - 10000000.0) > PROJECTED_TOLERANCE)) {
+            return null;
+        }
+
+        double longitudeDegrees = Math.toDegrees(params.getLong0());
+        int derivedZone = (int) Math.round((longitudeDegrees + 183.0) / 6.0);
+        if (derivedZone < 1 || derivedZone > 60
+                || Math.abs(longitudeDegrees - (derivedZone * 6.0 - 183.0)) > 1e-9) {
+            return null;
+        }
+        int zone = params.zone != null ? Math.abs(params.zone) : derivedZone;
+        if (zone != derivedZone) {
+            return null;
+        }
+        boolean south = Boolean.TRUE.equals(params.utmSouth)
+            || Math.abs(params.y0 - 10000000.0) <= PROJECTED_TOLERANCE;
+        return new UtmSemantics(zone, south);
+    }
+
+    private static double effectiveToMeter(ProjectionParams params) {
+        return params.toMeter != null ? params.toMeter : 1.0;
+    }
+
+    private static String effectiveAxis(ProjectionParams params) {
+        return params.axis == null ? "enu" : params.axis.toLowerCase(Locale.ROOT);
+    }
+
+    private static String datumTransformDifference(DatumParams expected, DatumParams actual) {
+        String expectedGrid = meaningfulGrid(expected);
+        String actualGrid = meaningfulGrid(actual);
+        if (!Objects.equals(expectedGrid, actualGrid)) {
+            return "datum grid " + expectedGrid + " -> " + actualGrid;
+        }
+
+        double[] expectedValues = meaningfulDatumParameters(expected);
+        double[] actualValues = meaningfulDatumParameters(actual);
+        if (expectedValues.length != actualValues.length) {
+            return "datum transform " + Arrays.toString(expectedValues) + " -> "
+                + Arrays.toString(actualValues);
+        }
+        for (int i = 0; i < expectedValues.length; i++) {
+            if (!semanticDoubleEquals(expectedValues[i], actualValues[i])) {
+                return "datum transform " + Arrays.toString(expectedValues) + " -> "
+                    + Arrays.toString(actualValues);
+            }
+        }
+        return null;
+    }
+
+    private static String meaningfulGrid(DatumParams datum) {
+        if (datum == null || datum.getNadgrids() == null) {
+            return null;
+        }
+        String value = datum.getNadgrids().trim();
+        return value.matches("(?i)@?null") ? null : value;
+    }
+
+    private static double[] meaningfulDatumParameters(DatumParams datum) {
+        if (datum == null || datum.getDatumParams() == null) {
+            return new double[0];
+        }
+        double[] values = datum.getDatumParams();
+        for (double value : values) {
+            if (!semanticDoubleEquals(value, 0.0)) {
+                return values;
+            }
+        }
+        return new double[0];
+    }
+
+    private static double valueOrZero(Double value) {
+        return value == null ? 0.0 : value;
+    }
+
+    private static boolean semanticDoubleEquals(double first, double second) {
+        if (!Double.isFinite(first) || !Double.isFinite(second)) {
+            return Double.doubleToLongBits(first) == Double.doubleToLongBits(second);
+        }
+        double scale = Math.max(1.0, Math.max(Math.abs(first), Math.abs(second)));
+        return Math.abs(first - second) <= 1e-12 * scale;
+    }
+
+    private static final class UtmSemantics {
+        private final int zone;
+        private final boolean south;
+
+        private UtmSemantics(int zone, boolean south) {
+            this.zone = zone;
+            this.south = south;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (!(other instanceof UtmSemantics)) {
+                return false;
+            }
+            UtmSemantics that = (UtmSemantics) other;
+            return zone == that.zone && south == that.south;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(zone, south);
+        }
+
+        @Override
+        public String toString() {
+            return zone + (south ? "S" : "N");
         }
     }
 
@@ -761,9 +1118,11 @@ public class SpeedBenchmark {
             throw new IllegalArgumentException("reference root is null");
         }
         String version = requiredString(root, "version", suite + " root");
-        if (!"1.1".equals(version)) {
+        String expectedVersion = "serializer".equals(suite) ? "1.2" : "1.1";
+        if (!expectedVersion.equals(version)) {
             throw new IllegalArgumentException(
-                "unsupported reference schema " + version + " (expected 1.1)");
+                "unsupported reference schema " + version + " (expected "
+                    + expectedVersion + ")");
         }
         return root;
     }
