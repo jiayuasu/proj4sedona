@@ -11,7 +11,6 @@ This script generates test cases for coordinate transformations covering:
 import json
 from typing import Dict, List, Any
 from pyproj import CRS, Transformer
-from pyproj.exceptions import CRSError
 import numpy as np
 
 
@@ -436,9 +435,13 @@ def generate_transform_reference(output_file: str, verbose: bool = False) -> Non
     crs_pairs = get_crs_pairs()
 
     reference_data = {
-        "version": "1.0",
+        "version": "1.1",
         "generator": "pyproj",
         "pyproj_version": None,
+        "expected_test_case_count": len(crs_pairs),
+        "expected_transformation_count": sum(
+            len(pair.get("test_points", test_coords)) for pair in crs_pairs
+        ),
         "test_cases": [],
     }
 
@@ -454,6 +457,10 @@ def generate_transform_reference(output_file: str, verbose: bool = False) -> Non
         if verbose:
             print(f"  Processing: {crs_pair['name']}")
 
+        # Resolve the source rows before constructing either CRS. A reference
+        # generation error must not silently reduce the declared corpus.
+        case_coords = crs_pair.get("test_points", test_coords)
+        transformations = []
         try:
             from_crs = CRS(crs_pair["from_crs"])
             to_crs = CRS(crs_pair["to_crs"])
@@ -468,11 +475,6 @@ def generate_transform_reference(output_file: str, verbose: bool = False) -> Non
                     wgs84, from_crs, always_xy=True
                 )
 
-            # Regional projections define their own in-domain test points; world
-            # projections use the shared global list.
-            case_coords = crs_pair.get("test_points", test_coords)
-
-            transformations = []
             for coord in case_coords:
                 # Get input coordinates in from_crs coordinate system
                 if need_input_transform:
@@ -480,16 +482,26 @@ def generate_transform_reference(output_file: str, verbose: bool = False) -> Non
                         input_x, input_y = input_transformer.transform(
                             coord["lon"], coord["lat"]
                         )
-                        # Check for invalid results (inf, nan)
                         if not (np.isfinite(input_x) and np.isfinite(input_y)):
-                            continue
-                    except Exception:
-                        # Skip coordinates that can't be transformed to from_crs
+                            raise ValueError("non-finite source coordinate")
+                    except Exception as e:
+                        transformations.append({
+                            "coordinate_id": coord["name"],
+                            "coordinate_name": coord["name"],
+                            "coordinate_desc": coord["desc"],
+                            "wgs84_reference": {
+                                "lon": coord["lon"], "lat": coord["lat"]
+                            },
+                            "input": {"x": coord["lon"], "y": coord["lat"]},
+                            "output": None,
+                            "error": f"source coordinate transform failed: {e}",
+                        })
                         continue
                 else:
                     input_x, input_y = coord["lon"], coord["lat"]
 
                 result = transform_point(transformer, input_x, input_y)
+                result["coordinate_id"] = coord["name"]
                 result["coordinate_name"] = coord["name"]
                 result["coordinate_desc"] = coord["desc"]
                 # Store original WGS84 reference for traceability
@@ -504,9 +516,27 @@ def generate_transform_reference(output_file: str, verbose: bool = False) -> Non
                 "from_crs_wkt": from_crs.to_wkt(),
                 "to_crs_wkt": to_crs.to_wkt(),
                 "transformations": transformations,
+                "expected_transformation_count": len(case_coords),
                 "error": None,
             }
+            if crs_pair["name"].startswith("proj_"):
+                test_case["tolerance_m"] = (
+                    0.5 if crs_pair["name"] == "proj_robin" else 0.01
+                )
         except Exception as e:
+            generation_error = f"reference generation failed: {e}"
+            for coord in case_coords[len(transformations):]:
+                transformations.append({
+                    "coordinate_id": coord["name"],
+                    "coordinate_name": coord["name"],
+                    "coordinate_desc": coord["desc"],
+                    "wgs84_reference": {
+                        "lon": coord["lon"], "lat": coord["lat"]
+                    },
+                    "input": {"x": coord["lon"], "y": coord["lat"]},
+                    "output": None,
+                    "error": generation_error,
+                })
             test_case = {
                 "name": crs_pair["name"],
                 "description": crs_pair["desc"],
@@ -514,15 +544,20 @@ def generate_transform_reference(output_file: str, verbose: bool = False) -> Non
                 "to_crs": crs_pair["to_crs"],
                 "from_crs_wkt": None,
                 "to_crs_wkt": None,
-                "transformations": [],
+                "transformations": transformations,
+                "expected_transformation_count": len(case_coords),
                 "error": str(e),
             }
+            if crs_pair["name"].startswith("proj_"):
+                test_case["tolerance_m"] = (
+                    0.5 if crs_pair["name"] == "proj_robin" else 0.01
+                )
 
         reference_data["test_cases"].append(test_case)
 
     # Write output
     with open(output_file, "w") as f:
-        json.dump(reference_data, f, indent=2)
+        json.dump(reference_data, f, indent=2, allow_nan=False)
 
 
 if __name__ == "__main__":
