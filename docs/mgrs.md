@@ -54,6 +54,11 @@ double[] bbox = Proj4.mgrsInverse("18SUJ23");
 // Bounding box of the 10km grid square
 ```
 
+The returned box and center describe the complete UTM grid cell. As in upstream
+`mgrs`, a coarse cell that straddles an antimeridian or latitude-band boundary is
+not clipped to that boundary, so its center can lie outside the nominal grid-zone
+designation and its longitude can be outside `-180..180`.
+
 ## Accuracy Levels
 
 The accuracy parameter controls the precision of the MGRS string:

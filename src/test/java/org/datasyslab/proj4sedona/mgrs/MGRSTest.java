@@ -383,6 +383,14 @@ public class MGRSTest {
         assertThrows(IllegalArgumentException.class, () -> MGRS.toPoint("32XNA"));
     }
 
+    @Test
+    void testNonAsciiTokensAreRejectedBeforeNormalization() {
+        for (String invalid : new String[]{"٣٣UXP", "33Uß"}) {
+            assertThrows(IllegalArgumentException.class, () -> MGRS.toPoint(invalid), invalid);
+            assertThrows(IllegalArgumentException.class, () -> MGRS.inverse(invalid), invalid);
+        }
+    }
+
     // ========== Known Coordinate Tests ==========
 
     @Test
