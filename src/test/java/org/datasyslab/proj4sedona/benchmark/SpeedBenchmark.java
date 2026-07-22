@@ -40,6 +40,8 @@ public class SpeedBenchmark {
     private static final double GEOGRAPHIC_TOLERANCE = 1e-6;  // degrees
     private static final double PROJECTED_TOLERANCE = 0.01;   // meters
     private static final double ROBINSON_TOLERANCE = 0.5;     // meters
+    /** WKT normalization is deliberately stable to one nanodegree. */
+    private static final double ANGLE_SEMANTIC_TOLERANCE = Math.toRadians(1e-9);
 
     private static final Map<String, String> TRANSFORM_SKIPS;
     private static final Map<String, String> GRID_SKIPS;
@@ -554,7 +556,7 @@ public class SpeedBenchmark {
 
         double expectedPrimeMeridian = valueOrZero(expectedParams.fromGreenwich);
         double actualPrimeMeridian = valueOrZero(actualParams.fromGreenwich);
-        if (!semanticDoubleEquals(expectedPrimeMeridian, actualPrimeMeridian)) {
+        if (!semanticAngleEquals(expectedPrimeMeridian, actualPrimeMeridian)) {
             differences.add("prime meridian " + expectedPrimeMeridian + " -> "
                 + actualPrimeMeridian + " radians");
         }
@@ -634,9 +636,14 @@ public class SpeedBenchmark {
 
     private static void compareAngle(
             String label, double expected, double actual, List<String> differences) {
-        if (!semanticDoubleEquals(expected, actual)) {
+        if (!semanticAngleEquals(expected, actual)) {
             differences.add(label + " " + expected + " -> " + actual + " radians");
         }
+    }
+
+    private static boolean semanticAngleEquals(double first, double second) {
+        return Double.isFinite(first) && Double.isFinite(second)
+            && Math.abs(first - second) <= ANGLE_SEMANTIC_TOLERANCE;
     }
 
     private static double effectiveLatitudeOfTrueScale(

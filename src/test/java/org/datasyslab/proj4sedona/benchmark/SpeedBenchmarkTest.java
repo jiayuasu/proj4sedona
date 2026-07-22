@@ -64,6 +64,10 @@ class SpeedBenchmarkTest {
             new Proj("+proj=longlat +ellps=WGS84 +pm=greenwich"),
             new Proj("+proj=longlat +ellps=WGS84 +pm=paris"),
             "prime meridian");
+        Proj paris = new Proj("+proj=longlat +ellps=WGS84 +pm=paris");
+        assertNull(SpeedBenchmark.serializerSemanticDifference(
+            paris, new Proj(paris.toWkt2())),
+            "one-nanodegree WKT normalization is semantically lossless");
         assertSemanticDifferenceContains(equivalentTransverseMercator,
             new Proj(
                 "+proj=tmerc +lat_0=0 +lon_0=15 +k=0.9996 +x_0=500000 +y_0=0 "
