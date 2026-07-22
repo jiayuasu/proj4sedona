@@ -667,8 +667,8 @@ public class SpeedBenchmark {
             parity.reconcileCount(suite, name,
                 requiredInt(testCase, "expected_transformation_count", name), rows.size());
 
-            boolean isProjected = isProjectedCrs(toCrs);
-            double tolerance = isProjected ? PROJECTED_TOLERANCE : GEOGRAPHIC_TOLERANCE;
+            double tolerance = toleranceForCrs(toCrs);
+            boolean isProjected = sameDouble(tolerance, PROJECTED_TOLERANCE);
             ErrorStats stats;
             String caseError = nullableError(testCase, "error");
             if (name.startsWith("proj_")) {
@@ -822,13 +822,14 @@ public class SpeedBenchmark {
         }
     }
 
-    private int requiredInt(JsonObject owner, String field, String context) {
+    static int requiredInt(JsonObject owner, String field, String context) {
         JsonElement value = owner == null ? null : owner.get(field);
         try {
-            if (value == null || value.isJsonNull() || !value.isJsonPrimitive()) {
+            if (value == null || value.isJsonNull() || !value.isJsonPrimitive()
+                    || !value.getAsJsonPrimitive().isNumber()) {
                 throw new IllegalArgumentException();
             }
-            return value.getAsInt();
+            return value.getAsBigDecimal().intValueExact();
         } catch (RuntimeException e) {
             throw new IllegalArgumentException(context + "." + field
                 + " must be an integer", e);
@@ -949,17 +950,16 @@ public class SpeedBenchmark {
         }
     }
 
-    private boolean isProjectedCrs(String crs) {
-        if (crs.startsWith("EPSG:")) {
-            try {
-                int code = Integer.parseInt(crs.substring(5));
-                // UTM zones (326xx, 327xx), Web Mercator (3857), UPS North/South (5041, 5042)
-                return code >= 32600 || code == 3857 || code == 5041 || code == 5042;
-            } catch (NumberFormatException e) {
-                return false;
-            }
+    static boolean isProjectedCrs(String crs) {
+        String projectionName = new Proj(crs).getParams().projName;
+        if (projectionName == null || projectionName.trim().isEmpty()) {
+            throw new IllegalArgumentException("CRS has no projection name: " + crs);
         }
-        return crs.contains("+proj=") && !crs.contains("+proj=longlat");
+        return !"longlat".equalsIgnoreCase(projectionName);
+    }
+
+    static double toleranceForCrs(String crs) {
+        return isProjectedCrs(crs) ? PROJECTED_TOLERANCE : GEOGRAPHIC_TOLERANCE;
     }
 
     // ==================== Report Generation ====================
