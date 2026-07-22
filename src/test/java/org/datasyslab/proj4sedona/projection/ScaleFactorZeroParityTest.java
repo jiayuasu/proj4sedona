@@ -206,8 +206,11 @@ class ScaleFactorZeroParityTest {
     }
 
     @Test
-    @DisplayName("Approximate UTM expands to the traditional TM parameters")
+    @DisplayName("Approximate UTM intentionally honors +approx and expands to traditional TM")
     void testApproximateUtmNormalization() {
+        // Current proj4js 888ce3a overwrites UTM's approximate functions after init,
+        // ignoring +approx. This intentional divergence preserves the flag and matches
+        // proj4js's own tmerc +approx expansion (and PROJ) below.
         Proj approximate = new Proj(
             "+proj=utm +zone=32 +approx +ellps=WGS84 +units=m +no_defs");
         Point expected = project(approximate, 20, 50);

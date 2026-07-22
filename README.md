@@ -265,6 +265,10 @@ known to be wrong; each is noted in the relevant Javadoc and pinned by a test):
 | [wkt-parser](https://github.com/proj4js/wkt-parser) | v1.5.5 | 2026-07-13 (audit) |
 | [mgrs](https://github.com/proj4js/mgrs) | v1.0.0 | — |
 
+The projection-parity fixtures additionally target proj4js master commit `888ce3a`.
+Some covered behavior is newer than the published `proj4@2.20.9` npm package and may
+differ until the next upstream release.
+
 To find upstream changes that may need porting since the last sync:
 
 ```bash

@@ -96,6 +96,10 @@ public class ProjectionParams {
     /**
      * Resolve a projection-local scale default using JavaScript numeric truthiness.
      * Current proj4js treats zero and NaN as absent when applying these defaults.
+     *
+     * <p>The CRS serializer transition in PR #117 temporarily uses the presence of this
+     * exact method as a capability marker. Do not rename or remove it until that
+     * transition is cleaned up.</p>
      */
     public double getK0OrDefault(double defaultValue) {
         return k0 == 0.0 || Double.isNaN(k0) ? defaultValue : k0;

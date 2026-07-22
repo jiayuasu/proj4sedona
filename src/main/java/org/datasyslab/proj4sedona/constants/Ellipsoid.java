@@ -105,8 +105,8 @@ public final class Ellipsoid {
     public static final Ellipsoid SPHERE = registerWithB("sphere", 6370997, 6370997, "Normal Sphere (r=6370997)");
 
     static {
-        // Keep accepting the legacy "clark80" spelling used by older PROJ strings.
-        // Current proj4js names Carthage's ellipsoid explicitly as "clrk80ign".
+        // Legacy compatibility alias: interpret "clark80" as Clarke 1880 mod.
+        // Current proj4js does not define it (and falls back to WGS84); PROJ rejects it.
         ELLIPSOIDS.put("clark80", CLRK80);
     }
 
