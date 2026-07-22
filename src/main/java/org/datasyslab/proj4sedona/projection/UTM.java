@@ -69,6 +69,11 @@ public class UTM implements Projection {
         }
 
         // Set UTM-specific parameters
+        // Keep an auto-derived zone on the public parameter object.  Serialization
+        // happens after projection initialization, and without this assignment a
+        // valid zone-less definition (for example +proj=utm +lon_0=9 +south) lost
+        // both its zone and, historically, its hemisphere on PROJ-string export.
+        params.zone = zone;
         params.lat0 = 0.0;
         params.long0 = ((6 * Math.abs(zone)) - 183) * Values.D2R;
         params.x0 = 500000.0;

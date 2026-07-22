@@ -237,9 +237,14 @@ public final class CRSSerializer {
             sb.append("+proj=").append(emit);
         }
 
-        // UTM zone
-        if ("utm".equals(normProj) && params.zone != null) {
-            sb.append(" +zone=").append(params.zone);
+        // UTM zone and hemisphere are independent PROJ tokens.  Initialized UTM
+        // objects normally carry a (possibly derived) zone, but keeping +south
+        // outside that guard also makes serialization lossless for parameter
+        // objects assembled by callers.
+        if ("utm".equals(normProj)) {
+            if (params.zone != null) {
+                sb.append(" +zone=").append(params.zone);
+            }
             if (Boolean.TRUE.equals(params.utmSouth)) {
                 sb.append(" +south");
             }
@@ -327,9 +332,6 @@ public final class CRSSerializer {
                 if (params.rectifiedGridAngle != null) {
                     sb.append(" +gamma=").append(formatAngle(params.rectifiedGridAngle * RAD_TO_DEG));
                 }
-                if (omercIsTypeA(params)) {
-                    sb.append(" +no_uoff");
-                }
             } else {
                 // Two-point form requires lon_1/lat_1/lon_2/lat_2
                 if (params.long1 != null) {
@@ -344,6 +346,11 @@ public final class CRSSerializer {
                 if (params.lat2 != null) {
                     sb.append(" +lat_2=").append(formatAngle(params.lat2 * RAD_TO_DEG));
                 }
+            }
+            // +no_uoff selects the origin-offset behavior independently of whether
+            // the central line is supplied by azimuth or by two points.
+            if (omercIsTypeA(params)) {
+                sb.append(" +no_uoff");
             }
             if (Boolean.TRUE.equals(params.noRot)) {
                 sb.append(" +no_rot");
@@ -517,11 +524,7 @@ public final class CRSSerializer {
         if (params == null) {
             return null;
         }
-        rejectNonRepresentableStandardParameters(params);
-        if ("ob_tran".equals(params.projName)) {
-            throw new UnsupportedOperationException(
-                "ob_tran has no standard WKT1 representation; use toProjString instead");
-        }
+        rejectNonRepresentableStandardParameters(params, StandardFormat.WKT1);
 
         StringBuilder sb = new StringBuilder();
 
@@ -529,7 +532,7 @@ public final class CRSSerializer {
 
         if (isGeographic) {
             sb.append("GEOGCS[");
-            appendWkt1GeogCS(sb, params);
+            appendWkt1GeogCS(sb, params, true);
             sb.append("]");
         } else {
             sb.append("PROJCS[");
@@ -540,7 +543,8 @@ public final class CRSSerializer {
         return sb.toString();
     }
 
-    private static void appendWkt1GeogCS(StringBuilder sb, ProjectionParams params) {
+    private static void appendWkt1GeogCS(
+            StringBuilder sb, ProjectionParams params, boolean includeCrsAxes) {
         // Name
         String name = getCrsName(params);
         sb.append("\"").append(name).append("\",");
@@ -549,12 +553,19 @@ public final class CRSSerializer {
         appendWkt1Datum(sb, params);
 
         // Prime Meridian
-        sb.append(",PRIMEM[\"Greenwich\",");
+        sb.append(",PRIMEM[\"").append(primeMeridianName(params)).append("\",");
         sb.append(params.fromGreenwich != null ? formatAngle(params.fromGreenwich * RAD_TO_DEG) : "0");
         sb.append("]");
 
         // Unit
         sb.append(",UNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]");
+
+        // WKT1 defaults to the library's traditional ENU order when AXIS is
+        // absent.  Emit axes only when needed, and only on a top-level geographic
+        // CRS (a projected CRS's axis belongs to PROJCS, not its nested GEOGCS).
+        if (includeCrsAxes && !"enu".equals(effectiveAxis(params))) {
+            appendWkt1HorizontalAxes(sb, params, true);
+        }
     }
 
     private static void appendWkt1ProjCS(StringBuilder sb, ProjectionParams params) {
@@ -566,7 +577,7 @@ public final class CRSSerializer {
 
         // Geographic CRS
         sb.append("GEOGCS[");
-        appendWkt1GeogCS(sb, params);
+        appendWkt1GeogCS(sb, params, false);
         sb.append("],");
 
         // Projection
@@ -592,6 +603,8 @@ public final class CRSSerializer {
 
         if ("krovak".equals(proj)) {
             appendWkt1KrovakAxes(sb, params);
+        } else if (!"enu".equals(effectiveAxis(params))) {
+            appendWkt1HorizontalAxes(sb, params, false);
         }
     }
 
@@ -718,6 +731,19 @@ public final class CRSSerializer {
         }
     }
 
+    private static void appendWkt1HorizontalAxes(
+            StringBuilder sb, ProjectionParams params, boolean geographic) {
+        String axis = effectiveAxis(params);
+        for (int i = 0; i < 2; i++) {
+            char direction = axis.charAt(i);
+            sb.append(",AXIS[\"")
+              .append(wkt1HorizontalAxisName(direction, geographic))
+              .append("\",")
+              .append(horizontalAxisDirection(direction).toUpperCase(Locale.ROOT))
+              .append("]");
+        }
+    }
+
     /**
      * The metre factor of the CRS's linear unit, with the same precedence the unit
      * emitters use: a named unit's registry factor first, then an explicit to_meter,
@@ -740,6 +766,13 @@ public final class CRSSerializer {
                 "Linear unit conversion factor must be finite and greater than zero: " + toMeter);
         }
         return toMeter;
+    }
+
+    private static String linearUnitName(ProjectionParams params) {
+        if (params.units != null) {
+            return getUnitName(params.units);
+        }
+        return params.toMeter != null && params.toMeter != 1.0 ? "unknown" : "metre";
     }
 
     private static void appendWkt1OmercParams(StringBuilder sb, ProjectionParams params) {
@@ -786,11 +819,7 @@ public final class CRSSerializer {
         if (params == null) {
             return null;
         }
-        rejectNonRepresentableStandardParameters(params);
-        if ("ob_tran".equals(params.projName)) {
-            throw new UnsupportedOperationException(
-                "ob_tran has no standard WKT2 representation; use toProjString instead");
-        }
+        rejectNonRepresentableStandardParameters(params, StandardFormat.WKT2);
         String normalizedProj = normalizeProjName(params.projName);
         if (isApproximateTransverseMercator(normalizedProj, params)) {
             throw new UnsupportedOperationException(
@@ -824,8 +853,7 @@ public final class CRSSerializer {
 
         // Coordinate System
         sb.append(",CS[ellipsoidal,2],");
-        sb.append("AXIS[\"latitude\",north,ORDER[1],ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]],");
-        sb.append("AXIS[\"longitude\",east,ORDER[2],ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
+        appendWkt2HorizontalAxes(sb, params, true, false);
     }
 
     private static void appendWkt2ProjCRS(StringBuilder sb, ProjectionParams params) {
@@ -853,8 +881,7 @@ public final class CRSSerializer {
             sb.append("AXIS[\"southing\",south,ORDER[1]],");
             sb.append("AXIS[\"westing\",west,ORDER[2]],");
         } else {
-            sb.append("AXIS[\"easting\",east,ORDER[1]],");
-            sb.append("AXIS[\"northing\",north,ORDER[2]],");
+            appendWkt2HorizontalAxes(sb, params, false, true);
         }
         appendWkt2Unit(sb, params);
     }
@@ -873,7 +900,7 @@ public final class CRSSerializer {
         sb.append("]");
 
         // Prime Meridian
-        sb.append(",PRIMEM[\"Greenwich\",");
+        sb.append(",PRIMEM[\"").append(primeMeridianName(params)).append("\",");
         sb.append(params.fromGreenwich != null ? formatAngle(params.fromGreenwich * RAD_TO_DEG) : "0");
         sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
     }
@@ -1013,6 +1040,30 @@ public final class CRSSerializer {
         sb.append("]");
     }
 
+    private static void appendWkt2HorizontalAxes(
+            StringBuilder sb, ProjectionParams params, boolean geographic,
+            boolean trailingComma) {
+        String axis = effectiveAxis(params);
+        for (int i = 0; i < 2; i++) {
+            if (i > 0) {
+                sb.append(",");
+            }
+            char direction = axis.charAt(i);
+            sb.append("AXIS[\"")
+              .append(horizontalAxisName(direction, geographic).toLowerCase(Locale.ROOT))
+              .append("\",")
+              .append(horizontalAxisDirection(direction))
+              .append(",ORDER[").append(i + 1).append("]");
+            if (geographic) {
+                sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]");
+            }
+            sb.append("]");
+        }
+        if (trailingComma) {
+            sb.append(",");
+        }
+    }
+
     private static void appendWkt2AngleParameter(
             StringBuilder sb, String name, double radians) {
         sb.append(",PARAMETER[\"").append(name).append("\",")
@@ -1067,11 +1118,6 @@ public final class CRSSerializer {
         if (params == null) {
             return null;
         }
-        if ("ob_tran".equals(params.projName)) {
-            throw new UnsupportedOperationException(
-                "ob_tran has no standard PROJJSON representation; use toProjString instead");
-        }
-
         Map<String, Object> json = toProjJsonMap(params);
         
         Gson gson = prettyPrint 
@@ -1088,7 +1134,7 @@ public final class CRSSerializer {
         if (params == null) {
             return null;
         }
-        rejectNonRepresentableStandardParameters(params);
+        rejectNonRepresentableStandardParameters(params, StandardFormat.PROJJSON);
         String normalizedProj = normalizeProjName(params.projName);
         if (isApproximateTransverseMercator(normalizedProj, params)) {
             throw new UnsupportedOperationException(
@@ -1104,7 +1150,7 @@ public final class CRSSerializer {
             json.put("type", "GeographicCRS");
             json.put("name", getCrsName(params));
             json.put("datum", buildProjJsonDatum(params));
-            json.put("coordinate_system", buildProjJsonGeogCS());
+            json.put("coordinate_system", buildProjJsonGeogCS(params));
         } else if (isGeocentric(params)) {
             // Geocentric CRSs are a GeodeticCRS with a Cartesian coordinate system in
             // PROJJSON (e.g. EPSG:4978), not a ProjectedCRS with a conversion.
@@ -1152,15 +1198,18 @@ public final class CRSSerializer {
         // The linear unit lives on each axis. Well-known metre is the bare-string
         // form (as PROJ emits for EPSG:4978); other units carry their to-metre factor.
         Object unit;
-        if (params.toMeter == null || params.toMeter == 1.0) {
+        double unitToMeter = linearUnitToMeter(params);
+        if (unitToMeter == 1.0 && (params.units == null
+                || "m".equals(params.units) || "meter".equals(params.units)
+                || "metre".equals(params.units))) {
             unit = "metre";
         } else {
             Map<String, Object> unitMap = new LinkedHashMap<>();
             unitMap.put("type", "LinearUnit");
             // Authority-style unit name, as the other PROJJSON paths emit (PROJ writes
             // LENGTHUNIT["unknown",...] when only a bare to-metre factor is known).
-            unitMap.put("name", params.units != null ? getUnitName(params.units) : "unknown");
-            unitMap.put("conversion_factor", params.toMeter);
+            unitMap.put("name", linearUnitName(params));
+            unitMap.put("conversion_factor", unitToMeter);
             unit = unitMap;
         }
         Map<String, Object> cs = new LinkedHashMap<>();
@@ -1188,6 +1237,12 @@ public final class CRSSerializer {
         datum.put("type", "GeodeticReferenceFrame");
         datum.put("name", getDatumName(params));
         datum.put("ellipsoid", buildProjJsonEllipsoid(params));
+        if (hasNonGreenwichPrimeMeridian(params)) {
+            Map<String, Object> primeMeridian = new LinkedHashMap<>();
+            primeMeridian.put("name", "unknown");
+            primeMeridian.put("longitude", params.fromGreenwich * RAD_TO_DEG);
+            datum.put("prime_meridian", primeMeridian);
+        }
         return datum;
     }
 
@@ -1355,12 +1410,25 @@ public final class CRSSerializer {
         return param;
     }
 
+    /** Canonical latitude/longitude CS used only by a projected CRS's base CRS. */
     private static Map<String, Object> buildProjJsonGeogCS() {
         Map<String, Object> cs = new LinkedHashMap<>();
         cs.put("subtype", "ellipsoidal");
         cs.put("axis", Arrays.asList(
-            createAxis("Latitude", "Lat", "north", "degree"),
-            createAxis("Longitude", "Lon", "east", "degree")
+            createAxis("Latitude", "Lat", "north", "degree", DEG_TO_RAD),
+            createAxis("Longitude", "Lon", "east", "degree", DEG_TO_RAD)
+        ));
+        return cs;
+    }
+
+    /** Preserve the top-level geographic CRS's horizontal order and directions. */
+    private static Map<String, Object> buildProjJsonGeogCS(ProjectionParams params) {
+        Map<String, Object> cs = new LinkedHashMap<>();
+        cs.put("subtype", "ellipsoidal");
+        String axis = effectiveAxis(params);
+        cs.put("axis", Arrays.asList(
+            createHorizontalAxis(axis.charAt(0), true, "degree", DEG_TO_RAD),
+            createHorizontalAxis(axis.charAt(1), true, "degree", DEG_TO_RAD)
         ));
         return cs;
     }
@@ -1369,24 +1437,27 @@ public final class CRSSerializer {
         Map<String, Object> cs = new LinkedHashMap<>();
         cs.put("subtype", "Cartesian");
         
-        String unitName = params.units != null ? getUnitName(params.units) : "metre";
+        String unitName = linearUnitName(params);
+        double unitToMeter = linearUnitToMeter(params);
         if ("krovak".equals(normalizeProjName(params.projName))
                 && !isKrovakNorthOrientated(params)) {
             cs.put("axis", Arrays.asList(
-                createAxis("Southing", "S", "south", unitName),
-                createAxis("Westing", "W", "west", unitName)
+                createAxis("Southing", "S", "south", unitName, unitToMeter),
+                createAxis("Westing", "W", "west", unitName, unitToMeter)
             ));
         } else {
+            String axis = effectiveAxis(params);
             cs.put("axis", Arrays.asList(
-                createAxis("Easting", "E", "east", unitName),
-                createAxis("Northing", "N", "north", unitName)
+                createHorizontalAxis(axis.charAt(0), false, unitName, unitToMeter),
+                createHorizontalAxis(axis.charAt(1), false, unitName, unitToMeter)
             ));
         }
         return cs;
     }
 
     private static Map<String, Object> createAxis(
-            String name, String abbreviation, String direction, String unitName) {
+            String name, String abbreviation, String direction, String unitName,
+            double conversionFactor) {
         Map<String, Object> axis = new LinkedHashMap<>();
         axis.put("name", name);
         axis.put("abbreviation", abbreviation);
@@ -1396,15 +1467,24 @@ public final class CRSSerializer {
         unit.put("name", unitName);
         if ("degree".equals(unitName)) {
             unit.put("type", "AngularUnit");
-            unit.put("conversion_factor", DEG_TO_RAD);
+            unit.put("conversion_factor", conversionFactor);
         } else {
             unit.put("type", "LinearUnit");
-            Double toMeter = Units.getToMeter(unitName);
-            unit.put("conversion_factor", toMeter != null ? toMeter : 1.0);
+            unit.put("conversion_factor", conversionFactor);
         }
         axis.put("unit", unit);
         
         return axis;
+    }
+
+    private static Map<String, Object> createHorizontalAxis(
+            char axis, boolean geographic, String unitName, double conversionFactor) {
+        return createAxis(
+            horizontalAxisName(axis, geographic),
+            horizontalAxisAbbreviation(axis, geographic),
+            horizontalAxisDirection(axis),
+            unitName,
+            conversionFactor);
     }
 
     // ==================== Authority / EPSG Code Lookup ====================
@@ -1415,7 +1495,9 @@ public final class CRSSerializer {
      * <p>Identification strategy (in order):</p>
      * <ol>
      *   <li>If srsCode already contains "AUTHORITY:code" (e.g., from PROJJSON id field
-     *       or direct "EPSG:4326" input), return it directly.</li>
+     *       or direct "EPSG:4326" input), preserve it. Locally built-in EPSG codes are
+     *       first validated against their definitions because WKT parsing also stores
+     *       the human-readable CRS name in srsCode.</li>
      *   <li>If a well-known datum name is present, look it up in the datum name table.</li>
      *   <li>Fall back to parameter matching against known EPSG definitions.</li>
      * </ol>
@@ -1443,10 +1525,19 @@ public final class CRSSerializer {
             return null;
         }
 
-        // Phase 1: Check if srsCode already contains authority:code
+        // Phase 1: Check if srsCode already contains authority:code. WKT and
+        // PROJJSON parsers currently use the same field for both asserted IDs and
+        // human-readable names, so a CRS merely named "EPSG:4326" reaches this
+        // branch. Validate every EPSG definition bundled with the library before
+        // trusting it. Non-built-in authorities remain source assertions: validating
+        // them here would require provider/network lookup, and ProjectionParams does
+        // not retain enough provenance to distinguish an ID from a colon-bearing
+        // display name.
         if (params.srsCode != null) {
             String[] parsed = parseAuthorityCode(params.srsCode);
-            if (parsed != null) {
+            String builtInReference = builtInReferenceCode(parsed);
+            if (parsed != null && (builtInReference == null
+                    || matchesDefinition(params, builtInReference))) {
                 return parsed;
             }
         }
@@ -1526,6 +1617,33 @@ public final class CRSSerializer {
     }
 
     /**
+     * Return the canonical bundled EPSG definition used to validate an asserted
+     * identifier, or {@code null} when the identifier is not available offline.
+     */
+    private static String builtInReferenceCode(String[] authority) {
+        if (authority == null || authority.length != 2
+                || !"EPSG".equalsIgnoreCase(authority[0])) {
+            return null;
+        }
+        final int code;
+        try {
+            code = Integer.parseInt(authority[1]);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        if (code == 3785 || code == 900913 || code == 102113) {
+            return "EPSG:3857";
+        }
+        if (code == 4326 || code == 4269 || code == 3857
+                || code == 5041 || code == 5042
+                || (code >= 32601 && code <= 32660)
+                || (code >= 32701 && code <= 32760)) {
+            return "EPSG:" + code;
+        }
+        return null;
+    }
+
+    /**
      * Try to identify a geographic CRS EPSG code from the datum name.
      * Mirrors pyproj's behavior of matching well-known datum names.
      */
@@ -1542,6 +1660,10 @@ public final class CRSSerializer {
         // non-zero offset (e.g. +datum=WGS84 +pm=paris) disqualifies the datum-name
         // shortcut outright.
         if (params.fromGreenwich != null && params.fromGreenwich != 0.0) {
+            return null;
+        }
+
+        if (!isSafeGeographicAuthorityCandidate(params)) {
             return null;
         }
 
@@ -1565,6 +1687,91 @@ public final class CRSSerializer {
             }
         }
         return null;
+    }
+
+    /**
+     * Datum-name matching is deliberately narrow: it identifies the conventional
+     * longitude/latitude form, not every custom operation that happens to name the
+     * same datum.
+     */
+    private static boolean isSafeGeographicAuthorityCandidate(ProjectionParams params) {
+        String axis = effectiveAxis(params);
+        if (!("enu".equals(axis) || "neu".equals(axis))) {
+            return false;
+        }
+        if (params.units != null
+                && !("degree".equalsIgnoreCase(params.units)
+                    || "degrees".equalsIgnoreCase(params.units))) {
+            return false;
+        }
+        if (!optionalZero(params.lat0) || !optionalZero(params.long0)
+                || !optionalZero(params.latTs) || !optionalZero(params.lat1)
+                || !optionalZero(params.lat2)
+                || params.k0 != 1.0 || params.x0 != 0.0 || params.y0 != 0.0
+                || params.zone != null || booleanValue(params.utmSouth)
+                || booleanValue(params.rA) || booleanValue(params.approx)
+                || booleanValue(params.over) || booleanValue(params.noUoff)
+                || booleanValue(params.noRot) || params.longWrap != null) {
+            return false;
+        }
+        return declaredDatumOperationIsCanonical(params);
+    }
+
+    private static boolean optionalZero(Double value) {
+        return value == null || value == 0.0;
+    }
+
+    private static boolean declaredDatumOperationIsCanonical(ProjectionParams params) {
+        DatumParams actual = params.datum;
+        Datum declared = Datum.get(params.datumCode);
+        if (declared == null) {
+            return actual == null
+                || (!actual.isGridShift() && !hasTransformingTowgs84(actual));
+        }
+
+        String expectedGrid = declared.getNadgrids();
+        if (expectedGrid != null) {
+            return actual != null && actual.isGridShift()
+                && Objects.equals(expectedGrid, actual.getNadgrids());
+        }
+        if (actual != null && actual.isGridShift()) {
+            return false;
+        }
+        double[] actualHuman = actual != null && actual.getDatumParams() != null
+            ? toHumanTowgs84(actual) : null;
+        return numericOperationArraysEqual(actualHuman, declared.getTowgs84Array());
+    }
+
+    private static boolean datumOperationsEquivalent(DatumParams left, DatumParams right) {
+        if (left == null || right == null) {
+            return left == right
+                || (!hasTransformingTowgs84(left) && !hasTransformingTowgs84(right)
+                    && (left == null || !left.isGridShift())
+                    && (right == null || !right.isGridShift()));
+        }
+        if (left.isGridShift() != right.isGridShift()) {
+            return false;
+        }
+        if (left.isGridShift()
+                && !Objects.equals(left.getNadgrids(), right.getNadgrids())) {
+            return false;
+        }
+        double[] leftHuman = left.getDatumParams() != null ? toHumanTowgs84(left) : null;
+        double[] rightHuman = right.getDatumParams() != null ? toHumanTowgs84(right) : null;
+        return numericOperationArraysEqual(leftHuman, rightHuman);
+    }
+
+    /** Missing trailing parameters are zero in PROJ's 3/7-parameter model. */
+    private static boolean numericOperationArraysEqual(double[] left, double[] right) {
+        int length = Math.max(left != null ? left.length : 0, right != null ? right.length : 0);
+        for (int i = 0; i < length; i++) {
+            double lv = left != null && i < left.length ? left[i] : 0.0;
+            double rv = right != null && i < right.length ? right[i] : 0.0;
+            if (!Double.isFinite(lv) || !Double.isFinite(rv) || Math.abs(lv - rv) > 1e-9) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -1727,7 +1934,8 @@ public final class CRSSerializer {
             // Compare projection names (normalized to handle aliases)
             String normalizedInput = normalizeProjName(params.projName);
             String normalizedRef = normalizeProjName(refParams.projName);
-            if (!Objects.equals(normalizedInput, normalizedRef)) {
+            boolean parameterizedUtm = isUtmTmercPair(normalizedInput, normalizedRef);
+            if (!Objects.equals(normalizedInput, normalizedRef) && !parameterizedUtm) {
                 return false;
             }
 
@@ -1744,6 +1952,14 @@ public final class CRSSerializer {
                 if (!datumCodesMatch(params.datumCode, refParams.datumCode)) {
                     return false;
                 }
+            }
+
+            // A CRS identifier describes the datum, including the operation state
+            // this library applies when transforming through WGS84.  The datum name
+            // alone must not hide an explicit override such as
+            // +datum=WGS84 +towgs84=100,0,0.
+            if (!datumOperationsEquivalent(params.datum, refParams.datum)) {
+                return false;
             }
 
             // Check semi-major axis
@@ -1769,10 +1985,19 @@ public final class CRSSerializer {
             }
 
             // Check lat0/long0
-            if (!closeEnough(params.lat0, refParams.lat0, 1e-9)) {
+            if (!closeEnoughOrZero(params.lat0, refParams.lat0, 1e-9)) {
                 return false;
             }
-            if (!closeEnough(params.long0, refParams.long0, 1e-9)) {
+            if (!closeEnoughOrZero(params.long0, refParams.long0, 1e-9)) {
+                return false;
+            }
+
+            // Projection-specific angular parameters are just as defining as the
+            // natural origin.  This prevents a spherical Mercator with lat_ts=30
+            // from being stamped EPSG:3857 merely because its ellipsoid and k match.
+            if (!closeEnoughOrZero(params.latTs, refParams.latTs, 1e-9)
+                    || !closeEnoughOrZero(params.lat1, refParams.lat1, 1e-9)
+                    || !closeEnoughOrZero(params.lat2, refParams.lat2, 1e-9)) {
                 return false;
             }
 
@@ -1798,16 +2023,61 @@ public final class CRSSerializer {
                 return false;
             }
 
+            if (params.sphere != refParams.sphere) {
+                return false;
+            }
+
+            // Linear units affect every projected/geocentric coordinate.  Compare
+            // factors, not spelling ("foot" and "ft" are equivalent).
+            if (!"longlat".equals(normalizedInput)) {
+                double inputUnit = linearUnitToMeter(params);
+                double referenceUnit = linearUnitToMeter(refParams);
+                if (Math.abs(inputUnit - referenceUnit)
+                        > 1e-12 * Math.max(inputUnit, referenceUnit)) {
+                    return false;
+                }
+            }
+
+            if (!Objects.equals(effectiveAxis(params), effectiveAxis(refParams))
+                    // WKT/PROJJSON describe UTM as parameterized Transverse
+                    // Mercator, so zone/south are already represented by long0,
+                    // y0, and the other numeric checks above.
+                    || (!parameterizedUtm && (!Objects.equals(params.zone, refParams.zone)
+                        || booleanValue(params.utmSouth) != booleanValue(refParams.utmSouth)))
+                    || booleanValue(params.rA) != booleanValue(refParams.rA)
+                    || booleanValue(params.approx) != booleanValue(refParams.approx)
+                    || booleanValue(params.over) != booleanValue(refParams.over)
+                    || booleanValue(params.noUoff) != booleanValue(refParams.noUoff)
+                    || booleanValue(params.noRot) != booleanValue(refParams.noRot)
+                    || !closeEnough(params.longWrap, refParams.longWrap, 1e-9)) {
+                return false;
+            }
+
             return true;
         } catch (Exception e) {
             return false;
         }
     }
 
+    private static boolean isUtmTmercPair(String left, String right) {
+        return ("utm".equals(left) && "tmerc".equals(right))
+            || ("tmerc".equals(left) && "utm".equals(right));
+    }
+
     private static boolean closeEnough(Double a, Double b, double tolerance) {
         if (a == null && b == null) return true;
         if (a == null || b == null) return false;
         return Math.abs(a - b) < tolerance;
+    }
+
+    private static boolean closeEnoughOrZero(Double a, Double b, double tolerance) {
+        double av = a != null ? a : 0.0;
+        double bv = b != null ? b : 0.0;
+        return Double.isFinite(av) && Double.isFinite(bv) && Math.abs(av - bv) < tolerance;
+    }
+
+    private static boolean booleanValue(Boolean value) {
+        return Boolean.TRUE.equals(value);
     }
 
     /**
@@ -2341,13 +2611,67 @@ public final class CRSSerializer {
             && params.latTs != 0.0 && Double.isFinite(params.latTs);
     }
 
-    private static void rejectNonRepresentableStandardParameters(ProjectionParams params) {
-        if (Boolean.TRUE.equals(params.rA)) {
-            throw new UnsupportedOperationException(
-                "+R_A cannot be represented losslessly in WKT/PROJJSON; "
-                    + "use toProjString instead");
-        }
+    private enum StandardFormat {
+        WKT1,
+        WKT2,
+        PROJJSON
+    }
+
+    /**
+     * Fail instead of emitting a syntactically plausible CRS that silently drops a
+     * transform-affecting PROJ extension.  These exporters describe a CRS, not an
+     * arbitrary PROJ operation pipeline; callers can always request the lossless
+     * PROJ string instead.
+     */
+    private static void rejectNonRepresentableStandardParameters(
+            ProjectionParams params, StandardFormat format) {
         String proj = normalizeProjName(params.projName);
+
+        if ("ob_tran".equals(proj)) {
+            throw unsupportedStandardParameter(
+                "ob_tran has no standard " + formatName(format) + " representation");
+        }
+        if ("tpers".equals(proj)) {
+            throw unsupportedStandardParameter(
+                "Tilted Perspective has no standard " + formatName(format) + " representation");
+        }
+        if ((format == StandardFormat.WKT1 || format == StandardFormat.WKT2)
+                && isGeocentric(params)) {
+            throw unsupportedStandardParameter(
+                "Geocentric CRS export is not implemented for " + formatName(format));
+        }
+        if (isTwoPointObliqueMercator(proj, params)) {
+            throw unsupportedStandardParameter(
+                "Two-point Oblique Mercator has no executable " + formatName(format)
+                    + " representation");
+        }
+        if (Boolean.TRUE.equals(params.over)) {
+            throw unsupportedStandardParameter("+over cannot be represented losslessly");
+        }
+        if (params.longWrap != null) {
+            throw unsupportedStandardParameter("+lon_wrap cannot be represented losslessly");
+        }
+        if ("omerc".equals(proj) && Boolean.TRUE.equals(params.noRot)) {
+            throw unsupportedStandardParameter(
+                "Oblique Mercator +no_rot cannot be represented losslessly");
+        }
+        if (Boolean.TRUE.equals(params.rA)) {
+            throw unsupportedStandardParameter("+R_A cannot be represented losslessly");
+        }
+
+        DatumParams datum = params.datum;
+        if (datum != null && datum.isGridShift()) {
+            throw unsupportedStandardParameter(
+                "Grid-shift datum operations cannot be represented losslessly");
+        }
+        if (format != StandardFormat.WKT1 && hasTransformingTowgs84(datum)) {
+            throw unsupportedStandardParameter(
+                "TOWGS84 datum operations cannot be represented losslessly in "
+                    + formatName(format));
+        }
+
+        validateStandardAxis(params, proj, format);
+
         if ("cea".equals(proj) && params.sphere && params.latTs != null
                 && !Double.isFinite(params.latTs)) {
             throw new UnsupportedOperationException(
@@ -2373,6 +2697,34 @@ public final class CRSSerializer {
                 "Latitude of true scale must be strictly between -90 and 90 degrees "
                     + "in WKT/PROJJSON; use toProjString instead");
         }
+    }
+
+    private static UnsupportedOperationException unsupportedStandardParameter(String detail) {
+        return new UnsupportedOperationException(detail + "; use toProjString instead");
+    }
+
+    private static String formatName(StandardFormat format) {
+        return format == StandardFormat.PROJJSON ? "PROJJSON" : format.name();
+    }
+
+    private static boolean isTwoPointObliqueMercator(
+            String proj, ProjectionParams params) {
+        return "omerc".equals(proj)
+            && params.alpha == null && params.rectifiedGridAngle == null;
+    }
+
+    /** Non-zero Helmert values affect coordinates; an all-zero list does not. */
+    private static boolean hasTransformingTowgs84(DatumParams datum) {
+        if (datum == null || datum.getDatumParams() == null) {
+            return false;
+        }
+        double[] human = toHumanTowgs84(datum);
+        for (double value : human) {
+            if (value != 0.0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isApproximateTransverseMercator(
@@ -2435,6 +2787,102 @@ public final class CRSSerializer {
     private static boolean isPolarStereographic(String proj, ProjectionParams params) {
         return "stere".equals(proj) && params.lat0 != null
                 && Math.abs(Math.cos(params.lat0)) <= Values.EPSLN;
+    }
+
+    private static boolean hasNonGreenwichPrimeMeridian(ProjectionParams params) {
+        return params.fromGreenwich != null && params.fromGreenwich != 0.0;
+    }
+
+    private static String primeMeridianName(ProjectionParams params) {
+        // The source short-name is not retained after parsing.  Calling a non-zero
+        // meridian "Greenwich" is actively harmful: older WKT2 conversion code used
+        // the name as a shortcut and discarded its numeric longitude.
+        return hasNonGreenwichPrimeMeridian(params) ? "unknown" : "Greenwich";
+    }
+
+    private static String effectiveAxis(ProjectionParams params) {
+        return params.axis != null ? params.axis.toLowerCase(Locale.ROOT) : "enu";
+    }
+
+    private static void validateStandardAxis(
+            ProjectionParams params, String proj, StandardFormat format) {
+        String axis = effectiveAxis(params);
+        if ("krovak".equals(proj)) {
+            if ("enu".equals(axis) || "swu".equals(axis)) {
+                return;
+            }
+            throw unsupportedStandardParameter(
+                "Krovak axis " + axis + " is not supported by the "
+                    + formatName(format) + " exporter");
+        }
+        if (isGeocentric(params)) {
+            // PROJJSON geocentric export currently emits the conventional X/Y/Z
+            // order.  WKT was rejected earlier because no valid 3D WKT structure is
+            // implemented at all.
+            if (format == StandardFormat.PROJJSON && "enu".equals(axis)) {
+                return;
+            }
+            throw unsupportedStandardParameter(
+                "Geocentric axis " + axis + " is not supported by the "
+                    + formatName(format) + " exporter");
+        }
+        if (axis.length() != 3 || axis.charAt(2) != 'u'
+                || (!isEastWest(axis.charAt(0)) && !isEastWest(axis.charAt(1)))
+                || (!isNorthSouth(axis.charAt(0)) && !isNorthSouth(axis.charAt(1)))
+                || isEastWest(axis.charAt(0)) == isEastWest(axis.charAt(1))) {
+            throw unsupportedStandardParameter(
+                "Axis " + axis + " cannot be represented by a two-dimensional "
+                    + formatName(format) + " CRS");
+        }
+    }
+
+    private static boolean isEastWest(char direction) {
+        return direction == 'e' || direction == 'w';
+    }
+
+    private static boolean isNorthSouth(char direction) {
+        return direction == 'n' || direction == 's';
+    }
+
+    private static String horizontalAxisDirection(char direction) {
+        switch (direction) {
+            case 'e': return "east";
+            case 'w': return "west";
+            case 'n': return "north";
+            case 's': return "south";
+            default:
+                throw new IllegalArgumentException("Not a horizontal axis: " + direction);
+        }
+    }
+
+    private static String horizontalAxisName(char direction, boolean geographic) {
+        if (geographic) {
+            return isEastWest(direction) ? "Longitude" : "Latitude";
+        }
+        switch (direction) {
+            case 'e': return "Easting";
+            case 'w': return "Westing";
+            case 'n': return "Northing";
+            case 's': return "Southing";
+            default:
+                throw new IllegalArgumentException("Not a horizontal axis: " + direction);
+        }
+    }
+
+    private static String wkt1HorizontalAxisName(char direction, boolean geographic) {
+        if (geographic) {
+            // WktUtils recognizes the concise WKT1 Lon/Lat spellings together with
+            // the direction token; "Longitude" alone is intentionally not guessed.
+            return isEastWest(direction) ? "Lon" : "Lat";
+        }
+        return horizontalAxisName(direction, false);
+    }
+
+    private static String horizontalAxisAbbreviation(char direction, boolean geographic) {
+        if (geographic) {
+            return isEastWest(direction) ? "Lon" : "Lat";
+        }
+        return String.valueOf(Character.toUpperCase(direction));
     }
 
     /**
