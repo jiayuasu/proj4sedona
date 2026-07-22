@@ -80,6 +80,32 @@ def get_test_crs_definitions() -> List[Dict[str, Any]]:
             "name": "eqdc_custom",
             "desc": "Equidistant Conic"
         },
+        # Semantically sensitive serializer cases.  These guard properties that
+        # cannot be inferred from the ellipsoid axes alone.
+        {
+            "input": "+proj=longlat +ellps=WGS84 +pm=paris +axis=enu +no_defs",
+            "name": "paris_prime_meridian",
+            "desc": "Geographic CRS with the Paris prime meridian"
+        },
+        {
+            "input": "+proj=tmerc +lat_0=0 +lon_0=-75 +k=0.9996 +x_0=500000 +y_0=0 +datum=WGS84 +units=us-ft +axis=enu +no_defs",
+            "name": "tmerc_us_survey_foot",
+            "desc": "Transverse Mercator in US survey feet"
+        },
+        {
+            "input": "+proj=tmerc +lat_0=0 +lon_0=15 +k=0.9996 +x_0=500000 +y_0=0 +datum=WGS84 +units=m +axis=neu +no_defs",
+            "name": "tmerc_north_east_axis",
+            "desc": "Transverse Mercator with north/east axis order"
+        },
+        {
+            "input": "+proj=longlat +ellps=intl +towgs84=-87,-98,-121 +axis=enu +no_defs",
+            "name": "longlat_three_parameter_datum",
+            "desc": "Geographic CRS with a three-parameter datum transformation",
+            # The Java implementation deliberately refuses standard formats that
+            # would otherwise discard the bound-CRS operation.  A refusal is part
+            # of the contract and is checked by the benchmark.
+            "java_supported_formats": ["wkt1", "proj_string"]
+        },
     ]
 
 
@@ -88,13 +114,29 @@ def generate_format_reference(output_file: str, verbose: bool = False) -> None:
 
     crs_definitions = get_test_crs_definitions()
     expected_formats = ["wkt1", "wkt2", "proj_string", "projjson"]
+    supported_comparison_count = sum(
+        len(definition.get("java_supported_formats", expected_formats))
+        for definition in crs_definitions
+    )
+    comparison_count = len(crs_definitions) * len(expected_formats)
     reference_data = {
-        "version": "1.1",
+        "version": "1.2",
         "generator": "pyproj",
         "pyproj_version": None,
         "expected_test_case_count": len(crs_definitions),
         "expected_formats": expected_formats,
-        "expected_comparison_count": len(crs_definitions) * len(expected_formats),
+        "expected_semantic_checks": [
+            "projection_method",
+            "conversion_parameters",
+            "utm_zone_hemisphere",
+            "prime_meridian",
+            "linear_unit",
+            "axis",
+            "datum_transform",
+        ],
+        "expected_comparison_count": comparison_count,
+        "expected_supported_comparison_count": supported_comparison_count,
+        "expected_rejection_count": comparison_count - supported_comparison_count,
         "tolerance_m": 0.01,
         "test_cases": []
     }
@@ -114,6 +156,9 @@ def generate_format_reference(output_file: str, verbose: bool = False) -> None:
                 "name": crs_def["name"],
                 "description": crs_def["desc"],
                 "input": crs_def["input"],
+                "java_supported_formats": crs_def.get(
+                    "java_supported_formats", expected_formats
+                ),
                 "exports": {},
                 "round_trip_verification": {},
                 "error": None
@@ -175,6 +220,9 @@ def generate_format_reference(output_file: str, verbose: bool = False) -> None:
                 "name": crs_def["name"],
                 "description": crs_def["desc"],
                 "input": crs_def["input"],
+                "java_supported_formats": crs_def.get(
+                    "java_supported_formats", expected_formats
+                ),
                 "exports": {fmt: None for fmt in expected_formats},
                 "round_trip_verification": {
                     fmt: {"success": False, "error": str(e)}
