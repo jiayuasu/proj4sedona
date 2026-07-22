@@ -923,10 +923,12 @@ class CRSSerializerTest {
         // Export to WKT1
         String wkt1 = CRSSerializer.toWkt1(proj);
         assertNotNull(wkt1);
-        // WKT1 should contain standard_parallel_1 with -71
-        assertTrue(wkt1.contains("standard_parallel_1") || wkt1.contains("Standard_Parallel_1"),
-                "WKT1 should contain standard_parallel_1 parameter");
-        assertTrue(wkt1.contains("-71"), "WKT1 should preserve lat_ts value of -71");
+        // Canonical WKT1 expresses EPSG variant B through Polar_Stereographic with
+        // latitude_of_origin set to the standard parallel.
+        assertTrue(wkt1.contains("PROJECTION[\"Polar_Stereographic\"]"), wkt1);
+        assertTrue(wkt1.contains("PARAMETER[\"latitude_of_origin\",-71"), wkt1);
+        assertFalse(wkt1.contains("standard_parallel"), wkt1);
+        assertFalse(wkt1.contains("scale_factor"), wkt1);
 
         // Re-import and re-export to PROJ
         Proj reimported = new Proj(wkt1);
@@ -1820,17 +1822,16 @@ class CRSSerializerTest {
     }
 
     @Test
-    @DisplayName("Opposite-pole spherical lat_ts is preserved (derives a different scale)")
-    void testPolarStereoOppositePoleLatTsPreserved() {
-        // +proj=stere +lat_0=90 +lat_ts=-90 derives k=0 (degenerate zero-scale), unlike
-        // lat_ts=+90 which derives k=1. Dropping lat_ts here (treating it as the
-        // same-pole degenerate case) would silently change the transform — so it must
-        // stay variant B with lat_ts preserved. Regression compares the forward result
-        // before and after a proj-string round trip.
+    @DisplayName("Opposite-pole spherical lat_ts serializes as effective variant A")
+    void testPolarStereoOppositePoleLatTsUsesEffectiveScale() {
+        // EPSG variant B infers its origin pole from the standard-parallel sign, so an
+        // opposite-pole lat_ts cannot be represented that way. Preserve the initialized
+        // transform through its effective scale instead.
         String src = "+proj=longlat +R=6371000 +no_defs";
         String def = "+proj=stere +lat_0=90 +lat_ts=-90 +R=6371000 +no_defs";
         String serialized = CRSSerializer.toProjString(new Proj(def));
-        assertTrue(serialized.contains("+lat_ts=-90"), "opposite-pole lat_ts kept: " + serialized);
+        assertFalse(serialized.contains("+lat_ts="), "opposite-pole lat_ts dropped: " + serialized);
+        assertTrue(serialized.contains("+k_0=0.0"), "effective scale kept: " + serialized);
 
         Point before = Proj4.proj4(src, def).forward(new Point(10, 80));
         Point after = Proj4.proj4(src, serialized).forward(new Point(10, 80));
@@ -1851,9 +1852,22 @@ class CRSSerializerTest {
         assertFalse(proj.contains("+k_0="), "variant B has no scale factor: " + proj);
 
         String wkt1 = CRSSerializer.toWkt1(p);
-        assertTrue(wkt1.contains("Polar Stereographic (variant B)"), wkt1);
-        assertTrue(wkt1.contains("standard_parallel"), wkt1);
+        assertTrue(wkt1.contains("PROJECTION[\"Polar_Stereographic\"]"), wkt1);
+        assertTrue(wkt1.contains("PARAMETER[\"latitude_of_origin\",-71"), wkt1);
+        assertFalse(wkt1.contains("standard_parallel"), wkt1);
         assertFalse(wkt1.contains("scale_factor"), wkt1);
+
+        String wkt2 = CRSSerializer.toWkt2(p);
+        assertTrue(wkt2.contains("Polar Stereographic (variant B)"), wkt2);
+        assertFalse(wkt2.contains("Latitude of natural origin"), wkt2);
+        assertTrue(wkt2.contains("Latitude of standard parallel"), wkt2);
+        assertTrue(wkt2.contains("Longitude of origin"), wkt2);
+
+        String projJson = CRSSerializer.toProjJson(p);
+        assertTrue(projJson.contains("Polar Stereographic (variant B)"), projJson);
+        assertFalse(projJson.contains("Latitude of natural origin"), projJson);
+        assertTrue(projJson.contains("Latitude of standard parallel"), projJson);
+        assertTrue(projJson.contains("Longitude of origin"), projJson);
     }
 
     // ========== Datum token normalization (issue #98) ==========

@@ -5,14 +5,14 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.datasyslab.proj4sedona.Proj4;
+import org.datasyslab.proj4sedona.common.ProjMath;
+import org.datasyslab.proj4sedona.constants.Values;
 import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.projection.Krovak;
-import org.datasyslab.proj4sedona.projection.Mercator;
 import org.datasyslab.proj4sedona.projection.ProjectionParams;
 import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
-import org.datasyslab.proj4sedona.projection.Stereographic;
 import org.datasyslab.proj4sedona.grid.GridLoader;
 import org.datasyslab.proj4sedona.parser.CRSSerializer;
 import org.datasyslab.proj4sedona.transform.Converter;
@@ -42,6 +42,8 @@ public class SpeedBenchmark {
     private static final double ROBINSON_TOLERANCE = 0.5;     // meters
     /** WKT normalization is deliberately stable to one nanodegree. */
     private static final double ANGLE_SEMANTIC_TOLERANCE = Math.toRadians(1e-9);
+    private static final boolean PROJECTION_PARITY_SEMANTICS_AVAILABLE =
+        detectProjectionParitySemantics();
 
     private static final Map<String, String> TRANSFORM_SKIPS;
     private static final Map<String, String> GRID_SKIPS;
@@ -648,8 +650,19 @@ public class SpeedBenchmark {
 
     private static double effectiveLatitudeOfTrueScale(
             String method, ProjectionParams params) {
-        if (("cea".equals(method) || "eqc".equals(method)) && params.latTs == null) {
-            return 0.0;
+        if (projectionParitySemanticsAvailable()) {
+            if ("eqc".equals(method)) {
+                return params.latTs == null || params.latTs == 0.0
+                        || Double.isNaN(params.latTs) ? 0.0 : params.latTs;
+            }
+            if ("cea".equals(method)
+                    && (params.latTs == null
+                        || (!params.sphere && !Double.isFinite(params.latTs)))) {
+                return 0.0;
+            }
+        } else if (("cea".equals(method) || "eqc".equals(method))
+                && params.latTs == null) {
+            return params.getLatTs();
         }
         return valueOrZero(params.latTs);
     }
@@ -657,10 +670,50 @@ public class SpeedBenchmark {
     private static double effectiveScaleFactor(String method, ProjectionParams params) {
         String baseMethod = method == null ? null : method.replace(":approx", "");
         if ("merc".equals(baseMethod)) {
-            return Mercator.resolveScaleFactor(params);
+            boolean derives = projectionParitySemanticsAvailable()
+                ? params.latTs != null && params.latTs != 0.0
+                    && !Double.isNaN(params.latTs)
+                : params.latTs != null;
+            if (!derives) {
+                return projectionParitySemanticsAvailable()
+                    ? defaultScaleOne(params.k0) : params.k0;
+            }
+            double sin = Math.sin(params.latTs);
+            double cos = Math.cos(params.latTs);
+            if (params.sphere) {
+                return projectionParitySemanticsAvailable()
+                    ? defaultScaleOne(cos) : cos;
+            }
+            double ratio = params.b / params.a;
+            double eccentricity = Math.sqrt(1.0 - ratio * ratio);
+            double scale = ProjMath.msfnz(eccentricity, sin, cos);
+            return projectionParitySemanticsAvailable()
+                ? defaultScaleOne(scale) : scale;
         }
         if ("stere".equals(baseMethod)) {
-            return Stereographic.resolveScaleFactor(params);
+            double scale = params.k0;
+            double lat0 = params.getLat0();
+            boolean derives = params.latTs != null
+                && Math.abs(Math.cos(lat0)) <= Values.EPSLN
+                && (projectionParitySemanticsAvailable()
+                    ? !Double.isNaN(params.latTs) : scale == 1.0);
+            if (derives) {
+                if (params.sphere) {
+                    scale = 0.5 * (1.0 + ProjMath.sign(lat0) * Math.sin(params.latTs));
+                } else if (Math.abs(Math.cos(params.latTs)) > Values.EPSLN) {
+                    double eccentricity = Math.sqrt(params.es);
+                    double pole = lat0 > 0 ? 1.0 : -1.0;
+                    double cons = Math.sqrt(
+                        Math.pow(1 + eccentricity, 1 + eccentricity)
+                            * Math.pow(1 - eccentricity, 1 - eccentricity));
+                    scale = 0.5 * cons * ProjMath.msfnz(eccentricity,
+                        Math.sin(params.latTs), Math.cos(params.latTs))
+                        / ProjMath.tsfnz(eccentricity, pole * params.latTs,
+                            pole * Math.sin(params.latTs));
+                }
+            }
+            return projectionParitySemanticsAvailable()
+                ? defaultScaleOne(scale) : scale;
         }
         if ("krovak".equals(baseMethod)) {
             return Krovak.resolveScaleFactor(params);
@@ -672,9 +725,36 @@ public class SpeedBenchmark {
                 || "omerc".equals(baseMethod) || "somerc".equals(baseMethod)
                 || "sterea".equals(baseMethod) || "gnom".equals(baseMethod)
                 || "tmerc:approx".equals(method)) {
-            return params.getK0OrDefault(1.0);
+            return projectionParitySemanticsAvailable()
+                ? defaultScaleOne(params.k0) : params.k0;
         }
         return params.k0;
+    }
+
+    private static double defaultScaleOne(double scale) {
+        return scale == 0.0 || Double.isNaN(scale) ? 1.0 : scale;
+    }
+
+    private static boolean projectionParitySemanticsAvailable() {
+        return PROJECTION_PARITY_SEMANTICS_AVAILABLE;
+    }
+
+    private static boolean detectProjectionParitySemantics() {
+        try {
+            ProjectionParams.class.getMethod("getK0OrDefault", double.class);
+            return true;
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
+    }
+
+    private static boolean isFastTransverseMercatorName(String projectionName) {
+        if (projectionName == null) {
+            return false;
+        }
+        String normalized = ProjectionRegistry.getNormalizedProjName(
+            projectionName.toLowerCase(Locale.ROOT));
+        return "fast_transverse_mercator".equals(normalized);
     }
 
     private static String normalizedProjectionMethod(ProjectionParams params) {
@@ -684,11 +764,18 @@ public class SpeedBenchmark {
                 : ProjectionRegistry.getNormalizedProjName(
                     params.projName.toLowerCase(Locale.ROOT));
         }
+        String sourceCode = code;
         // UTM is a constrained Transverse Mercator conversion in WKT and PROJJSON.
         if ("utm".equals(code)) {
             code = "tmerc";
         }
-        if ("tmerc".equals(code) && Boolean.TRUE.equals(params.approx)) {
+        boolean approximate = Boolean.TRUE.equals(params.approx)
+            || isFastTransverseMercatorName(params.projName)
+            || (!projectionParitySemanticsAvailable()
+                && ("tmerc".equals(sourceCode) || "etmerc".equals(sourceCode)
+                    || "utm".equals(sourceCode))
+                && (!Double.isFinite(params.es) || params.es <= 0.0));
+        if ("tmerc".equals(code) && approximate) {
             return "tmerc:approx";
         }
         return code;

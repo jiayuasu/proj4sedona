@@ -2,6 +2,7 @@ package org.datasyslab.proj4sedona.parser;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import org.datasyslab.proj4sedona.common.ProjMath;
 import org.datasyslab.proj4sedona.constants.Datum;
 import org.datasyslab.proj4sedona.constants.Ellipsoid;
 import org.datasyslab.proj4sedona.constants.Units;
@@ -42,6 +43,8 @@ public final class CRSSerializer {
     private static final double RAD_TO_DEG = 180.0 / Math.PI;
     private static final double DEG_TO_RAD = Math.PI / 180.0;
     private static final String DEG_TO_RAD_STR = Double.toString(DEG_TO_RAD);
+    private static final boolean PROJECTION_PARITY_SEMANTICS_AVAILABLE =
+        detectProjectionParitySemantics();
 
     // Projection name mappings: PROJ -> WKT method names (short/generic names)
     private static final Map<String, String> PROJ_TO_WKT_METHOD = new LinkedHashMap<>();
@@ -209,6 +212,13 @@ public final class CRSSerializer {
 
         StringBuilder sb = new StringBuilder();
         String normProj = normalizeProjName(params.projName);
+        boolean approximateTransverseMercator =
+            isApproximateTransverseMercator(normProj, params);
+        if (approximateTransverseMercator) {
+            // The executable PROJ spelling for the traditional algorithm is tmerc
+            // with +approx.  In particular, PROJ rejects spherical etmerc.
+            normProj = "tmerc";
+        }
         boolean isOmerc = "omerc".equals(normProj);
         boolean isKrovak = "krovak".equals(normProj);
 
@@ -274,7 +284,11 @@ public final class CRSSerializer {
         Double latTs = latitudeOfTrueScaleForSerialization(normProj, params);
         boolean polarStereoVariantA = isPolarStereographic(normProj, params)
                 && !isPolarStereographicVariantB(normProj, params);
-        if (latTs != null && latTs != 0.0 && !polarStereoVariantA) {
+        boolean latTsDrivesProjection = "cea".equals(normProj) || "eqc".equals(normProj)
+            || mercatorLatTsDeterminesScale(normProj, params)
+            || isPolarStereographicVariantB(normProj, params);
+        if (latTsDrivesProjection && latTs != null && latTs != 0.0
+                && !polarStereoVariantA) {
             sb.append(" +lat_ts=").append(Double.isFinite(latTs)
                 ? formatAngle(latTs * RAD_TO_DEG) : Double.toString(latTs));
         }
@@ -454,6 +468,9 @@ public final class CRSSerializer {
         if (Boolean.TRUE.equals(params.over)) {
             sb.append(" +over");
         }
+        if (Boolean.TRUE.equals(params.approx) || approximateTransverseMercator) {
+            sb.append(" +approx");
+        }
 
         sb.append(" +no_defs");
 
@@ -558,10 +575,20 @@ public final class CRSSerializer {
         sb.append("],");
 
         // Projection
-        // WKT1 uses the legacy Krovak method for either axis orientation; WKT2
-        // and PROJJSON use the orientation-specific EPSG method names.
-        String methodName = "krovak".equals(proj)
-            ? "Krovak" : getWktMethodName(proj, params);
+        String methodName;
+        if (isApproximateTransverseMercator(proj, params)) {
+            // This path is admitted only when the runtime projection registry can
+            // execute the Fast_Transverse_Mercator alias (see the preflight gate).
+            methodName = "Fast_Transverse_Mercator";
+        } else if ("krovak".equals(proj)) {
+            // WKT1 uses the legacy Krovak method for either axis orientation; WKT2
+            // and PROJJSON use the orientation-specific EPSG method names.
+            methodName = "Krovak";
+        } else {
+            methodName = isPolarStereographicVariantB(proj, params)
+                ? "Polar_Stereographic"
+                : getWktMethodName(proj, params);
+        }
         sb.append("PROJECTION[\"").append(methodName).append("\"]");
 
         // Parameters
@@ -607,8 +634,15 @@ public final class CRSSerializer {
             return;
         }
 
+        boolean polarStereoVariantB = isPolarStereographicVariantB(proj, params);
+
         // Latitude of origin
-        if (params.lat0 != null) {
+        if (polarStereoVariantB) {
+            // Canonical WKT1 expresses variant B through the generic polar method,
+            // with its standard parallel in latitude_of_origin.
+            sb.append(",PARAMETER[\"latitude_of_origin\",");
+            sb.append(formatAngle(params.latTs * RAD_TO_DEG)).append("]");
+        } else if (params.lat0 != null) {
             sb.append(",PARAMETER[\"latitude_of_origin\",");
             sb.append(formatAngle(params.lat0 * RAD_TO_DEG)).append("]");
         } else if (usesLatTsAsStandardParallel(proj, params)) {
@@ -618,15 +652,15 @@ public final class CRSSerializer {
         }
 
         // Central meridian
-        if (params.long0 != null) {
+        if (params.long0 != null || polarStereoVariantB) {
             sb.append(",PARAMETER[\"central_meridian\",");
-            sb.append(formatAngle(params.long0 * RAD_TO_DEG)).append("]");
+            sb.append(formatAngle(params.getLong0() * RAD_TO_DEG)).append("]");
         }
 
         // Oblique Mercator defining parameters (lonc/alpha/gamma)
         if ("omerc".equals(proj)) {
             appendWkt1OmercParams(sb, params);
-        } else if (usesLatTsAsStandardParallel(proj, params)) {
+        } else if (!polarStereoVariantB && usesLatTsAsStandardParallel(proj, params)) {
             // Projections using latTs: emit it as standard_parallel_1
             sb.append(",PARAMETER[\"standard_parallel_1\",");
             sb.append(formatAngle(latitudeOfTrueScaleForSerialization(proj, params)
@@ -863,6 +897,7 @@ public final class CRSSerializer {
     private static void appendWkt2Parameters(StringBuilder sb, String proj, ProjectionParams params) {
 
         boolean isOmerc = "omerc".equals(proj);
+        boolean polarStereoVariantB = isPolarStereographicVariantB(proj, params);
 
         if ("krovak".equals(proj)) {
             appendWkt2KrovakParameters(sb, params);
@@ -870,20 +905,22 @@ public final class CRSSerializer {
         }
 
         // Latitude of natural origin (omerc emits "Latitude of projection centre" below)
-        if (params.lat0 != null && !isOmerc) {
+        if (params.lat0 != null && !isOmerc && !polarStereoVariantB) {
             sb.append(",PARAMETER[\"Latitude of natural origin\",");
             sb.append(formatAngle(params.lat0 * RAD_TO_DEG));
             sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
-        } else if (usesLatTsAsStandardParallel(proj, params)) {
+        } else if (!polarStereoVariantB && usesLatTsAsStandardParallel(proj, params)) {
             // Emit explicit origin=0 so re-import doesn't confuse standard_parallel with lat0
             sb.append(",PARAMETER[\"Latitude of natural origin\",0");
             sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
         }
 
         // Longitude of natural origin (omerc uses the projection-centre name below)
-        if (params.long0 != null && !isOmerc) {
-            sb.append(",PARAMETER[\"Longitude of natural origin\",");
-            sb.append(formatAngle(params.long0 * RAD_TO_DEG));
+        if (!isOmerc && (params.long0 != null || polarStereoVariantB)) {
+            String longitudeName = polarStereoVariantB
+                ? "Longitude of origin" : "Longitude of natural origin";
+            sb.append(",PARAMETER[\"").append(longitudeName).append("\",");
+            sb.append(formatAngle(params.getLong0() * RAD_TO_DEG));
             sb.append(",ANGLEUNIT[\"degree\",").append(DEG_TO_RAD_STR).append("]]");
         }
 
@@ -1282,16 +1319,19 @@ public final class CRSSerializer {
         }
 
         // Add parameters
-        if (params.lat0 != null) {
+        boolean polarStereoVariantB = isPolarStereographicVariantB(proj, params);
+        if (params.lat0 != null && !polarStereoVariantB) {
             parameters.add(buildProjJsonParam("Latitude of natural origin",
                 params.lat0 * RAD_TO_DEG, "degree"));
-        } else if (usesLatTsAsStandardParallel(proj, params)) {
+        } else if (!polarStereoVariantB && usesLatTsAsStandardParallel(proj, params)) {
             // Emit explicit origin=0 so re-import doesn't confuse standard_parallel with lat0
             parameters.add(buildProjJsonParam("Latitude of natural origin", 0.0, "degree"));
         }
-        if (params.long0 != null) {
-            parameters.add(buildProjJsonParam("Longitude of natural origin", 
-                params.long0 * RAD_TO_DEG, "degree"));
+        if (params.long0 != null || polarStereoVariantB) {
+            String longitudeName = polarStereoVariantB
+                ? "Longitude of origin" : "Longitude of natural origin";
+            parameters.add(buildProjJsonParam(longitudeName,
+                params.getLong0() * RAD_TO_DEG, "degree"));
         }
         if (usesLatTsAsStandardParallel(proj, params)) {
             // Polar stere: "Latitude of standard parallel"; merc/cea/eqc: "Latitude of 1st standard parallel"
@@ -2401,7 +2441,7 @@ public final class CRSSerializer {
                 ? "Polar Stereographic (variant B)"
                 : "Polar Stereographic (variant A)";
         }
-        if ("merc".equals(proj) && params.latTs != null && params.latTs != 0.0) {
+        if (mercatorLatTsDeterminesScale(proj, params)) {
             return "Mercator (variant B)";
         }
         if ("omerc".equals(proj)) {
@@ -2456,22 +2496,33 @@ public final class CRSSerializer {
             return true;
         }
         if (params.latTs == null) return false;
-        if ("merc".equals(proj)) return true;
+        if ("merc".equals(proj)) return mercatorLatTsDeterminesScale(proj, params);
         // Polar Stereographic carries latTs as the standard parallel only in variant B;
         // variant A is defined by the scale factor and emits no standard parallel.
         return isPolarStereographicVariantB(proj, params);
     }
 
-    /**
-     * Return the effective latitude of true scale for serialization. EQC mirrors
-     * proj4js's {@code lat_ts || 0}; CEA likewise serializes the effective equatorial
-     * true scale when its ellipsoidal initialization falls back from a missing or
-     * nonfinite value.
-     */
+    /** Return the latitude of true scale actually consumed by the runtime projection. */
     private static Double latitudeOfTrueScaleForSerialization(
             String proj, ProjectionParams params) {
-        if (("eqc".equals(proj) || "cea".equals(proj)) && params.latTs == null) {
-            return 0.0;
+        if (projectionParitySemanticsAvailable()) {
+            if ("eqc".equals(proj)) {
+                // The projection parity update follows JavaScript's lat_ts || 0.
+                return params.latTs == null || params.latTs == 0.0
+                        || Double.isNaN(params.latTs) ? 0.0 : params.latTs;
+            }
+            if ("cea".equals(proj)
+                    && (params.latTs == null
+                        || (!params.sphere && !Double.isFinite(params.latTs)))) {
+                return 0.0;
+            }
+        } else if (("eqc".equals(proj) || "cea".equals(proj))
+                && params.latTs == null) {
+            // On the main branch both projections call getLatTs(), which inherits
+            // lat_0 when lat_ts is absent. Keep this standalone exporter faithful to
+            // that initialized behavior; the feature check switches automatically
+            // when the projection parity update is present.
+            return params.getLatTs();
         }
         return params.latTs;
     }
@@ -2506,18 +2557,86 @@ public final class CRSSerializer {
     }
 
     private static double effectiveScaleFactor(String proj, ProjectionParams params) {
+        if ("stere".equals(proj)) {
+            return effectiveStereographicScale(params);
+        }
+        if ("merc".equals(proj)) {
+            return effectiveMercatorScale(params);
+        }
         if ("krovak".equals(proj)) {
             return Krovak.resolveScaleFactor(params);
         }
         if ("utm".equals(proj)) {
             return 0.9996;
         }
+        if (projectionParitySemanticsAvailable()
+                && ("gstmerc".equals(proj) || "omerc".equals(proj)
+                    || "somerc".equals(proj) || "lcc".equals(proj)
+                    || "sterea".equals(proj) || "gnom".equals(proj)
+                    || isApproximateTransverseMercator(proj, params))) {
+            return defaultScaleOne(params.k0);
+        }
         return params.k0;
     }
 
     private static boolean mercatorLatTsDeterminesScale(String proj, ProjectionParams params) {
-        return "merc".equals(proj) && params.latTs != null
-            && params.latTs != 0.0 && Double.isFinite(params.latTs);
+        if (!"merc".equals(proj) || params.latTs == null) {
+            return false;
+        }
+        // Main currently lets any supplied value drive Mercator.init. The numerical
+        // parity update follows proj4js truthiness and only treats finite, non-zero
+        // lat_ts as the standard-parallel form.
+        return !projectionParitySemanticsAvailable()
+            || (params.latTs != 0.0 && Double.isFinite(params.latTs));
+    }
+
+    private static double effectiveMercatorScale(ProjectionParams params) {
+        Double latTs = params.latTs;
+        boolean derives = projectionParitySemanticsAvailable()
+            ? latTs != null && latTs != 0.0 && !Double.isNaN(latTs)
+            : latTs != null;
+        if (!derives) {
+            return projectionParitySemanticsAvailable()
+                ? defaultScaleOne(params.k0) : params.k0;
+        }
+
+        double scale;
+        if (params.sphere) {
+            scale = Math.cos(latTs);
+        } else {
+            // Mercator.init derives eccentricity from the axes rather than params.es.
+            double axisRatio = params.b / params.a;
+            double eccentricity = Math.sqrt(1.0 - axisRatio * axisRatio);
+            scale = ProjMath.msfnz(
+                eccentricity, Math.sin(latTs), Math.cos(latTs));
+        }
+        return projectionParitySemanticsAvailable() ? defaultScaleOne(scale) : scale;
+    }
+
+    private static double effectiveStereographicScale(ProjectionParams params) {
+        double scale = params.k0;
+        if (polarStereoLatTsDeterminesScale("stere", params)) {
+            double lat0 = params.getLat0();
+            double latTs = params.latTs;
+            if (params.sphere) {
+                scale = 0.5 * (1.0 + Math.copySign(1.0, lat0) * Math.sin(latTs));
+            } else {
+                double eccentricity = Math.sqrt(params.es);
+                double pole = lat0 > 0.0 ? 1.0 : -1.0;
+                double constant = Math.sqrt(
+                    Math.pow(1.0 + eccentricity, 1.0 + eccentricity)
+                        * Math.pow(1.0 - eccentricity, 1.0 - eccentricity));
+                scale = 0.5 * constant
+                    * ProjMath.msfnz(eccentricity, Math.sin(latTs), Math.cos(latTs))
+                    / ProjMath.tsfnz(
+                        eccentricity, pole * latTs, pole * Math.sin(latTs));
+            }
+        }
+        return projectionParitySemanticsAvailable() ? defaultScaleOne(scale) : scale;
+    }
+
+    private static double defaultScaleOne(double scale) {
+        return scale == 0.0 || Double.isNaN(scale) ? 1.0 : scale;
     }
 
     private enum StandardFormat {
@@ -2567,6 +2686,25 @@ public final class CRSSerializer {
         if (Boolean.TRUE.equals(params.rA)) {
             throw unsupportedStandardParameter("+R_A cannot be represented losslessly");
         }
+        boolean approximateTransverseMercator =
+            isApproximateTransverseMercator(proj, params);
+        if (Boolean.TRUE.equals(params.approx) && !approximateTransverseMercator) {
+            throw unsupportedStandardParameter("+approx cannot be represented losslessly");
+        }
+        if (approximateTransverseMercator) {
+            boolean executableFastWkt1 = format == StandardFormat.WKT1
+                && fastTransverseMercatorWkt1Available();
+            if (!executableFastWkt1) {
+                throw unsupportedStandardParameter(
+                    "Approximate Transverse Mercator has no executable "
+                        + formatName(format) + " representation");
+            }
+        }
+        if (params.a > 0.0 && params.b <= 0.0 && !"vandg".equals(proj)) {
+            throw unsupportedStandardParameter(
+                "A CRS with no effective semi-minor axis has no lossless "
+                    + formatName(format) + " ellipsoid representation");
+        }
 
         DatumParams datum = params.datum;
         if (datum != null && datum.isGridShift()) {
@@ -2581,18 +2719,24 @@ public final class CRSSerializer {
 
         validateStandardAxis(params, proj, format);
 
-        if ("cea".equals(proj) && params.sphere && params.latTs != null
-                && !Double.isFinite(params.latTs)) {
+        Double effectiveLatTs = latitudeOfTrueScaleForSerialization(proj, params);
+        if ("cea".equals(proj) && effectiveLatTs != null
+                && !Double.isFinite(effectiveLatTs)) {
             throw new UnsupportedOperationException(
-                "Spherical Cylindrical Equal Area with nonfinite lat_ts has no valid "
+                "Cylindrical Equal Area with nonfinite lat_ts has no valid "
                     + "WKT/PROJJSON representation; use toProjString instead");
         }
-        Double effectiveLatTs = latitudeOfTrueScaleForSerialization(proj, params);
         if ("eqc".equals(proj) && effectiveLatTs != null
                 && !Double.isFinite(effectiveLatTs)) {
             throw new UnsupportedOperationException(
                 "Equidistant Cylindrical with nonfinite lat_ts has no valid "
                     + "WKT/PROJJSON representation; use toProjString instead");
+        }
+        if ("merc".equals(proj) && mercatorLatTsDeterminesScale(proj, params)
+                && params.latTs != null && !Double.isFinite(params.latTs)) {
+            throw new UnsupportedOperationException(
+                "Mercator with nonfinite lat_ts has no valid WKT/PROJJSON "
+                    + "representation; use toProjString instead");
         }
         Double standardLatTs = null;
         if (mercatorLatTsDeterminesScale(proj, params)) {
@@ -2636,6 +2780,61 @@ public final class CRSSerializer {
         return false;
     }
 
+    /**
+     * Whether the independent numerical parity update is on the runtime classpath.
+     * Its scale-default helper is a stable, non-spoofable capability marker, unlike a
+     * projection alias that an application can register itself.
+     */
+    private static boolean projectionParitySemanticsAvailable() {
+        return PROJECTION_PARITY_SEMANTICS_AVAILABLE;
+    }
+
+    private static boolean detectProjectionParitySemantics() {
+        try {
+            ProjectionParams.class.getMethod("getK0OrDefault", double.class);
+            return true;
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
+    }
+
+    private static boolean fastTransverseMercatorWkt1Available() {
+        if (!projectionParitySemanticsAvailable()) {
+            return false;
+        }
+        ProjectionRegistry.start();
+        return ProjectionRegistry.get("Fast_Transverse_Mercator") != null;
+    }
+
+    private static boolean isApproximateTransverseMercator(
+            String proj, ProjectionParams params) {
+        boolean explicitlyApproximate = Boolean.TRUE.equals(params.approx)
+            || isFastTransverseMercatorName(params.projName);
+        if ("utm".equals(proj)) {
+            return explicitlyApproximate || (!projectionParitySemanticsAvailable()
+                && (!Double.isFinite(params.es) || params.es <= 0.0));
+        }
+        if (!"etmerc".equals(proj) && !"tmerc".equals(proj)) {
+            return false;
+        }
+        if (explicitlyApproximate) {
+            return true;
+        }
+        // Before the numerical parity update, spherical ETMERC silently falls back
+        // to the traditional implementation. Preserve that standalone behavior.
+        return !projectionParitySemanticsAvailable()
+            && (!Double.isFinite(params.es) || params.es <= 0.0);
+    }
+
+    private static boolean isFastTransverseMercatorName(String projectionName) {
+        if (projectionName == null) {
+            return false;
+        }
+        String normalized = ProjectionRegistry.getNormalizedProjName(
+            projectionName.toLowerCase(Locale.ROOT));
+        return "fast_transverse_mercator".equals(normalized);
+    }
+
     /** The canonical PROJ axis forms distinguish the two EPSG Krovak methods. */
     private static boolean isKrovakNorthOrientated(ProjectionParams params) {
         return !"swu".equalsIgnoreCase(params.axis);
@@ -2655,31 +2854,32 @@ public final class CRSSerializer {
      * Whether a Polar Stereographic CRS is variant B (defined by a standard parallel
      * / latitude of true scale) rather than variant A (defined by a scale factor).
      *
-     * <p>Variant B requires a real standard parallel: latTs present, not zero, and not
-     * at the pole (a "standard parallel" coincident with the origin pole is degenerate
-     * and equivalent to variant A with k=1). A meaningful scale factor (k0 != 1) means
-     * the CRS is scale-defined — variant A — so the two never both apply. Keeping the
-     * variant label and the emitted parameters (scale_factor vs standard_parallel, and
-     * +k_0 vs +lat_ts) consistent is what makes the round trip stable: a CRS that
-     * arrives with both latTs and k0 (e.g. GeoTools adds latTs=90 to a variant-A polar
-     * CRS) is serialized as variant A and re-imports unchanged (apache/sedona#3103).</p>
+     * <p>EPSG variant B infers the origin pole from the standard parallel. It can only
+     * represent an init-driving {@code latTs} strictly between the poles, non-zero,
+     * and in the same hemisphere as {@code lat0}. Other init-driving values are emitted
+     * as variant A with their effective derived scale.</p>
      */
     private static boolean isPolarStereographicVariantB(String proj, ProjectionParams params) {
         if (!isPolarStereographic(proj, params)) {
             return false;
         }
-        if (params.latTs == null || params.latTs == 0.0) {
+        return polarStereoLatTsDeterminesScale(proj, params)
+            && Math.abs(params.latTs) < Values.HALF_PI
+            && params.latTs * params.lat0 > 0.0;
+    }
+
+    /** Exact lat_ts precedence used by the active Stereographic.init implementation. */
+    private static boolean polarStereoLatTsDeterminesScale(
+            String proj, ProjectionParams params) {
+        if (!isPolarStereographic(proj, params) || params.latTs == null) {
             return false;
         }
-        if (params.k0 != 1.0) {
-            return false;
+        if (projectionParitySemanticsAvailable()) {
+            return !Double.isNaN(params.latTs)
+                && (params.sphere || Math.abs(Math.cos(params.latTs)) > Values.EPSLN);
         }
-        // Degenerate (drop latTs) only when the standard parallel coincides with the
-        // origin pole (lat0 is non-null here — isPolarStereographic required it), where
-        // the derived scale is 1. A standard parallel at the opposite pole derives a
-        // different scale (lat_0=90, lat_ts=-90 gives k=0), so it must stay variant B —
-        // dropping it would silently change the transform.
-        return Math.abs(params.latTs - params.lat0) >= 1e-10;
+        return params.k0 == 1.0
+            && (params.sphere || Math.abs(Math.cos(params.latTs)) > Values.EPSLN);
     }
 
     /**
@@ -2689,7 +2889,7 @@ public final class CRSSerializer {
      */
     private static boolean isPolarStereographic(String proj, ProjectionParams params) {
         return "stere".equals(proj) && params.lat0 != null
-                && Math.abs(Math.abs(params.lat0) - Math.PI / 2) < 1e-10;
+                && Math.abs(Math.cos(params.lat0)) <= Values.EPSLN;
     }
 
     private static boolean hasNonGreenwichPrimeMeridian(ProjectionParams params) {

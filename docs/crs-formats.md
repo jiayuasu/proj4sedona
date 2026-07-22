@@ -239,7 +239,8 @@ Proj4Sedona throws `UnsupportedOperationException` and directs the caller to
 `toProjString()`.
 
 This applies to PROJ-only longitude handling (`+over`, `+lon_wrap`), authalic-radius
-mode (`+R_A`), `ob_tran`, Tilted Perspective, unsupported Oblique Mercator variants
+mode (`+R_A`), approximate algorithms (`+approx`), `ob_tran`, Tilted Perspective,
+unsupported Oblique Mercator variants
 (`+no_rot` and the two-point form), and grid-shift operations. WKT2 and PROJJSON
 also reject non-zero `+towgs84` operations until bound-CRS export is implemented;
 WKT1 preserves them with `TOWGS84`. Geocentric CRS export is supported as a PROJ

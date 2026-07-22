@@ -95,6 +95,68 @@ class CRSSerializerRoundTripSafetyTest {
     }
 
     @Test
+    void approximateTransverseMercatorUsesOnlyExecutableExports() {
+        Proj approximate = new Proj(
+            "+proj=tmerc +lon_0=9 +approx +ellps=WGS84 +units=m +no_defs");
+        String projString = CRSSerializer.toProjString(approximate);
+        assertTrue(projString.contains("+proj=tmerc"), projString);
+        assertTrue(projString.contains("+approx"), projString);
+
+        ProjectionRegistry.start();
+        if (!fastTransverseMercatorWkt1Available()) {
+            // Standalone on main: the WKT alias is not executable, so no standard
+            // exporter may silently turn the approximate operation into exact TM.
+            assertAllStandardsReject(approximate);
+        } else {
+            // When the independent projection parity update is also present, WKT1
+            // gains an executable method alias. WKT2 and PROJJSON still have none.
+            String wkt1 = CRSSerializer.toWkt1(approximate);
+            assertTrue(wkt1.contains("PROJECTION[\"Fast_Transverse_Mercator\"]"), wkt1);
+            assertDoesNotThrow(() -> new Proj(wkt1));
+            assertThrows(UnsupportedOperationException.class,
+                () -> CRSSerializer.toWkt2(approximate));
+            assertThrows(UnsupportedOperationException.class,
+                () -> CRSSerializer.toProjJson(approximate));
+        }
+    }
+
+    @Test
+    void omittedCylindricalLatTsKeepsTheActiveProjectionDefault() {
+        for (String code : new String[]{"eqc", "cea"}) {
+            Proj original = new Proj("+proj=" + code
+                + " +lat_0=30 +lon_0=5 +ellps=WGS84 +units=m +no_defs");
+            Point input = new Point(Math.toRadians(12.0), Math.toRadians(42.0));
+            Point expected = original.forward(new Point(input.x, input.y));
+
+            for (String serialized : new String[]{
+                    CRSSerializer.toWkt1(original),
+                    CRSSerializer.toWkt2(original),
+                    CRSSerializer.toProjJson(original)}) {
+                Point actual = new Proj(serialized).forward(new Point(input.x, input.y));
+                assertEquals(expected.x, actual.x, 1e-8, code + ": " + serialized);
+                assertEquals(expected.y, actual.y, 1e-8, code + ": " + serialized);
+            }
+        }
+    }
+
+    @Test
+    void authalicRadiusSurvivesProjAndRejectsLossyStandards() {
+        Proj authalic = new Proj(
+            "+proj=merc +ellps=WGS84 +R_A +units=m +no_defs");
+        String serialized = CRSSerializer.toProjString(authalic);
+        assertTrue(serialized.contains("+R_A"), serialized);
+        Proj reimported = new Proj(serialized);
+        assertTrue(Boolean.TRUE.equals(reimported.getParams().rA), serialized);
+
+        Point input = new Point(12.0, 40.0);
+        Point want = new Converter(new Proj(WGS84), authalic).forward(input);
+        Point got = new Converter(new Proj(WGS84), reimported).forward(input);
+        assertEquals(want.x, got.x, 1e-8, serialized);
+        assertEquals(want.y, got.y, 1e-8, serialized);
+        assertAllStandardsReject(authalic);
+    }
+
+    @Test
     void datumOperationsAreNeverSilentlyDropped() {
         Proj helmert = new Proj("+proj=longlat +datum=ch1903 +no_defs");
         String wkt1 = CRSSerializer.toWkt1(helmert);
@@ -244,5 +306,16 @@ class CRSSerializerRoundTripSafetyTest {
         assertThrows(UnsupportedOperationException.class, () -> CRSSerializer.toWkt1(proj));
         assertThrows(UnsupportedOperationException.class, () -> CRSSerializer.toWkt2(proj));
         assertThrows(UnsupportedOperationException.class, () -> CRSSerializer.toProjJson(proj));
+    }
+
+    private static boolean fastTransverseMercatorWkt1Available() {
+        try {
+            return Proj.class.getClassLoader()
+                    .loadClass("org.datasyslab.proj4sedona.projection.ProjectionParams")
+                    .getMethod("getK0OrDefault", double.class) != null
+                && ProjectionRegistry.get("Fast_Transverse_Mercator") != null;
+        } catch (ReflectiveOperationException e) {
+            return false;
+        }
     }
 }
