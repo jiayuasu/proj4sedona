@@ -92,6 +92,9 @@ public class ProjectionParams {
     
     /** Scale factor at central meridian (+k_0 or +k), defaults to 1.0 */
     public double k0 = 1.0;
+
+    /** Whether the source definition explicitly supplied +k_0/+k (including 1.0). */
+    public boolean k0Specified;
     
     /** False easting in projection units (+x_0), defaults to 0.0 */
     public double x0 = 0.0;

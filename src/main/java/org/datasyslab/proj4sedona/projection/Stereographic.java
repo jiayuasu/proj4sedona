@@ -53,7 +53,7 @@ public class Stereographic implements Projection {
         sinlat0 = Math.sin(lat0);
 
         if (sphere) {
-            if (k0 == 1 && latTs != null && Math.abs(coslat0) <= Values.EPSLN) {
+            if (latTs != null && Math.abs(coslat0) <= Values.EPSLN) {
                 k0 = 0.5 * (1 + ProjMath.sign(lat0) * Math.sin(latTs));
             }
         } else {
@@ -61,7 +61,7 @@ public class Stereographic implements Projection {
                 con = (lat0 > 0) ? 1 : -1;  // North or South pole
             }
             cons = Math.sqrt(Math.pow(1 + e, 1 + e) * Math.pow(1 - e, 1 - e));
-            if (k0 == 1 && latTs != null && Math.abs(coslat0) <= Values.EPSLN && Math.abs(Math.cos(latTs)) > Values.EPSLN) {
+            if (latTs != null && Math.abs(coslat0) <= Values.EPSLN && Math.abs(Math.cos(latTs)) > Values.EPSLN) {
                 k0 = 0.5 * cons * ProjMath.msfnz(e, Math.sin(latTs), Math.cos(latTs)) / 
                      ProjMath.tsfnz(e, con * latTs, con * Math.sin(latTs));
             }

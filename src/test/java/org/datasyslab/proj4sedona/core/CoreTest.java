@@ -147,8 +147,8 @@ class CoreTest {
     void testProjectionDefDefaults() {
         ProjectionDef def = new ProjectionDef();
         
-        // Verify defaults match proj4js
-        assertEquals(1.0, def.getK0(), DELTA);
+        // Raw definitions retain omission; the resolved projection default is 1.0.
+        assertNull(def.getK0());
         assertEquals(0.0, def.getX0(), DELTA);
         assertEquals(0.0, def.getY0(), DELTA);
         assertEquals("enu", def.getAxis());

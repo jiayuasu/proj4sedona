@@ -51,15 +51,10 @@ public class Krovak implements Projection {
         // Persist the resolved central meridian (like UTM's zone-derived long0), so
         // wrappers such as ob_tran can compensate for it.
         params.long0 = this.long0;
-        // Krovak's scale factor is 0.9999 when +k is omitted (per PROJ). In proj4js 2.20.9,
-        // the global `k0 = k0 || 1.0` default in Proj.js shadows krovak's own 0.9999 fallback,
-        // so an omitted +k projects with k0=1.0. ProjectionParams likewise cannot distinguish
-        // "omitted" from "k=1" (both surface as the 1.0 default), and k=1 is not a real Krovak
-        // definition, so treat 1.0/0 as unset (matching PROJ).
-        this.k0 = params.k0;
-        if (this.k0 == 0 || this.k0 == 1.0) {
-            this.k0 = 0.9999;
-        }
+        // Krovak supplies a projection-specific 0.9999 default. Preserve an explicit
+        // +k/+k_0=1; current proj4js moved its generic scale-one default until after
+        // projection initialization for exactly this distinction (71b4ffc).
+        this.k0 = !params.k0Specified || params.k0 == 0 ? 0.9999 : params.k0;
         // proj4js's krovak ignores +x_0/+y_0; this codebase applies offsets in the
         // projection (Transform does not), and PROJ/pyproj apply them, so apply them here.
         this.x0 = params.x0;

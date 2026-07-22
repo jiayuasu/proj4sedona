@@ -40,7 +40,7 @@ public class ProjectionDef {
     private Double rectifiedGridAngle;  // gamma: Rectified grid angle
 
     // Scale and offsets
-    private Double k0;             // k_0 or k: Scale factor (default 1.0)
+    private Double k0;             // k_0 or k: null when omitted
     private Double x0;             // x_0: False easting (default 0)
     private Double y0;             // y_0: False northing (default 0)
 
@@ -82,7 +82,6 @@ public class ProjectionDef {
 
     public ProjectionDef() {
         // Default values matching proj4js
-        this.k0 = 1.0;
         this.x0 = 0.0;
         this.y0 = 0.0;
         this.axis = "enu";

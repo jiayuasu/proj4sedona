@@ -25,9 +25,10 @@ class KrovakTest {
     private static final double LL_EPSLN = 1e-7;
 
     // EPSG:5514 / S-JTSK / Krovak, expressed on Greenwich.
-    private static final String KROVAK =
+    private static final String KROVAK_NO_SCALE =
         "+proj=krovak +lat_0=49.5 +lon_0=24.83333333333333 +alpha=30.28813972222222 "
-            + "+k=0.9999 +x_0=0 +y_0=0 +ellps=bessel +pm=greenwich +units=m +no_defs";
+            + "+x_0=0 +y_0=0 +ellps=bessel +pm=greenwich +units=m +no_defs";
+    private static final String KROVAK = KROVAK_NO_SCALE + " +k=0.9999";
     private static final String BESSEL_LL = "+proj=longlat +ellps=bessel +no_defs";
 
     @BeforeEach
@@ -87,15 +88,48 @@ class KrovakTest {
 
     @Test
     void testDefaultScaleFactor() {
-        // With +k omitted, Krovak's 0.9999 scale factor must be used (as PROJ does), not the
-        // generic 1.0 default. (proj4js 2.20.9 uses k0=1.0 here; the expected values below match
-        // an explicit +k=0.9999, as in testKnownValues.)
-        Converter conv = Proj4.proj4(BESSEL_LL,
-            "+proj=krovak +lat_0=49.5 +lon_0=24.83333333333333 +ellps=bessel "
-                + "+pm=greenwich +units=m +no_defs");
+        // With +k omitted, current proj4js and PROJ use Krovak's 0.9999 default.
+        Converter conv = Proj4.proj4(BESSEL_LL, KROVAK_NO_SCALE);
+        assertFalse(conv.getTo().getParams().k0Specified, "omission survives parsing/building");
         Point xy = conv.forward(new Point(14.42, 50.08));
         assertEquals(-743101.013895, xy.x, XY_EPSLN, "easting with default k0");
         assertEquals(-1043898.660356, xy.y, XY_EPSLN, "northing with default k0");
+    }
+
+    @Test
+    void testExplicitScaleOneIsPreserved() {
+        // Current proj4js commit 71b4ffc initializes Krovak before applying the generic
+        // k0=1 default. An explicit scale of one must therefore remain one, while an
+        // omitted scale takes the projection-specific 0.9999 default above. Values also
+        // match PROJ 9.0.1.
+        for (String token : new String[] {" +k=1", " +k_0=1"}) {
+            Converter conv = Proj4.proj4(BESSEL_LL, KROVAK_NO_SCALE + token);
+            assertTrue(conv.getTo().getParams().k0Specified, token);
+            assertEquals(1.0, conv.getTo().getParams().k0, 0.0, token);
+            Point xy = conv.forward(new Point(14.42, 50.08));
+            assertEquals(-743175.331428, xy.x, XY_EPSLN, "easting with" + token);
+            assertEquals(-1044003.060662, xy.y, XY_EPSLN, "northing with" + token);
+        }
+    }
+
+    @Test
+    void testExplicitScaleOneSerializationRoundTrip() {
+        Proj original = new Proj(KROVAK_NO_SCALE + " +k=1");
+        Point input = new Point(14.42 * Math.PI / 180, 50.08 * Math.PI / 180);
+        Point want = original.forward(input);
+        for (String serialized : new String[] {
+                CRSSerializer.toProjString(original),
+                CRSSerializer.toWkt1(original),
+                CRSSerializer.toWkt2(original),
+                CRSSerializer.toProjJson(original)}) {
+            Proj reimported = new Proj(serialized);
+            assertTrue(reimported.getParams().k0Specified,
+                "explicit scale survives serialization: " + serialized);
+            assertEquals(1.0, reimported.getParams().k0, 0.0, serialized);
+            Point got = reimported.forward(input);
+            assertEquals(want.x, got.x, XY_EPSLN, "easting after re-import");
+            assertEquals(want.y, got.y, XY_EPSLN, "northing after re-import");
+        }
     }
 
     @Test

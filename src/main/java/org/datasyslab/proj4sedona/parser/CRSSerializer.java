@@ -268,7 +268,7 @@ public final class CRSSerializer {
         }
 
         // Scale factor
-        if (params.k0 != 1.0) {
+        if (shouldEmitScaleFactor(normProj, params)) {
             sb.append(" +k_0=").append(params.k0);
         }
 
@@ -605,7 +605,7 @@ public final class CRSSerializer {
         }
 
         // Scale factor
-        if (params.k0 != 1.0) {
+        if (shouldEmitScaleFactor(proj, params)) {
             sb.append(",PARAMETER[\"scale_factor\",").append(params.k0).append("]");
         }
 
@@ -847,7 +847,7 @@ public final class CRSSerializer {
         }
 
         // Scale factor
-        if (params.k0 != 1.0) {
+        if (shouldEmitScaleFactor(proj, params)) {
             sb.append(",PARAMETER[\"Scale factor at natural origin\",");
             sb.append(params.k0).append(",SCALEUNIT[\"unity\",1]]");
         }
@@ -1092,7 +1092,7 @@ public final class CRSSerializer {
                 parameters.add(buildProjJsonParam("Angle from Rectified to Skew Grid",
                     params.rectifiedGridAngle * RAD_TO_DEG, "degree"));
             }
-            if (params.k0 != 1.0) {
+            if (shouldEmitScaleFactor(proj, params)) {
                 parameters.add(buildProjJsonParam("Scale factor at projection centre", params.k0, null));
             }
             if (params.x0 != 0.0) {
@@ -1137,7 +1137,7 @@ public final class CRSSerializer {
         if ("geos".equals(proj) && params.h != null) {
             parameters.add(buildProjJsonParam("Satellite Height", params.h, "metre"));
         }
-        if (params.k0 != 1.0) {
+        if (shouldEmitScaleFactor(proj, params)) {
             parameters.add(buildProjJsonParam("Scale factor at natural origin", params.k0, null));
         }
         if (params.x0 != 0.0) {
@@ -2050,27 +2050,33 @@ public final class CRSSerializer {
         return isPolarStereographicVariantB(proj, params);
     }
 
+    /** Emit non-default scales and an explicitly supplied scale of exactly one. */
+    private static boolean shouldEmitScaleFactor(String proj, ProjectionParams params) {
+        // Polar variant B derives its scale from latTs, so a redundant/conflicting
+        // input k value is not part of the effective projection definition.
+        if (isPolarStereographicVariantB(proj, params)) {
+            return false;
+        }
+        return params.k0 != 1.0 || params.k0Specified;
+    }
+
     /**
      * Whether a Polar Stereographic CRS is variant B (defined by a standard parallel
      * / latitude of true scale) rather than variant A (defined by a scale factor).
      *
      * <p>Variant B requires a real standard parallel: latTs present, not zero, and not
      * at the pole (a "standard parallel" coincident with the origin pole is degenerate
-     * and equivalent to variant A with k=1). A meaningful scale factor (k0 != 1) means
-     * the CRS is scale-defined — variant A — so the two never both apply. Keeping the
-     * variant label and the emitted parameters (scale_factor vs standard_parallel, and
-     * +k_0 vs +lat_ts) consistent is what makes the round trip stable: a CRS that
-     * arrives with both latTs and k0 (e.g. GeoTools adds latTs=90 to a variant-A polar
-     * CRS) is serialized as variant A and re-imports unchanged (apache/sedona#3103).</p>
+     * and equivalent to variant A with k=1). For a real standard parallel, current
+     * proj4js and PROJ derive the scale from latTs even if a redundant k0 is present.
+     * Keeping the variant label and emitted parameter consistent makes the round trip
+     * reflect that effective definition. GeoTools' common latTs=90 plus k0 form remains
+     * variant A because its standard parallel coincides with the origin pole.</p>
      */
     private static boolean isPolarStereographicVariantB(String proj, ProjectionParams params) {
         if (!isPolarStereographic(proj, params)) {
             return false;
         }
         if (params.latTs == null || params.latTs == 0.0) {
-            return false;
-        }
-        if (params.k0 != 1.0) {
             return false;
         }
         // Degenerate (drop latTs) only when the standard parallel coincides with the

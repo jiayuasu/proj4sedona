@@ -47,6 +47,39 @@ class Proj4jsBackportsTest {
     }
 
     @Test
+    @DisplayName("proj4js 71b4ffc: scale-one projections retain their default")
+    void testProjectionScaleOneDefaults() {
+        // These are the four projection initializers that current proj4js explicitly
+        // defaults to one after moving the generic default past projection init.
+        String[][] cases = {
+            {"+proj=tmerc +lat_0=0 +lon_0=3 +ellps=WGS84 +units=m +no_defs", "4", "50"},
+            {"+proj=gstmerc +lat_0=-21.116666667 +lon_0=55.53333333 "
+                + "+x_0=160000 +y_0=50000 +ellps=intl +units=m +no_defs", "55.5", "-21.1"},
+            {"+proj=omerc +lat_0=37.4769061 +lonc=141.0039618 +alpha=202.22 "
+                + "+x_0=138 +y_0=77.65 +ellps=WGS84 +units=m +no_defs", "141.003611", "37.476802"},
+            {"+proj=somerc +lat_0=46.95240555555556 +lon_0=7.439583333333333 "
+                + "+x_0=600000 +y_0=200000 +ellps=bessel +units=m +no_defs", "8.55", "47.37"},
+        };
+
+        for (String[] c : cases) {
+            Proj implicit = new Proj(c[0]);
+            Proj explicit = new Proj(c[0] + " +k=1");
+            assertFalse(implicit.getParams().k0Specified, c[0]);
+            assertTrue(explicit.getParams().k0Specified, c[0]);
+            assertEquals(1.0, implicit.getParams().k0, 0.0, c[0]);
+
+            Point input = new Point(
+                Double.parseDouble(c[1]) * Values.D2R,
+                Double.parseDouble(c[2]) * Values.D2R);
+            Point actual = implicit.forward(input);
+            Point expected = explicit.forward(input);
+            assertTrue(Double.isFinite(actual.x) && Double.isFinite(actual.y), c[0]);
+            assertEquals(expected.x, actual.x, 1e-8, "default-one easting: " + c[0]);
+            assertEquals(expected.y, actual.y, 1e-8, "default-one northing: " + c[0]);
+        }
+    }
+
+    @Test
     @DisplayName("proj4js 61689a9: unknown datum is NODATUM, not WGS84")
     void testUnknownDatumHandling() {
         // A sphere CRS with no datum/towgs84 (ESRI 53003-style) must not receive a

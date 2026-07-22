@@ -218,6 +218,7 @@ class ProjectionTest {
         ProjectionParams params = new ProjectionParams();
 
         assertEquals(1.0, params.k0, DELTA);
+        assertFalse(params.k0Specified);
         assertEquals(0.0, params.x0, DELTA);
         assertEquals(0.0, params.y0, DELTA);
         assertEquals("enu", params.axis);
