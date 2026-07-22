@@ -43,6 +43,7 @@ public final class CRSSerializer {
     private static final double RAD_TO_DEG = 180.0 / Math.PI;
     private static final double DEG_TO_RAD = Math.PI / 180.0;
     private static final String DEG_TO_RAD_STR = Double.toString(DEG_TO_RAD);
+
     // Projection name mappings: PROJ -> WKT method names (short/generic names)
     private static final Map<String, String> PROJ_TO_WKT_METHOD = new LinkedHashMap<>();
     
@@ -574,7 +575,8 @@ public final class CRSSerializer {
         // Projection
         String methodName;
         if (isApproximateTransverseMercator(proj, params)) {
-            // The built-in WKT1 method preserves the traditional approximate algorithm.
+            // ExtendedTransverseMercator registers this built-in WKT1 method, so it
+            // preserves the traditional approximate algorithm without a runtime probe.
             methodName = "Fast_Transverse_Mercator";
         } else if ("krovak".equals(proj)) {
             // WKT1 uses the legacy Krovak method for either axis orientation; WKT2
