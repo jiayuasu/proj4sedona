@@ -85,11 +85,17 @@ def get_test_crs_definitions() -> List[Dict[str, Any]]:
 
 def generate_format_reference(output_file: str, verbose: bool = False) -> None:
     """Generate format export reference data."""
-    
+
+    crs_definitions = get_test_crs_definitions()
+    expected_formats = ["wkt1", "wkt2", "proj_string", "projjson"]
     reference_data = {
-        "version": "1.0",
+        "version": "1.1",
         "generator": "pyproj",
         "pyproj_version": None,
+        "expected_test_case_count": len(crs_definitions),
+        "expected_formats": expected_formats,
+        "expected_comparison_count": len(crs_definitions) * len(expected_formats),
+        "tolerance_m": 0.01,
         "test_cases": []
     }
     
@@ -97,37 +103,50 @@ def generate_format_reference(output_file: str, verbose: bool = False) -> None:
     import pyproj
     reference_data["pyproj_version"] = pyproj.__version__
     
-    for crs_def in get_test_crs_definitions():
+    for crs_def in crs_definitions:
         if verbose:
             print(f"  Processing: {crs_def['name']}")
         
         try:
             crs = CRS(crs_def["input"])
-            
-            # Export to all formats
             test_case = {
+                "case_id": crs_def["name"],
                 "name": crs_def["name"],
                 "description": crs_def["desc"],
                 "input": crs_def["input"],
-                "exports": {
-                    "wkt1": crs.to_wkt(version="WKT1_GDAL"),
-                    "wkt2": crs.to_wkt(version="WKT2_2019"),
-                    "proj_string": crs.to_proj4(),
-                    "projjson": crs.to_json_dict(),
-                },
+                "exports": {},
                 "round_trip_verification": {},
                 "error": None
             }
-            
-            # Verify round-trip for each format
-            for fmt_name, fmt_value in test_case["exports"].items():
+
+            export_functions = {
+                "wkt1": lambda: crs.to_wkt(version="WKT1_GDAL"),
+                "wkt2": lambda: crs.to_wkt(version="WKT2_2019"),
+                "proj_string": crs.to_proj4,
+                "projjson": crs.to_json_dict,
+            }
+
+            # Generate and verify each row independently so one failing exporter
+            # cannot remove the remaining formats from the fixture.
+            for fmt_name in expected_formats:
+                try:
+                    fmt_value = export_functions[fmt_name]()
+                    test_case["exports"][fmt_name] = fmt_value
+                except Exception as e:
+                    test_case["exports"][fmt_name] = None
+                    test_case["round_trip_verification"][fmt_name] = {
+                        "success": False,
+                        "error": f"export failed: {e}"
+                    }
+                    continue
+
                 if fmt_value is None:
                     test_case["round_trip_verification"][fmt_name] = {
                         "success": False,
                         "error": "Export returned None"
                     }
                     continue
-                    
+
                 try:
                     if fmt_name == "projjson":
                         # For PROJJSON, we need to convert dict to string first
@@ -152,11 +171,15 @@ def generate_format_reference(output_file: str, verbose: bool = False) -> None:
             
         except Exception as e:
             test_case = {
+                "case_id": crs_def["name"],
                 "name": crs_def["name"],
                 "description": crs_def["desc"],
                 "input": crs_def["input"],
-                "exports": None,
-                "round_trip_verification": None,
+                "exports": {fmt: None for fmt in expected_formats},
+                "round_trip_verification": {
+                    fmt: {"success": False, "error": str(e)}
+                    for fmt in expected_formats
+                },
                 "error": str(e)
             }
         
@@ -164,7 +187,7 @@ def generate_format_reference(output_file: str, verbose: bool = False) -> None:
     
     # Write output
     with open(output_file, 'w') as f:
-        json.dump(reference_data, f, indent=2)
+        json.dump(reference_data, f, indent=2, allow_nan=False)
 
 
 if __name__ == "__main__":

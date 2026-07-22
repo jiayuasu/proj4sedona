@@ -34,6 +34,28 @@ public class SpeedBenchmark {
     // Tolerances for correctness categories
     private static final double GEOGRAPHIC_TOLERANCE = 1e-6;  // degrees
     private static final double PROJECTED_TOLERANCE = 0.01;   // meters
+    private static final double ROBINSON_TOLERANCE = 0.5;     // meters
+
+    private static final Map<String, String> TRANSFORM_SKIPS;
+    private static final Map<String, String> GRID_SKIPS;
+    private static final Set<String> PROJECTION_TOLERANCE_OVERRIDES;
+
+    static {
+        Map<String, String> transformSkips = new LinkedHashMap<>();
+        transformSkips.put("osgb36_to_wgs84",
+            "Requires datum-shift parameters not present in the port definitions");
+        transformSkips.put("ed50_to_wgs84",
+            "Requires datum-shift parameters not present in the port definitions");
+        TRANSFORM_SKIPS = Collections.unmodifiableMap(transformSkips);
+
+        Map<String, String> gridSkips = new LinkedHashMap<>();
+        gridSkips.put("proj_pipeline_ostn15", "PROJ pipeline syntax is not supported");
+        GRID_SKIPS = Collections.unmodifiableMap(gridSkips);
+
+        Set<String> toleranceOverrides = new LinkedHashSet<>();
+        toleranceOverrides.add("proj_robin");
+        PROJECTION_TOLERANCE_OVERRIDES = Collections.unmodifiableSet(toleranceOverrides);
+    }
 
     // Pre-initialized objects for speed benchmarks
     private Proj wgs84;
@@ -55,7 +77,10 @@ public class SpeedBenchmark {
     // Per-projection correctness vs pyproj (reference cases named proj_*), rendered
     // as a dedicated report table so each projection's agreement is visible.
     private final Map<String, ErrorStats> perProjectionStats = new LinkedHashMap<>();
-    private final List<String> skippedTests = new ArrayList<>();
+    private final ParityCheck parity = new ParityCheck();
+    private final Set<String> usedTransformSkips = new LinkedHashSet<>();
+    private final Set<String> usedGridSkips = new LinkedHashSet<>();
+    private final Set<String> usedProjectionToleranceOverrides = new LinkedHashSet<>();
 
     public static void main(String[] args) throws Exception {
         String outputFile = "target/benchmark_report.md";
@@ -72,8 +97,6 @@ public class SpeedBenchmark {
         
         SpeedBenchmark benchmark = new SpeedBenchmark();
         benchmark.run(outputFile);
-        
-        System.exit(0);
     }
 
     public void run(String outputFile) throws Exception {
@@ -92,12 +115,14 @@ public class SpeedBenchmark {
         // Run correctness comparisons
         System.out.println("\n3. Running correctness comparisons...");
         runCorrectnessComparisons();
+        parity.finalizeCoverage();
         
         // Generate Markdown report
         System.out.println("\n4. Generating report...");
         generateMarkdownReport(outputFile);
         
         System.out.println("\nReport saved to: " + outputFile);
+        parity.throwIfFailed();
     }
 
     private void setup() throws IOException {
@@ -253,290 +278,675 @@ public class SpeedBenchmark {
 
     // ==================== Correctness Comparisons ====================
 
-    private void runCorrectnessComparisons() throws IOException {
-        runTransformCorrectness();
-        runGridCorrectness();
-        runParserCorrectness();
-        runSerializerCorrectness();
+    private void runCorrectnessComparisons() {
+        runParitySuite("transform", this::runTransformParity);
+        runParitySuite("grid", this::runGridParity);
+        runParitySuite("parser", this::runParserParity);
+        runParitySuite("serializer", this::runSerializerParity);
+
+        parity.auditDeclaredUses(
+            "transform", "skip", TRANSFORM_SKIPS.keySet(), usedTransformSkips);
+        parity.auditDeclaredUses("grid", "skip", GRID_SKIPS.keySet(), usedGridSkips);
+        parity.auditDeclaredUses(
+            "transform", "tolerance override",
+            PROJECTION_TOLERANCE_OVERRIDES, usedProjectionToleranceOverrides);
     }
 
-    private void runTransformCorrectness() throws IOException {
-        Path refFile = Paths.get("target/pyproj-reference/transform_reference.json");
+    private void runParitySuite(String suite, CheckedRunnable operation) {
+        try {
+            operation.run();
+        } catch (Exception e) {
+            parity.infrastructureFailure(suite, "could not consume reference data: "
+                + describeException(e));
+        }
+    }
+
+    private void runSerializerParity() throws IOException {
+        final String suite = "serializer";
+        final List<String> formats = Arrays.asList(
+            "wkt1", "wkt2", "proj_string", "projjson");
+        Path refFile = Paths.get("target/pyproj-reference/format_export_reference.json");
         if (!Files.exists(refFile)) {
-            System.out.println("   Transform reference not found, skipping.");
+            parity.infrastructureFailure(suite, "reference file is missing: " + refFile);
             return;
         }
-        
-        Gson gson = new Gson();
-        JsonObject refData = gson.fromJson(Files.newBufferedReader(refFile), JsonObject.class);
-        JsonArray testCases = refData.getAsJsonArray("test_cases");
-        
-        ErrorStats geographicErrors = new ErrorStats("Geographic transforms", "deg");
-        ErrorStats projectedErrors = new ErrorStats("Projected transforms", "m");
-        
-        Set<String> skipSet = Set.of("osgb36_to_wgs84", "ed50_to_wgs84");
-        
-        for (JsonElement tcElem : testCases) {
-            JsonObject tc = tcElem.getAsJsonObject();
-            String name = tc.get("name").getAsString();
-            String fromCrs = tc.get("from_crs").getAsString();
-            String toCrs = tc.get("to_crs").getAsString();
-            
-            if (skipSet.contains(name)) {
-                skippedTests.add(name + ": Requires towgs84 parameters");
-                continue;
-            }
-            
-            JsonArray transforms = tc.getAsJsonArray("transformations");
-            boolean isProjected = isProjectedCrs(toCrs);
 
-            // Per-projection coverage cases (proj_*) get their own stats bucket and
-            // report table; they are kept out of the generic category aggregates so a
-            // documented per-projection difference does not distort those rows.
-            ErrorStats stats;
-            if (name.startsWith("proj_")) {
-                String desc = tc.get("description") != null && !tc.get("description").isJsonNull()
-                    ? tc.get("description").getAsString() : name;
-                stats = perProjectionStats.computeIfAbsent(name, k -> new ErrorStats(desc, "m"));
-            } else {
-                stats = isProjected ? projectedErrors : geographicErrors;
+        JsonObject root = readReference(refFile, suite);
+        JsonArray cases = requiredArray(root, "test_cases", "serializer root");
+        parity.reconcileCount(suite, "test-cases",
+            requiredInt(root, "expected_test_case_count", "serializer root"), cases.size());
+        List<String> declaredFormats = stringList(
+            requiredArray(root, "expected_formats", "serializer root"),
+            "serializer formats");
+        if (!declaredFormats.equals(formats)) {
+            parity.infrastructureFailure(suite,
+                "expected_formats must be exactly " + formats + ", but was " + declaredFormats);
+        }
+        double declaredTolerance = requiredDouble(root, "tolerance_m", "serializer root");
+        String rootError = sameDouble(declaredTolerance, PROJECTED_TOLERANCE) ? null
+            : "declared tolerance " + declaredTolerance
+                + " does not match audited tolerance " + PROJECTED_TOLERANCE;
+        ErrorStats serializer = new ErrorStats("Serializer", "m", PROJECTED_TOLERANCE);
+
+        for (int caseIndex = 0; caseIndex < cases.size(); caseIndex++) {
+            JsonObject testCase = requiredObject(cases.get(caseIndex),
+                "serializer case " + caseIndex);
+            String caseId = requiredString(testCase, "case_id",
+                "serializer case " + caseIndex);
+            String input = optionalString(testCase, "input", null);
+            String caseError = joinErrors(rootError, nullableError(testCase, "error"));
+            if (input == null || input.trim().isEmpty()) {
+                caseError = joinErrors(caseError, "input is missing or empty");
             }
-            
-            for (JsonElement tElem : transforms) {
-                JsonObject t = tElem.getAsJsonObject();
-                JsonObject input = t.getAsJsonObject("input");
-                JsonObject expected = t.getAsJsonObject("output");
-                
-                if (expected == null || t.get("error") != null && !t.get("error").isJsonNull()) {
-                    continue;
-                }
-                
-                double inX = input.get("x").getAsDouble();
-                double inY = input.get("y").getAsDouble();
-                double expX = expected.get("x").getAsDouble();
-                double expY = expected.get("y").getAsDouble();
-                
+            JsonObject exports = optionalObject(testCase, "exports");
+            JsonObject verification = optionalObject(testCase, "round_trip_verification");
+            if (exports == null) {
+                caseError = joinErrors(caseError, "pyproj exports object is missing");
+            }
+            if (verification == null) {
+                caseError = joinErrors(caseError,
+                    "pyproj round-trip verification object is missing");
+            }
+
+            Proj original = null;
+            String originalError = null;
+            if (caseError == null) {
                 try {
-                    Point result = Proj4.proj4(fromCrs, toCrs, new Point(inX, inY));
-                    if (result != null && !Double.isNaN(result.x) && !Double.isNaN(result.y)) {
-                        double errorX = Math.abs(result.x - expX);
-                        double errorY = Math.abs(result.y - expY);
-                        stats.record(Math.max(errorX, errorY));
+                    original = new Proj(input);
+                    if (!Double.isFinite(original.getA()) || !Double.isFinite(original.getB())) {
+                        originalError = "Java input parser produced non-finite ellipsoid axes";
                     }
                 } catch (Exception e) {
-                    // Skip failed transforms
+                    originalError = "Java input parser failed: " + describeException(e);
+                }
+            }
+
+            for (String format : formats) {
+                String id = caseId + "/" + format;
+                parity.expect(suite, id);
+                String validationError = caseError;
+                if (exports != null) {
+                    JsonElement exported = exports.get(format);
+                    if (exported == null || exported.isJsonNull()) {
+                        validationError = joinErrors(validationError,
+                            "pyproj " + format + " export is missing");
+                    } else if ("projjson".equals(format) && !exported.isJsonObject()) {
+                        validationError = joinErrors(validationError,
+                            "pyproj projjson export is malformed");
+                    } else if (!"projjson".equals(format) && (!exported.isJsonPrimitive()
+                            || exported.getAsString().trim().isEmpty())) {
+                        validationError = joinErrors(validationError,
+                            "pyproj " + format + " export is empty or malformed");
+                    }
+                }
+                if (verification != null) {
+                    JsonObject verified = optionalObject(verification, format);
+                    if (verified == null) {
+                        validationError = joinErrors(validationError,
+                            "pyproj " + format + " round-trip result is missing");
+                    } else if (!optionalBoolean(verified, "success", false)) {
+                        validationError = joinErrors(validationError,
+                            "pyproj " + format + " round-trip failed: "
+                                + optionalString(verified, "error", "unknown error"));
+                    } else if (isExplicitFalse(verified, "preserves_type")
+                            || isExplicitFalse(verified, "preserves_ellipsoid_a")) {
+                        validationError = joinErrors(validationError,
+                            "pyproj " + format + " round-trip did not preserve CRS properties");
+                    }
+                }
+                validationError = joinErrors(validationError, originalError);
+                if (validationError != null) {
+                    parity.failed(suite, id, validationError);
+                    continue;
+                }
+
+                try {
+                    String serialized = serialize(original, format);
+                    if (serialized == null || serialized.trim().isEmpty()) {
+                        parity.failed(suite, id, "Java " + format + " export is empty");
+                        continue;
+                    }
+                    Proj reparsed = new Proj(serialized);
+                    double reparsedA = reparsed.getA();
+                    double reparsedB = reparsed.getB();
+                    if (!Double.isFinite(reparsedA) || !Double.isFinite(reparsedB)) {
+                        parity.failed(suite, id,
+                            "Java " + format + " round-trip produced non-finite axes");
+                        continue;
+                    }
+                    double error = Math.max(
+                        Math.abs(reparsedA - original.getA()),
+                        Math.abs(reparsedB - original.getB()));
+                    if (Double.isFinite(error)) {
+                        serializer.record(error);
+                    }
+                    parity.compared(suite, id, error, PROJECTED_TOLERANCE);
+                } catch (Exception e) {
+                    parity.failed(suite, id,
+                        "Java " + format + " round-trip failed: " + describeException(e));
                 }
             }
         }
-        
-        if (geographicErrors.count > 0) {
-            errorStatsByCategory.put("Geographic transforms", geographicErrors);
+
+        parity.reconcileCount(suite, "comparisons",
+            requiredInt(root, "expected_comparison_count", "serializer root"),
+            cases.size() * formats.size());
+        putStats("Serializer", serializer);
+        System.out.println("   Serializer correctness: " + serializer.count + " comparisons");
+    }
+
+    private String serialize(Proj projection, String format) {
+        switch (format) {
+            case "wkt1":
+                return CRSSerializer.toWkt1(projection);
+            case "wkt2":
+                return CRSSerializer.toWkt2(projection);
+            case "proj_string":
+                return CRSSerializer.toProjString(projection);
+            case "projjson":
+                return CRSSerializer.toProjJson(projection);
+            default:
+                throw new IllegalArgumentException("Unsupported serializer format: " + format);
         }
-        if (projectedErrors.count > 0) {
-            errorStatsByCategory.put("Projected transforms", projectedErrors);
+    }
+
+    private void runParserParity() throws IOException {
+        final String suite = "parser";
+        Path refFile = Paths.get("target/pyproj-reference/parsing_reference.json");
+        if (!Files.exists(refFile)) {
+            parity.infrastructureFailure(suite, "reference file is missing: " + refFile);
+            return;
         }
-        
-        int perProjectionCount = perProjectionStats.values().stream().mapToInt(s -> s.count).sum();
+
+        JsonObject root = readReference(refFile, suite);
+        JsonObject declaredCounts = requiredObject(root, "expected_case_counts", "parser root");
+        double tolerance = requiredDouble(root, "tolerance_m", "parser root");
+        String rootError = sameDouble(tolerance, PROJECTED_TOLERANCE) ? null
+            : "declared tolerance " + tolerance
+                + " does not match audited tolerance " + PROJECTED_TOLERANCE;
+        ErrorStats parser = new ErrorStats("Parser (ellipsoid)", "m", PROJECTED_TOLERANCE);
+
+        JsonArray epsgCases = requiredArray(root, "epsg_test_cases", "parser root");
+        JsonArray projCases = requiredArray(root, "proj_string_test_cases", "parser root");
+        JsonArray wktCases = requiredArray(root, "wkt_test_cases", "parser root");
+        parity.reconcileCount(suite, "epsg",
+            requiredInt(declaredCounts, "epsg", "parser counts"), epsgCases.size());
+        parity.reconcileCount(suite, "proj-string",
+            requiredInt(declaredCounts, "proj_string", "parser counts"), projCases.size());
+        parity.reconcileCount(suite, "wkt",
+            requiredInt(declaredCounts, "wkt", "parser counts"), wktCases.size());
+
+        consumeParserRows(epsgCases, rootError, parser);
+        consumeParserRows(projCases, rootError, parser);
+        consumeParserRows(wktCases, rootError, parser);
+        int actualTotal = epsgCases.size() + projCases.size() + wktCases.size();
+        parity.reconcileCount(suite, "total",
+            requiredInt(declaredCounts, "total", "parser counts"), actualTotal);
+
+        putStats("Parser (ellipsoid)", parser);
+        System.out.println("   Parser correctness: " + parser.count + " comparisons");
+    }
+
+    private void consumeParserRows(
+            JsonArray rows, String rootError, ErrorStats stats) {
+        final String suite = "parser";
+        for (int index = 0; index < rows.size(); index++) {
+            JsonObject row = requiredObject(rows.get(index), "parser row " + index);
+            String id = requiredString(row, "case_id", "parser row " + index);
+            parity.expect(suite, id);
+
+            String validationError = joinErrors(rootError, nullableError(row, "error"));
+            String input = optionalString(row, "input", null);
+            if (input == null || input.trim().isEmpty()) {
+                validationError = joinErrors(validationError, "input is missing or empty");
+            }
+            JsonObject parsed = optionalObject(row, "parsed_params");
+            JsonObject ellipsoid = parsed == null
+                ? null : optionalObject(parsed, "effective_ellipsoid");
+            if (ellipsoid == null) {
+                validationError = joinErrors(validationError,
+                    "reference effective ellipsoid is missing");
+            }
+
+            double expectedA = Double.NaN;
+            double expectedB = Double.NaN;
+            if (ellipsoid != null) {
+                expectedA = optionalFiniteDouble(ellipsoid, "semi_major_metre");
+                expectedB = optionalFiniteDouble(ellipsoid, "semi_minor_metre");
+                if (!Double.isFinite(expectedA) || !Double.isFinite(expectedB)
+                        || expectedA <= 0 || expectedB <= 0) {
+                    validationError = joinErrors(validationError,
+                        "reference ellipsoid axes are missing, non-finite, or non-positive");
+                }
+            }
+            if (validationError != null) {
+                parity.failed(suite, id, validationError);
+                continue;
+            }
+
+            try {
+                Proj actual = new Proj(input);
+                double actualA = actual.getA();
+                double actualB = actual.getB();
+                if (!Double.isFinite(actualA) || !Double.isFinite(actualB)) {
+                    parity.failed(suite, id, "Java parser produced non-finite ellipsoid axes");
+                    continue;
+                }
+                double error = Math.max(
+                    Math.abs(actualA - expectedA), Math.abs(actualB - expectedB));
+                if (Double.isFinite(error)) {
+                    stats.record(error);
+                }
+                parity.compared(suite, id, error, PROJECTED_TOLERANCE);
+            } catch (Exception e) {
+                parity.failed(suite, id, "Java parser failed: " + describeException(e));
+            }
+        }
+    }
+
+    private void runGridParity() throws IOException {
+        final String suite = "grid";
+        Path refFile = Paths.get("target/pyproj-reference/grid_transform_reference.json");
+        if (!Files.exists(refFile)) {
+            parity.infrastructureFailure(suite, "reference file is missing: " + refFile);
+            return;
+        }
+
+        JsonObject root = readReference(refFile, suite);
+        JsonArray cases = requiredArray(root, "test_cases", "grid root");
+        parity.reconcileCount(suite, "test-cases",
+            requiredInt(root, "expected_test_case_count", "grid root"), cases.size());
+        ErrorStats grid = new ErrorStats("Grid transforms", "deg", GEOGRAPHIC_TOLERANCE);
+        int rowCount = 0;
+
+        for (int caseIndex = 0; caseIndex < cases.size(); caseIndex++) {
+            JsonObject testCase = requiredObject(cases.get(caseIndex), "grid case " + caseIndex);
+            String name = requiredString(testCase, "name", "grid case " + caseIndex);
+            double tolerance = requiredDouble(testCase, "tolerance_deg", name);
+            String caseError = null;
+            if (!sameDouble(tolerance, GEOGRAPHIC_TOLERANCE)) {
+                caseError = "declared tolerance " + tolerance
+                    + " does not match audited tolerance " + GEOGRAPHIC_TOLERANCE;
+            }
+
+            JsonObject result = requiredObject(testCase, "transform_result", name);
+            caseError = joinErrors(caseError, nullableError(result, "error"));
+            String fromCrs = requiredString(result, "from_crs", name);
+            String toCrs = requiredString(result, "to_crs", name);
+            JsonArray rows = requiredArray(result, "transformations", name);
+            rowCount += rows.size();
+            int caseExpected = requiredInt(testCase,
+                "expected_transformation_count", name);
+            parity.reconcileCount(suite, name, caseExpected, rows.size());
+            int resultExpected = requiredInt(result,
+                "expected_transformation_count", name + " transform result");
+            if (caseExpected != resultExpected) {
+                caseError = joinErrors(caseError,
+                    "case and transform-result declared counts disagree");
+            }
+
+            for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
+                JsonObject row = requiredObject(rows.get(rowIndex), name + " row " + rowIndex);
+                String pointId = requiredString(row, "point_id", name + " row " + rowIndex);
+                String id = name + "/" + pointId;
+                parity.expect(suite, id);
+
+                String validationError = joinErrors(caseError, nullableError(row, "error"));
+                JsonObject input = optionalObject(row, "input");
+                JsonObject expected = optionalObject(row, "output");
+                validationError = joinErrors(validationError,
+                    validateCoordinatePair(input, "input"));
+                validationError = joinErrors(validationError,
+                    validateCoordinatePair(expected, "reference output"));
+                if (validationError != null) {
+                    parity.failed(suite, id, validationError);
+                    continue;
+                }
+
+                if (GRID_SKIPS.containsKey(name)) {
+                    usedGridSkips.add(name);
+                    parity.skipped(suite, id, GRID_SKIPS.get(name));
+                    continue;
+                }
+
+                try {
+                    Point actual = Proj4.proj4(fromCrs, toCrs,
+                        new Point(input.get("x").getAsDouble(), input.get("y").getAsDouble()));
+                    String actualError = validatePoint(actual);
+                    if (actualError != null) {
+                        parity.failed(suite, id, actualError);
+                        continue;
+                    }
+                    double error = Math.max(
+                        Math.abs(actual.x - expected.get("x").getAsDouble()),
+                        Math.abs(actual.y - expected.get("y").getAsDouble()));
+                    if (Double.isFinite(error)) {
+                        grid.record(error);
+                    }
+                    parity.compared(suite, id, error, tolerance);
+                } catch (Exception e) {
+                    parity.failed(suite, id,
+                        "Java grid transform failed: " + describeException(e));
+                }
+            }
+        }
+
+        parity.reconcileCount(suite, "transformations",
+            requiredInt(root, "expected_transformation_count", "grid root"), rowCount);
+        putStats("Grid transforms", grid);
+        System.out.println("   Grid correctness: " + grid.count + " comparisons");
+    }
+
+    private void runTransformParity() throws IOException {
+        final String suite = "transform";
+        Path refFile = Paths.get("target/pyproj-reference/transform_reference.json");
+        if (!Files.exists(refFile)) {
+            parity.infrastructureFailure(suite, "reference file is missing: " + refFile);
+            return;
+        }
+
+        JsonObject root = readReference(refFile, suite);
+        JsonArray cases = requiredArray(root, "test_cases", "transform root");
+        parity.reconcileCount(suite, "test-cases",
+            requiredInt(root, "expected_test_case_count", "transform root"), cases.size());
+
+        ErrorStats geographic = new ErrorStats(
+            "Geographic transforms", "deg", GEOGRAPHIC_TOLERANCE);
+        ErrorStats projected = new ErrorStats(
+            "Projected transforms", "m", PROJECTED_TOLERANCE);
+        int rowCount = 0;
+
+        for (int caseIndex = 0; caseIndex < cases.size(); caseIndex++) {
+            JsonObject testCase = requiredObject(cases.get(caseIndex),
+                "transform case " + caseIndex);
+            String name = requiredString(testCase, "name", "transform case " + caseIndex);
+            String fromCrs = requiredString(testCase, "from_crs", name);
+            String toCrs = requiredString(testCase, "to_crs", name);
+            JsonArray rows = requiredArray(testCase, "transformations", name);
+            rowCount += rows.size();
+            parity.reconcileCount(suite, name,
+                requiredInt(testCase, "expected_transformation_count", name), rows.size());
+
+            boolean isProjected = isProjectedCrs(toCrs);
+            double tolerance = isProjected ? PROJECTED_TOLERANCE : GEOGRAPHIC_TOLERANCE;
+            ErrorStats stats;
+            String caseError = nullableError(testCase, "error");
+            if (name.startsWith("proj_")) {
+                String description = optionalString(testCase, "description", name);
+                double declaredTolerance = requiredDouble(testCase, "tolerance_m", name);
+                double auditedTolerance = PROJECTED_TOLERANCE;
+                if (PROJECTION_TOLERANCE_OVERRIDES.contains(name)) {
+                    usedProjectionToleranceOverrides.add(name);
+                    auditedTolerance = ROBINSON_TOLERANCE;
+                }
+                if (!sameDouble(declaredTolerance, auditedTolerance)) {
+                    caseError = joinErrors(caseError, "declared tolerance " + declaredTolerance
+                        + " does not match audited tolerance " + auditedTolerance);
+                }
+                tolerance = auditedTolerance;
+                final double statsTolerance = tolerance;
+                stats = perProjectionStats.computeIfAbsent(name,
+                    ignored -> new ErrorStats(description, "m", statsTolerance));
+            } else {
+                stats = isProjected ? projected : geographic;
+            }
+
+            for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
+                JsonObject row = requiredObject(rows.get(rowIndex),
+                    name + " row " + rowIndex);
+                String coordinateId = requiredString(row, "coordinate_id",
+                    name + " row " + rowIndex);
+                String id = name + "/" + coordinateId;
+                parity.expect(suite, id);
+
+                String validationError = joinErrors(caseError, nullableError(row, "error"));
+                JsonObject input = optionalObject(row, "input");
+                JsonObject expected = optionalObject(row, "output");
+                validationError = joinErrors(validationError,
+                    validateCoordinatePair(input, "input"));
+                validationError = joinErrors(validationError,
+                    validateCoordinatePair(expected, "reference output"));
+                if (validationError != null) {
+                    parity.failed(suite, id, validationError);
+                    continue;
+                }
+
+                if (TRANSFORM_SKIPS.containsKey(name)) {
+                    usedTransformSkips.add(name);
+                    parity.skipped(suite, id, TRANSFORM_SKIPS.get(name));
+                    continue;
+                }
+
+                try {
+                    Point actual = Proj4.proj4(fromCrs, toCrs,
+                        new Point(input.get("x").getAsDouble(), input.get("y").getAsDouble()));
+                    String actualError = validatePoint(actual);
+                    if (actualError != null) {
+                        parity.failed(suite, id, actualError);
+                        continue;
+                    }
+                    double error = Math.max(
+                        Math.abs(actual.x - expected.get("x").getAsDouble()),
+                        Math.abs(actual.y - expected.get("y").getAsDouble()));
+                    if (Double.isFinite(error)) {
+                        stats.record(error);
+                    }
+                    parity.compared(suite, id, error, tolerance);
+                } catch (Exception e) {
+                    parity.failed(suite, id,
+                        "Java transform failed: " + describeException(e));
+                }
+            }
+        }
+
+        parity.reconcileCount(suite, "transformations",
+            requiredInt(root, "expected_transformation_count", "transform root"), rowCount);
+        putStats("Geographic transforms", geographic);
+        putStats("Projected transforms", projected);
+        int projectionCount = perProjectionStats.values().stream()
+            .mapToInt(stats -> stats.count).sum();
         System.out.println("   Transform correctness: "
-            + (geographicErrors.count + projectedErrors.count) + " comparisons, "
-            + perProjectionCount + " per-projection comparisons across "
+            + (geographic.count + projected.count) + " comparisons, "
+            + projectionCount + " per-projection comparisons across "
             + perProjectionStats.size() + " projections");
     }
 
-    private void runGridCorrectness() throws IOException {
-        Path refFile = Paths.get("target/pyproj-reference/grid_transform_reference.json");
-        if (!Files.exists(refFile)) {
-            System.out.println("   Grid reference not found, skipping.");
-            return;
-        }
-        
+    private JsonObject readReference(Path path, String suite) throws IOException {
         Gson gson = new Gson();
-        JsonObject refData = gson.fromJson(Files.newBufferedReader(refFile), JsonObject.class);
-        JsonArray testCases = refData.getAsJsonArray("test_cases");
-        
-        ErrorStats gridErrors = new ErrorStats("Grid transforms", "deg");
-        
-        // Tests that use PROJ pipeline syntax (not supported)
-        Set<String> skipSet = Set.of(
-            "proj_pipeline_ostn15"  // Uses +proj=pipeline syntax, not standard CRS definitions
-        );
-        
-        for (JsonElement tcElem : testCases) {
-            JsonObject tc = tcElem.getAsJsonObject();
-            String name = tc.get("name").getAsString();
-            
-            if (skipSet.contains(name)) {
-                skippedTests.add(name + ": Uses PROJ pipeline syntax (not supported)");
-                continue;
-            }
-            
-            // Grid reference has nested transform_result structure
-            JsonObject transformResult = tc.getAsJsonObject("transform_result");
-            if (transformResult == null) continue;
-            
-            String fromCrs = transformResult.get("from_crs").getAsString();
-            String toCrs = transformResult.get("to_crs").getAsString();
-            JsonArray transforms = transformResult.getAsJsonArray("transformations");
-            if (transforms == null) continue;
-            
-            for (JsonElement tElem : transforms) {
-                JsonObject t = tElem.getAsJsonObject();
-                JsonObject input = t.getAsJsonObject("input");
-                JsonObject expected = t.getAsJsonObject("output");
-                
-                if (expected == null || (t.has("error") && !t.get("error").isJsonNull())) {
-                    continue;
-                }
-                
-                double inX = input.get("x").getAsDouble();
-                double inY = input.get("y").getAsDouble();
-                double expX = expected.get("x").getAsDouble();
-                double expY = expected.get("y").getAsDouble();
-                
-                try {
-                    Point result = Proj4.proj4(fromCrs, toCrs, new Point(inX, inY));
-                    if (result != null && !Double.isNaN(result.x) && !Double.isNaN(result.y)) {
-                        double errorX = Math.abs(result.x - expX);
-                        double errorY = Math.abs(result.y - expY);
-                        gridErrors.record(Math.max(errorX, errorY));
-                    }
-                } catch (Exception e) {
-                    // Skip failed transforms
-                }
-            }
+        JsonObject root;
+        try (Reader reader = Files.newBufferedReader(path)) {
+            root = gson.fromJson(reader, JsonObject.class);
         }
-        
-        if (gridErrors.count > 0) {
-            errorStatsByCategory.put("Grid transforms", gridErrors);
+        if (root == null) {
+            throw new IllegalArgumentException("reference root is null");
         }
-        
-        System.out.println("   Grid correctness: " + gridErrors.count + " comparisons");
+        String version = requiredString(root, "version", suite + " root");
+        if (!"1.1".equals(version)) {
+            throw new IllegalArgumentException(
+                "unsupported reference schema " + version + " (expected 1.1)");
+        }
+        return root;
     }
 
-    private void runParserCorrectness() throws IOException {
-        Path refFile = Paths.get("target/pyproj-reference/parsing_reference.json");
-        if (!Files.exists(refFile)) {
-            System.out.println("   Parser reference not found, skipping.");
-            return;
+    private JsonObject requiredObject(JsonElement value, String context) {
+        if (value == null || value.isJsonNull() || !value.isJsonObject()) {
+            throw new IllegalArgumentException(context + " must be a JSON object");
         }
-        
-        Gson gson = new Gson();
-        JsonObject refData = gson.fromJson(Files.newBufferedReader(refFile), JsonObject.class);
-        JsonArray testCases = refData.getAsJsonArray("epsg_test_cases");
-        
-        ErrorStats parserErrors = new ErrorStats("Parser (ellipsoid)", "m");
-        
-        if (testCases == null) {
-            System.out.println("   Parser reference has no test cases, skipping.");
-            return;
-        }
-        
-        for (JsonElement tcElem : testCases) {
-            JsonObject tc = tcElem.getAsJsonObject();
-            String input = tc.get("input").getAsString();
-            JsonObject parsedParams = tc.getAsJsonObject("parsed_params");
-            
-            if (parsedParams == null) continue;
-            
-            JsonObject ellipsoid = parsedParams.getAsJsonObject("ellipsoid");
-            if (ellipsoid == null) continue;
-            
-            double expectedA = ellipsoid.has("semi_major_metre") ? 
-                ellipsoid.get("semi_major_metre").getAsDouble() : 0;
-            double expectedRf = ellipsoid.has("inverse_flattening") ? 
-                ellipsoid.get("inverse_flattening").getAsDouble() : 0;
-            
-            if (expectedA == 0) continue;
-            
-            try {
-                Proj proj = new Proj(input);
-                double actualA = proj.getA();  // semi-major axis
-                double actualB = proj.getB();  // semi-minor axis
-                
-                // Compare semi-major axis (in meters)
-                double errorA = Math.abs(actualA - expectedA);
-                parserErrors.record(errorA);
-                
-                // Compare inverse flattening: rf = a / (a - b)
-                if (expectedRf > 0 && actualA > actualB) {
-                    double actualRf = actualA / (actualA - actualB);
-                    double errorRf = Math.abs(actualRf - expectedRf);
-                    // Scale by typical Earth radius to get meter-equivalent error
-                    parserErrors.record(errorRf * 6378137 / 298.257);
-                }
-            } catch (Exception e) {
-                // Skip CRS that can't be parsed
-            }
-        }
-        
-        if (parserErrors.count > 0) {
-            errorStatsByCategory.put("Parser (ellipsoid)", parserErrors);
-        }
-        
-        System.out.println("   Parser correctness: " + parserErrors.count + " comparisons");
+        return value.getAsJsonObject();
     }
 
-    private void runSerializerCorrectness() throws IOException {
-        Path refFile = Paths.get("target/pyproj-reference/format_export_reference.json");
-        if (!Files.exists(refFile)) {
-            System.out.println("   Serializer reference not found, skipping.");
-            return;
+    private JsonObject requiredObject(JsonObject owner, String field, String context) {
+        return requiredObject(owner == null ? null : owner.get(field),
+            context + "." + field);
+    }
+
+    private JsonObject optionalObject(JsonObject owner, String field) {
+        if (owner == null) {
+            return null;
         }
-        
-        Gson gson = new Gson();
-        JsonObject refData = gson.fromJson(Files.newBufferedReader(refFile), JsonObject.class);
-        JsonArray testCases = refData.getAsJsonArray("test_cases");
-        
-        ErrorStats serializerErrors = new ErrorStats("Serializer", "m");
-        
-        if (testCases == null) {
-            System.out.println("   Serializer reference has no test cases, skipping.");
-            return;
+        JsonElement value = owner.get(field);
+        return value == null || value.isJsonNull() || !value.isJsonObject()
+            ? null : value.getAsJsonObject();
+    }
+
+    private JsonArray requiredArray(JsonObject owner, String field, String context) {
+        JsonElement value = owner == null ? null : owner.get(field);
+        if (value == null || value.isJsonNull() || !value.isJsonArray()) {
+            throw new IllegalArgumentException(context + "." + field
+                + " must be a JSON array");
         }
-        
-        for (JsonElement tcElem : testCases) {
-            JsonObject tc = tcElem.getAsJsonObject();
-            String input = tc.get("input").getAsString();
-            JsonObject exports = tc.getAsJsonObject("exports");
-            
-            if (exports == null) continue;
-            
-            try {
-                Proj proj = new Proj(input);
-                
-                // Export to WKT1 and re-parse to compare parameters
-                String wkt1 = CRSSerializer.toWkt1(proj);
-                if (wkt1 != null && !wkt1.isEmpty()) {
-                    try {
-                        Proj reparsed = new Proj(wkt1);
-                        double errorA = Math.abs(reparsed.getA() - proj.getA());
-                        serializerErrors.record(errorA);
-                    } catch (Exception e) {
-                        // WKT1 re-parse failed
-                    }
-                }
-                
-                // Export to PROJ string and re-parse
-                String projStr = CRSSerializer.toProjString(proj);
-                if (projStr != null && !projStr.isEmpty()) {
-                    try {
-                        Proj reparsed = new Proj(projStr);
-                        double errorA = Math.abs(reparsed.getA() - proj.getA());
-                        serializerErrors.record(errorA);
-                    } catch (Exception e) {
-                        // PROJ string re-parse failed
-                    }
-                }
-            } catch (Exception e) {
-                // Skip CRS that can't be processed
+        return value.getAsJsonArray();
+    }
+
+    private String requiredString(JsonObject owner, String field, String context) {
+        String value = optionalString(owner, field, null);
+        if (value == null || value.trim().isEmpty()) {
+            throw new IllegalArgumentException(context + "." + field
+                + " must be a non-empty string");
+        }
+        return value;
+    }
+
+    private String optionalString(JsonObject owner, String field, String defaultValue) {
+        if (owner == null) {
+            return defaultValue;
+        }
+        JsonElement value = owner.get(field);
+        if (value == null || value.isJsonNull() || !value.isJsonPrimitive()) {
+            return defaultValue;
+        }
+        try {
+            return value.getAsString();
+        } catch (RuntimeException e) {
+            return defaultValue;
+        }
+    }
+
+    private int requiredInt(JsonObject owner, String field, String context) {
+        JsonElement value = owner == null ? null : owner.get(field);
+        try {
+            if (value == null || value.isJsonNull() || !value.isJsonPrimitive()) {
+                throw new IllegalArgumentException();
             }
+            return value.getAsInt();
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException(context + "." + field
+                + " must be an integer", e);
         }
-        
-        if (serializerErrors.count > 0) {
-            errorStatsByCategory.put("Serializer", serializerErrors);
+    }
+
+    private double requiredDouble(JsonObject owner, String field, String context) {
+        double value = optionalFiniteDouble(owner, field);
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException(context + "." + field
+                + " must be a finite number");
         }
-        
-        System.out.println("   Serializer correctness: " + serializerErrors.count + " comparisons");
+        return value;
+    }
+
+    private double optionalFiniteDouble(JsonObject owner, String field) {
+        if (owner == null) {
+            return Double.NaN;
+        }
+        JsonElement value = owner.get(field);
+        try {
+            if (value == null || value.isJsonNull() || !value.isJsonPrimitive()) {
+                return Double.NaN;
+            }
+            double number = value.getAsDouble();
+            return Double.isFinite(number) ? number : Double.NaN;
+        } catch (RuntimeException e) {
+            return Double.NaN;
+        }
+    }
+
+    private boolean optionalBoolean(JsonObject owner, String field, boolean defaultValue) {
+        if (owner == null) {
+            return defaultValue;
+        }
+        JsonElement value = owner.get(field);
+        try {
+            return value == null || value.isJsonNull() || !value.isJsonPrimitive()
+                ? defaultValue : value.getAsBoolean();
+        } catch (RuntimeException e) {
+            return defaultValue;
+        }
+    }
+
+    private boolean isExplicitFalse(JsonObject owner, String field) {
+        return owner.has(field) && !owner.get(field).isJsonNull()
+            && !optionalBoolean(owner, field, true);
+    }
+
+    private List<String> stringList(JsonArray values, String context) {
+        List<String> result = new ArrayList<>();
+        for (int i = 0; i < values.size(); i++) {
+            JsonElement value = values.get(i);
+            if (value == null || value.isJsonNull() || !value.isJsonPrimitive()) {
+                throw new IllegalArgumentException(context + " entry " + i
+                    + " must be a string");
+            }
+            result.add(value.getAsString());
+        }
+        return result;
+    }
+
+    private String nullableError(JsonObject object, String field) {
+        if (object == null) {
+            return null;
+        }
+        JsonElement value = object.get(field);
+        if (value == null || value.isJsonNull()) {
+            return null;
+        }
+        String message = value.isJsonPrimitive() ? value.getAsString() : value.toString();
+        return "reference error: " + message;
+    }
+
+    private String validateCoordinatePair(JsonObject point, String label) {
+        if (point == null) {
+            return label + " is missing or malformed";
+        }
+        double x = optionalFiniteDouble(point, "x");
+        double y = optionalFiniteDouble(point, "y");
+        return Double.isFinite(x) && Double.isFinite(y)
+            ? null : label + " contains a missing or non-finite coordinate";
+    }
+
+    private String validatePoint(Point point) {
+        if (point == null) {
+            return "Java transform returned null";
+        }
+        if (!Double.isFinite(point.x) || !Double.isFinite(point.y)) {
+            return "Java transform returned a non-finite coordinate";
+        }
+        return null;
+    }
+
+    private String joinErrors(String first, String second) {
+        if (first == null || first.trim().isEmpty()) {
+            return second == null || second.trim().isEmpty() ? null : second;
+        }
+        if (second == null || second.trim().isEmpty()) {
+            return first;
+        }
+        return first + "; " + second;
+    }
+
+    private boolean sameDouble(double first, double second) {
+        return Double.doubleToLongBits(first) == Double.doubleToLongBits(second);
+    }
+
+    private String describeException(Exception exception) {
+        String message = exception.getMessage();
+        return exception.getClass().getSimpleName()
+            + (message == null || message.trim().isEmpty() ? "" : ": " + message);
+    }
+
+    private void putStats(String key, ErrorStats stats) {
+        if (stats.count > 0) {
+            errorStatsByCategory.put(key, stats);
+        }
     }
 
     private boolean isProjectedCrs(String crs) {
@@ -560,6 +970,9 @@ public class SpeedBenchmark {
         sb.append("# proj4sedona Benchmark Report\n\n");
         sb.append("Generated: ").append(LocalDateTime.now().format(
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))).append("\n\n");
+        sb.append("Parity status: **")
+            .append(parity.hasFailures() ? "FAILED" : "PASSED")
+            .append("**\n\n");
         
         // Speedup table
         sb.append("## Speedup vs pyproj\n\n");
@@ -585,45 +998,61 @@ public class SpeedBenchmark {
         
         // Correctness table
         sb.append("\n## Correctness vs pyproj\n\n");
-        sb.append("| Category | Tests | Max Error | Avg Error | Tolerance |\n");
-        sb.append("|----------|------:|----------:|----------:|----------:|\n");
+        sb.append("| Category | Tests | Max Error | Avg Error | Tolerance | Status |\n");
+        sb.append("|----------|------:|----------:|----------:|----------:|:------:|\n");
         
         for (ErrorStats stats : errorStatsByCategory.values()) {
-            String tolerance = stats.unit.equals("deg") ? 
-                formatError(GEOGRAPHIC_TOLERANCE, "deg") : 
-                formatError(PROJECTED_TOLERANCE, "m");
-            
-            sb.append(String.format("| %s | %d | %s | %s | %s |\n",
+            sb.append(String.format("| %s | %d | %s | %s | %s | %s |\n",
                 stats.name,
                 stats.count,
                 formatError(stats.max, stats.unit),
                 formatError(stats.sum / stats.count, stats.unit),
-                tolerance));
+                formatError(stats.tolerance, stats.unit),
+                stats.max <= stats.tolerance ? "PASS" : "FAIL"));
         }
         
         // Per-projection correctness table
         if (!perProjectionStats.isEmpty()) {
             sb.append("\n### Per-projection correctness (vs pyproj)\n\n");
-            sb.append("| Projection | Points | Max Error | Avg Error |\n");
-            sb.append("|------------|-------:|----------:|----------:|\n");
+            sb.append("| Projection | Points | Max Error | Avg Error | Tolerance | Status |\n");
+            sb.append("|------------|-------:|----------:|----------:|----------:|:------:|\n");
             for (Map.Entry<String, ErrorStats> e : perProjectionStats.entrySet()) {
                 ErrorStats stats = e.getValue();
                 if (stats.count == 0) {
                     continue;
                 }
-                sb.append(String.format("| %s | %d | %s | %s |\n",
+                sb.append(String.format("| %s | %d | %s | %s | %s | %s |\n",
                     stats.name,
                     stats.count,
                     formatError(stats.max, stats.unit),
-                    formatError(stats.sum / stats.count, stats.unit)));
+                    formatError(stats.sum / stats.count, stats.unit),
+                    formatError(stats.tolerance, stats.unit),
+                    stats.max <= stats.tolerance ? "PASS" : "FAIL"));
             }
         }
 
-        // Skipped tests
-        if (!skippedTests.isEmpty()) {
-            sb.append("\n### Skipped Tests\n\n");
-            for (String test : skippedTests) {
+        sb.append("\n### Reference coverage\n\n");
+        sb.append("| Suite | Expected | Compared | Skipped | Failed | Mismatches |\n");
+        sb.append("|-------|---------:|---------:|--------:|-------:|-----------:|\n");
+        for (Map.Entry<String, ParityCheck.Coverage> entry
+                : parity.coverageBySuite().entrySet()) {
+            ParityCheck.Coverage coverage = entry.getValue();
+            sb.append(String.format("| %s | %d | %d | %d | %d | %d |\n",
+                entry.getKey(), coverage.expected(), coverage.compared(),
+                coverage.skipped(), coverage.failed(), coverage.mismatches()));
+        }
+
+        if (!parity.skips().isEmpty()) {
+            sb.append("\n### Explicit skips\n\n");
+            for (String test : parity.skips()) {
                 sb.append("- `").append(test).append("`\n");
+            }
+        }
+
+        if (!parity.failures().isEmpty()) {
+            sb.append("\n### Failures\n\n");
+            for (String failure : parity.failures()) {
+                sb.append("- `").append(failure.replace("`", "\\`")).append("`\n");
             }
         }
         
@@ -646,16 +1075,23 @@ public class SpeedBenchmark {
 
     // ==================== Helper Classes ====================
 
+    @FunctionalInterface
+    private interface CheckedRunnable {
+        void run() throws Exception;
+    }
+
     private static class ErrorStats {
-        String name;
-        String unit;
+        final String name;
+        final String unit;
+        final double tolerance;
         int count = 0;
         double sum = 0;
         double max = 0;
 
-        ErrorStats(String name, String unit) {
+        ErrorStats(String name, String unit, double tolerance) {
             this.name = name;
             this.unit = unit;
+            this.tolerance = tolerance;
         }
 
         void record(double error) {

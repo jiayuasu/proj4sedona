@@ -12,10 +12,10 @@ Grid files tested:
 """
 
 import json
+import math
 from typing import Dict, List, Any
 from pyproj import CRS, Transformer
 from pyproj.transformer import TransformerGroup
-import os
 
 
 def get_grid_test_cases() -> List[Dict[str, Any]]:
@@ -168,6 +168,7 @@ def transform_with_grid(
     result = {
         "from_crs": from_crs_str,
         "to_crs": to_crs_str,
+        "expected_transformation_count": len(test_points),
         "transformations": [],
         "transformer_info": {},
         "error": None,
@@ -213,9 +214,11 @@ def transform_with_grid(
         for point in test_points:
             try:
                 x_out, y_out = transformer.transform(point["lon"], point["lat"])
-
+                if not (math.isfinite(x_out) and math.isfinite(y_out)):
+                    raise ValueError("non-finite result (outside grid domain)")
                 result["transformations"].append(
                     {
+                        "point_id": point["name"],
                         "point_name": point["name"],
                         "input": {"x": point["lon"], "y": point["lat"]},
                         "output": {"x": float(x_out), "y": float(y_out)},
@@ -225,6 +228,7 @@ def transform_with_grid(
             except Exception as e:
                 result["transformations"].append(
                     {
+                        "point_id": point["name"],
                         "point_name": point["name"],
                         "input": {"x": point["lon"], "y": point["lat"]},
                         "output": None,
@@ -234,6 +238,17 @@ def transform_with_grid(
 
     except Exception as e:
         result["error"] = str(e)
+        generation_error = f"reference generation failed: {e}"
+        for point in test_points[len(result["transformations"]):]:
+            result["transformations"].append(
+                {
+                    "point_id": point["name"],
+                    "point_name": point["name"],
+                    "input": {"x": point["lon"], "y": point["lat"]},
+                    "output": None,
+                    "error": generation_error,
+                }
+            )
 
     return result
 
@@ -242,9 +257,13 @@ def generate_grid_reference(output_file: str, verbose: bool = False) -> None:
     """Generate grid transformation reference data."""
 
     reference_data = {
-        "version": "1.0",
+        "version": "1.1",
         "generator": "pyproj",
         "pyproj_version": None,
+        "expected_test_case_count": len(get_grid_test_cases()),
+        "expected_transformation_count": sum(
+            len(case["test_points"]) for case in get_grid_test_cases()
+        ),
         "proj_data_dir": None,
         "notes": [
             "Grid files are fetched from cdn.proj.org by pyproj automatically",
@@ -282,6 +301,8 @@ def generate_grid_reference(output_file: str, verbose: bool = False) -> None:
             "grid_file": test_case["grid_file"],
             "from_crs": test_case["from_crs"],
             "to_crs": test_case["to_crs"],
+            "expected_transformation_count": len(test_case["test_points"]),
+            "tolerance_deg": 1e-6,
             "transform_result": transform_result,
         }
 
@@ -293,7 +314,7 @@ def generate_grid_reference(output_file: str, verbose: bool = False) -> None:
 
     # Write output
     with open(output_file, "w") as f:
-        json.dump(reference_data, f, indent=2)
+        json.dump(reference_data, f, indent=2, allow_nan=False)
 
 
 if __name__ == "__main__":
