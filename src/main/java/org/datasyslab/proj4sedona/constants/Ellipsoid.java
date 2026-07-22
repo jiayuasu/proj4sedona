@@ -107,8 +107,8 @@ public final class Ellipsoid {
     public static final Ellipsoid SPHERE = registerWithB("sphere", 6370997, 6370997, "Normal Sphere (r=6370997)");
 
     static {
-        // Legacy alias: the datum registry's carthage entry (ported from proj4js
-        // constants/Datum.js) spells Clarke 1880 mod. as "clark80".
+        // Keep accepting the legacy "clark80" spelling used by older PROJ strings.
+        // Current proj4js names Carthage's ellipsoid explicitly as "clrk80ign".
         ELLIPSOIDS.put("clark80", CLRK80);
     }
 

@@ -100,7 +100,7 @@ Proj4Sedona includes definitions for common datums. Each datum specifies an elli
 | `potsdam` | bessel | 7-param | Potsdam Rauenberg 1950 DHDN |
 | `ch1903` | bessel | 3-param | Swiss CH1903 |
 | `ggrs87` | GRS80 | 3-param | Greek Geodetic Reference System 1987 |
-| `carthage` | clark80 | 3-param | Carthage 1934 Tunisia |
+| `carthage` | clrk80ign | 3-param | Carthage 1934 Tunisia |
 | `hermannskogel` | bessel | 7-param | Hermannskogel |
 | `mgi` | bessel | 7-param | Militar-Geographische Institut |
 | `osni52` | airy | 7-param | Irish National |

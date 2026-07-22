@@ -3,6 +3,7 @@ package org.datasyslab.proj4sedona;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.datasyslab.proj4sedona.constants.Datum;
 import org.datasyslab.proj4sedona.constants.Values;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
@@ -22,6 +23,27 @@ class Proj4jsBackportsTest {
     @BeforeAll
     static void setup() {
         ProjectionRegistry.start();
+    }
+
+    @Test
+    @DisplayName("proj4js 6fa5384: Carthage uses the Clarke 1880 (IGN) ellipsoid")
+    void testCarthageEllipsoid() {
+        Datum carthage = Datum.get("carthage");
+        assertNotNull(carthage);
+        assertEquals("clrk80ign", carthage.getEllipse(), "current upstream ellipsoid code");
+
+        Proj crs = new Proj("+proj=longlat +datum=carthage +no_defs");
+        assertEquals("clrk80ign", crs.getParams().ellps, "resolved ellipsoid code");
+        assertEquals(6378249.2, crs.getParams().a, 1e-9, "semi-major axis");
+        assertEquals(6356515.0, crs.getParams().b, 1e-9, "semi-minor axis");
+        assertEquals(293.4660213, crs.getParams().rf, 1e-9, "inverse flattening");
+
+        // Current proj4js testData vector, also matching PROJ.
+        Converter conv = Proj4.proj4(WGS84,
+            "+proj=utm +zone=32 +datum=carthage +units=m +no_defs");
+        Point xy = conv.forward(new Point(10, 36));
+        assertEquals(590082.503079214, xy.x, 0.01, "easting");
+        assertEquals(3983954.003957999, xy.y, 0.01, "northing");
     }
 
     @Test

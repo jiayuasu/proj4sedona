@@ -1420,7 +1420,7 @@ class CRSSerializerTest {
         Proj p = new Proj("+proj=longlat +ellps=bess-nam +no_defs");
         assertEquals(6377483.865, p.getParams().a, 1e-6, "bess-nam resolves to bess_nam");
 
-        // The legacy clark80 alias spelling resolves to clrk80 (carthage's ellipse).
+        // The legacy clark80 alias spelling remains accepted as Clarke 1880 mod.
         assertEquals(6378249.145,
             new Proj("+proj=longlat +ellps=clark80 +no_defs").getParams().a, 1e-6);
 

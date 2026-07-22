@@ -52,7 +52,7 @@ public final class Datum {
     /** German DHDN datum (Potsdam) */
     public static final Datum POTSDAM = register("potsdam", "598.1,73.7,418.2,0.202,0.045,-2.455,6.7", "bessel", "Potsdam Rauenberg 1950 DHDN");
     /** Carthage datum (Tunisia) */
-    public static final Datum CARTHAGE = register("carthage", "-263.0,6.0,431.0", "clark80", "Carthage 1934 Tunisia");
+    public static final Datum CARTHAGE = register("carthage", "-263.0,6.0,431.0", "clrk80ign", "Carthage 1934 Tunisia");
     /** Austrian MGI datum */
     public static final Datum HERMANNSKOGEL = register("hermannskogel", "577.326,90.129,463.919,5.137,1.474,5.297,2.4232", "bessel", "Hermannskogel");
     /** Austrian Military Geographic Institute datum */
