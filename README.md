@@ -31,6 +31,15 @@ Full documentation is available in the [docs/](docs/) folder:
 - [Caching and Performance](docs/caching-and-performance.md) -- projection caching and thread safety
 - [Constants Reference](docs/constants-reference.md) -- datums, ellipsoids, units, prime meridians
 
+**Serialization compatibility:** Standard WKT/PROJJSON exporters now throw
+`UnsupportedOperationException` instead of returning lossy output for definitions they
+cannot represent. In particular, WKT2 and PROJJSON reject non-zero `+towgs84`, and all
+standard exporters reject grid shifts, `+over`, `+R_A`, and two-point `omerc`. WKT2 and
+PROJJSON also reject `+approx`; WKT1 preserves approximate Transverse Mercator only when
+the executable `Fast_Transverse_Mercator` alias is available and otherwise rejects it.
+Use `toProjString()` when those operation semantics must be preserved. The complete list
+is in the [CRS export fidelity guide](docs/crs-formats.md#export-fidelity).
+
 ## Quick Start
 
 ### Maven Dependency
@@ -295,6 +304,11 @@ mvn clean install
 
 Run benchmarks against pyproj:
 
+The strict `-Pbenchmarks` profile requires `python3` on `PATH` with the `pyproj` and
+NumPy packages installed. The build intentionally fails when Python or either package
+is missing, because the parity gate cannot validate results without its reference
+implementation.
+
 ```bash
 mvn verify -Pbenchmarks
 ```
@@ -302,6 +316,13 @@ mvn verify -Pbenchmarks
 This generates `target/benchmark_report.md` containing:
 1. **Speedup vs pyproj**: Performance comparison table
 2. **Correctness vs pyproj**: Error statistics (max/avg error per category)
+3. **Parity coverage**: Every generated transform, grid, parser, and serializer case
+   is reported as compared, explicitly skipped with a reason, or failed
+
+The correctness pass is a build gate, not a best-effort benchmark. Missing or duplicate
+reference rows, non-finite results, parse/serialization errors, stale skip or tolerance
+declarations, and errors above tolerance all fail the Maven build after the report is
+written.
 
 **Benchmark Categories:**
 - CRS initialization

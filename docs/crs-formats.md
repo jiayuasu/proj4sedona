@@ -230,6 +230,33 @@ String epsg = proj.toEpsgCode();    // "EPSG:32618"
 String[] auth = proj.toAuthority();   // {"EPSG", "32618"}
 ```
 
+### Export Fidelity
+
+`toProjString()` is the lossless export for PROJ-specific behavior. WKT1, WKT2,
+and PROJJSON describe standard CRS objects and cannot encode every PROJ operation
+parameter. When a standard export would silently change coordinates,
+Proj4Sedona throws `UnsupportedOperationException` and directs the caller to
+`toProjString()`.
+
+This is a compatibility change for callers that previously accepted lossy standard
+output: they must now handle `UnsupportedOperationException` or explicitly request a
+PROJ string.
+
+This applies to PROJ-only longitude handling (`+over`, `+lon_wrap`), authalic-radius
+mode (`+R_A`), `ob_tran`, Tilted Perspective, unsupported Oblique Mercator variants
+(`+no_rot` and the two-point form), and grid-shift operations. Approximate Transverse
+Mercator is format-dependent: WKT2 and PROJJSON reject it, while WKT1 emits
+`Fast_Transverse_Mercator` when that executable alias is available and otherwise
+rejects it. Other uses of `+approx` are rejected by all standard exporters. WKT2 and
+PROJJSON also reject non-zero `+towgs84` operations until bound-CRS export is
+implemented; WKT1 preserves them with `TOWGS84`. Geocentric CRS export is supported as
+a PROJ string or PROJJSON, but not yet as WKT.
+
+For supported definitions, standard exports preserve projection parameters,
+linear-unit factors, horizontal axis order and direction, and non-Greenwich prime
+meridians. Re-importing an exported definition therefore retains the coordinate
+semantics represented by that format.
+
 ### Using CRSSerializer Directly
 
 ```java

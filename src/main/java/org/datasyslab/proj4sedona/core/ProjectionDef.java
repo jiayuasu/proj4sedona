@@ -40,7 +40,8 @@ public class ProjectionDef {
     private Double rectifiedGridAngle;  // gamma: Rectified grid angle
 
     // Scale and offsets
-    private Double k0;             // k_0 or k: Scale factor (default 1.0)
+    private Double k0;             // k_0 or k (default 1)
+    private boolean k0Specified;   // True when k_0 or k was explicitly supplied
     private Double x0;             // x_0: False easting (default 0)
     private Double y0;             // y_0: False northing (default 0)
 
@@ -157,7 +158,11 @@ public class ProjectionDef {
     public void setRectifiedGridAngle(Double rectifiedGridAngle) { this.rectifiedGridAngle = rectifiedGridAngle; }
 
     public Double getK0() { return k0; }
-    public void setK0(Double k0) { this.k0 = k0; }
+    public void setK0(Double k0) {
+        this.k0 = k0;
+        this.k0Specified = k0 != null;
+    }
+    public boolean isK0Specified() { return k0Specified; }
 
     public Double getX0() { return x0; }
     public void setX0(Double x0) { this.x0 = x0; }

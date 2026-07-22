@@ -200,7 +200,9 @@ public final class ProjJsonBuilder {
             
             // Check for PRIMEM
             List<Object> primemNode = findNode(node, "PRIMEM");
-            if (primemNode != null && primemNode.size() > 1 && !"Greenwich".equals(primemNode.get(1))) {
+            if (primemNode != null && primemNode.size() > 1
+                    && (!"Greenwich".equals(primemNode.get(1))
+                        || primeMeridianIsNumericallyNonZero(primemNode))) {
                 Map<String, Object> primeMeridian = new HashMap<>();
                 primeMeridian.put("name", primemNode.get(1));
                 if (primemNode.size() > 2) {
@@ -270,6 +272,14 @@ public final class ProjJsonBuilder {
         if (id != null) {
             result.put("id", id);
         }
+    }
+
+    /**
+     * A WKT producer can label a non-zero meridian "Greenwich".  The numeric value
+     * is authoritative; dropping it by name changes every longitude in the CRS.
+     */
+    private static boolean primeMeridianIsNumericallyNonZero(List<Object> primemNode) {
+        return primemNode.size() > 2 && parseDouble(primemNode.get(2)) != 0.0;
     }
 
     /**

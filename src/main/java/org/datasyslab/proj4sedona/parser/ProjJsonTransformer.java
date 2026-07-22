@@ -525,6 +525,7 @@ public final class ProjJsonTransformer {
                 def.setLongc(value);
                 break;
             case "latitude_of_1st_standard_parallel":
+            case "latitude_of_pseudo_standard_parallel":
                 def.setLat1(value);
                 break;
             case "latitude_of_2nd_standard_parallel":
@@ -547,6 +548,8 @@ public final class ProjJsonTransformer {
                 break;
             case "azimuth":
             case "azimuth_at_projection_centre":
+            case "co-latitude_of_cone_axis":
+            case "co_latitude_of_cone_axis":
                 def.setAlpha(value);
                 break;
             case "angle_from_rectified_to_skew_grid":

@@ -104,6 +104,9 @@ public class ProjectionParams {
     public double getK0OrDefault(double defaultValue) {
         return k0 == 0.0 || Double.isNaN(k0) ? defaultValue : k0;
     }
+
+    /** Whether the source definition explicitly supplied +k_0/+k (including 1.0). */
+    public boolean k0Specified;
     
     /** False easting in projection units (+x_0), defaults to 0.0 */
     public double x0 = 0.0;
