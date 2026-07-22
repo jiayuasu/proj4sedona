@@ -120,9 +120,8 @@ class GeneralObliqueTransformationTest {
         // exactly 500000 lower; we follow proj4js and keep the inner x_0.
         assertCase("+proj=ob_tran +o_proj=utm +zone=32 +o_lat_p=45 +o_lon_p=-90",
             -2, -1, -4964159.25514968, -10307250.57058772, XY_EPSLN);
-        // Reference from pyproj 3.7.2/PROJ 9.5.1 (k0 defaults to Krovak's 0.9999, as in
-        // our standalone Krovak). proj4js differs here only because its global k0=1
-        // default shadows krovak.js's own 0.9999 fallback.
+        // Reference from pyproj 3.7.2/PROJ 9.5.1. Current proj4js 71b4ffc also lets
+        // the inner Krovak use its projection-specific k0=0.9999 default.
         assertCase("+proj=ob_tran +o_proj=krovak +o_lat_p=45 +o_lon_p=-90 +ellps=bessel",
             14, 50, -10366655.121237619, -1171101.8690256411, XY_EPSLN);
     }

@@ -261,7 +261,7 @@ known to be wrong; each is noted in the relevant Javadoc and pinned by a test):
 
 | Upstream | Ported through | Date |
 |---|---|---|
-| [proj4js](https://github.com/proj4js/proj4js) | commit `695c191` | 2026-07-05 |
+| [proj4js](https://github.com/proj4js/proj4js) | commit `888ce3a` | 2026-07-19 |
 | [wkt-parser](https://github.com/proj4js/wkt-parser) | v1.5.5 | 2026-07-13 (audit) |
 | [mgrs](https://github.com/proj4js/mgrs) | v2.2.0 | 2026-07-21 |
 
@@ -269,7 +269,7 @@ To find upstream changes that may need porting since the last sync:
 
 ```bash
 # In a proj4js checkout:
-git log 695c191..origin/master -- lib/
+git log 888ce3a..origin/master -- lib/
 
 # For wkt-parser, diff the published packages:
 npm pack wkt-parser@1.5.5 && npm pack wkt-parser@latest

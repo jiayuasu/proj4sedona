@@ -88,10 +88,8 @@ public final class Ellipsoid {
     public static final Ellipsoid MPRTS = register("mprts", 6397300, 191, "Maupertius 1738");
     public static final Ellipsoid NEW_INTL = registerWithB("new_intl", 6378157.5, 6356772.2, "New International 1967");
     /**
-     * Plessis 1817. Documented divergence from proj4js, whose table stores 6355863
-     * as the inverse flattening (a typo — it is the semi-minor axis; the derived
-     * b there is 6376521.997, a near-sphere 20.7 km off). PROJ defines plessis as
-     * a=6376523, b=6355863, which this entry matches.
+     * Plessis 1817. The value 6355863 is the semi-minor axis, not the inverse
+     * flattening; this matches PROJ and current proj4js (a83fc2e).
      */
     public static final Ellipsoid PLESSIS = registerWithB("plessis", 6376523, 6355863, "Plessis 1817 (France)");
     /** Krassovsky 1942 - used in Russia and Eastern Europe */

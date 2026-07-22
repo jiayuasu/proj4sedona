@@ -1612,11 +1612,9 @@ class CRSSerializerTest {
     }
 
     @Test
-    @DisplayName("plessis matches PROJ, not proj4js's rf typo")
+    @DisplayName("plessis uses its semi-minor axis, matching current proj4js and PROJ")
     void testPlessisMatchesProj() {
-        // Documented divergence: proj4js stores plessis's 6355863 as the inverse
-        // flattening (deriving the near-sphere b=6376521.997, 20.7 km off); PROJ
-        // defines a=6376523, b=6355863, which this registry matches.
+        // proj4js a83fc2e corrected 6355863 from inverse flattening to semi-minor axis.
         Proj p = new Proj("+proj=longlat +ellps=plessis +no_defs");
         assertEquals(6376523.0, p.getParams().a, 1e-6);
         assertEquals(6355863.0, p.getParams().b, 1e-6, "b per PROJ's table");

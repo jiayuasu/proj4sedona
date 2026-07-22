@@ -53,8 +53,7 @@ class VanDerGrintenBonneTest {
 
     @Test
     void testVanDerGrintenEquator() {
-        // proj4js throws (non-finite) at the equator; this port returns the correct
-        // x = R * dlon, y = 0.
+        // Current proj4js 7e58cf1 and PROJ return x = R * dlon, y = 0.
         Converter conv = Proj4.proj4(WGS84, VANDG);
         Point xy = conv.forward(new Point(30, 0));
         assertEquals(6371007 * 30 * Math.PI / 180, xy.x, XY_EPSLN, "equator easting");
