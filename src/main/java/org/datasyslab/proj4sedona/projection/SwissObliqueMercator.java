@@ -37,7 +37,8 @@ public class SwissObliqueMercator implements Projection {
         double flattening = 1 / invF;
         double e2 = 2 * flattening - Math.pow(flattening, 2);
         this.e = Math.sqrt(e2);
-        this.R = params.k0 * semiMajorAxis * Math.sqrt(1 - e2) / (1 - e2 * Math.pow(sinPhy0, 2));
+        double k0 = params.getK0OrDefault(1.0);
+        this.R = k0 * semiMajorAxis * Math.sqrt(1 - e2) / (1 - e2 * Math.pow(sinPhy0, 2));
         this.alpha = Math.sqrt(1 + e2 / (1 - e2) * Math.pow(Math.cos(phy0), 4));
         this.b0 = Math.asin(sinPhy0 / this.alpha);
         double k1 = Math.log(Math.tan(Math.PI / 4 + this.b0 / 2));

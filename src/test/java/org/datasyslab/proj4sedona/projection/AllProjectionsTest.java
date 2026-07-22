@@ -273,6 +273,17 @@ class AllProjectionsTest {
     }
 
     @Test
+    void testLccExplicitEquatorialSecondParallelMatchesProj() {
+        Converter converter = Proj4.proj4(
+            "+proj=longlat +datum=WGS84",
+            "+proj=lcc +lat_1=30 +lat_2=0 +lat_0=10 +lon_0=0 +ellps=WGS84"
+        );
+        Point projected = converter.forward(new Point(5, 20));
+        assertEquals(507252.1405529205, projected.x, 1e-6);
+        assertEquals(1076164.3771528224, projected.y, 1e-6);
+    }
+
+    @Test
     void testLAEAAtPole() {
         Converter conv = Proj4.proj4(
             "+proj=longlat +datum=WGS84",

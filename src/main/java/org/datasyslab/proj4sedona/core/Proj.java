@@ -69,6 +69,12 @@ public class Proj {
         // Process datum definition
         processDatumDef(def);
 
+        // Keep track of whether flattening came from an explicit ellipsoid/datum.
+        // The public definition still receives proj4js's WGS84 default below, but
+        // PROJ treats a bare +a as spherical shorthand and +a with +ellps/+datum as
+        // an ellipsoid using that named flattening.
+        String ellpsForDerivation = def.getEllps();
+
         // Set defaults
         if (def.getK0() == null) def.setK0(1.0);
         if (def.getAxis() == null) def.setAxis("enu");
@@ -79,7 +85,7 @@ public class Proj {
 
         // Derive sphere constants
         DeriveConstants.SphereResult sphere = DeriveConstants.sphere(
-            def.getA(), def.getB(), def.getRf(), def.getEllps(), def.getSphere()
+            def.getA(), def.getB(), def.getRf(), ellpsForDerivation, def.getSphere()
         );
 
         // Derive eccentricity

@@ -69,8 +69,30 @@ public final class DeriveConstants {
             rfVal = ellipsoidParams[2];
         } else {
             aVal = a;
-            bVal = b != null ? b : 0;
-            rfVal = rf;
+            // PROJ treats a bare +a as spherical shorthand, but retains the named
+            // ellipsoid's flattening when +ellps or +datum is also present. Current
+            // proj4js carries b=undefined/es=NaN for both forms, so prefer PROJ's
+            // executable, serializable semantics.
+            if (b == null && rf == null) {
+                if (ellps == null) {
+                    bVal = aVal;
+                    rfVal = null;
+                    isSphere = true;
+                } else {
+                    Double[] ellipsoidParams = getEllipsoidParams(ellps);
+                    rfVal = ellipsoidParams[2];
+                    if (rfVal == null) {
+                        bVal = aVal;
+                        isSphere = true;
+                    } else {
+                        // Let the shared rf branch below derive b from the explicit a.
+                        bVal = 0.0;
+                    }
+                }
+            } else {
+                bVal = b != null ? b : 0;
+                rfVal = rf;
+            }
         }
 
         // If rf is given but not b, calculate b

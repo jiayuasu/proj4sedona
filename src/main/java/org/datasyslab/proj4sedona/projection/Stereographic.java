@@ -28,7 +28,6 @@ public class Stereographic implements Projection {
 
     private double a, e, es, lat0, long0, k0, x0, y0;
     private double sinlat0, coslat0, con, cons, ms1, X0, cosX0, sinX0;
-    private Double latTs;
     private boolean sphere;
     private Boolean over;
 
@@ -42,34 +41,56 @@ public class Stereographic implements Projection {
         this.e = Math.sqrt(es);
         this.lat0 = params.getLat0();
         this.long0 = params.getLong0();
-        this.k0 = params.k0;
         this.x0 = params.x0;
         this.y0 = params.y0;
-        this.latTs = params.latTs;
         this.sphere = params.sphere;
         this.over = params.over;
 
         coslat0 = Math.cos(lat0);
         sinlat0 = Math.sin(lat0);
 
-        if (sphere) {
-            if (k0 == 1 && latTs != null && Math.abs(coslat0) <= Values.EPSLN) {
-                k0 = 0.5 * (1 + ProjMath.sign(lat0) * Math.sin(latTs));
-            }
-        } else {
+        if (!sphere) {
             if (Math.abs(coslat0) <= Values.EPSLN) {
                 con = (lat0 > 0) ? 1 : -1;  // North or South pole
             }
             cons = Math.sqrt(Math.pow(1 + e, 1 + e) * Math.pow(1 - e, 1 - e));
-            if (k0 == 1 && latTs != null && Math.abs(coslat0) <= Values.EPSLN && Math.abs(Math.cos(latTs)) > Values.EPSLN) {
-                k0 = 0.5 * cons * ProjMath.msfnz(e, Math.sin(latTs), Math.cos(latTs)) / 
-                     ProjMath.tsfnz(e, con * latTs, con * Math.sin(latTs));
-            }
             ms1 = ProjMath.msfnz(e, sinlat0, coslat0);
             X0 = 2 * Math.atan(ssfn(lat0, sinlat0, e)) - Values.HALF_PI;
             cosX0 = Math.cos(X0);
             sinX0 = Math.sin(X0);
         }
+
+        this.k0 = resolveScaleFactor(params);
+    }
+
+    /** Whether current proj4js derives the polar scale from {@code lat_ts}. */
+    public static boolean derivesScaleFromLatitudeOfTrueScale(ProjectionParams params) {
+        if (params.latTs == null || Double.isNaN(params.latTs)
+                || Math.abs(Math.cos(params.getLat0())) > Values.EPSLN) {
+            return false;
+        }
+        return params.sphere || Math.abs(Math.cos(params.latTs)) > Values.EPSLN;
+    }
+
+    /** Resolve init-time {@code lat_ts} precedence followed by Proj's scale-one fallback. */
+    public static double resolveScaleFactor(ProjectionParams params) {
+        double scale = params.k0;
+        if (derivesScaleFromLatitudeOfTrueScale(params)) {
+            double lat0 = params.getLat0();
+            double latTs = params.latTs;
+            if (params.sphere) {
+                scale = 0.5 * (1 + ProjMath.sign(lat0) * Math.sin(latTs));
+            } else {
+                double e = Math.sqrt(params.es);
+                double con = lat0 > 0 ? 1 : -1;
+                double cons = Math.sqrt(
+                    Math.pow(1 + e, 1 + e) * Math.pow(1 - e, 1 - e));
+                scale = 0.5 * cons
+                    * ProjMath.msfnz(e, Math.sin(latTs), Math.cos(latTs))
+                    / ProjMath.tsfnz(e, con * latTs, con * Math.sin(latTs));
+            }
+        }
+        return scale == 0.0 || Double.isNaN(scale) ? 1.0 : scale;
     }
 
     private double ssfn(double phit, double sinphi, double eccen) {
