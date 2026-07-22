@@ -39,7 +39,7 @@ public class StereographicAlternative implements Projection {
         this.e = Math.sqrt(es);
         this.lat0 = params.getLat0();
         this.long0 = params.getLong0();
-        this.k0 = params.k0;
+        this.k0 = params.getK0OrDefault(1.0);
         this.x0 = params.x0;
         this.y0 = params.y0;
         this.over = params.over;

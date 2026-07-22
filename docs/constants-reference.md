@@ -15,7 +15,7 @@ Retrieved via `Datum.get(code)`. The `towgs84` field contains the parameters for
 | `ch1903` | bessel | `674.374,15.056,405.346` | Swiss CH1903 |
 | `ggrs87` | GRS80 | `-199.87,74.79,246.62` | Greek Geodetic Reference System 1987 |
 | `potsdam` | bessel | `598.1,73.7,418.2,0.202,0.045,-2.455,6.7` | Potsdam Rauenberg 1950 DHDN |
-| `carthage` | clark80 | `-263.0,6.0,431.0` | Carthage 1934 Tunisia |
+| `carthage` | clrk80ign | `-263.0,6.0,431.0` | Carthage 1934 Tunisia |
 | `hermannskogel` | bessel | `577.326,90.129,463.919,5.137,1.474,5.297,2.4232` | Hermannskogel |
 | `mgi` | bessel | `577.326,90.129,463.919,5.137,1.474,5.297,2.4232` | Militar-Geographische Institut |
 | `osni52` | airy | `482.530,-130.596,564.557,-1.042,-0.214,-0.631,8.15` | Irish National |

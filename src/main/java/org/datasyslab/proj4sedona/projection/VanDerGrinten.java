@@ -10,10 +10,9 @@ import org.datasyslab.proj4sedona.core.Point;
  *
  * <p>Projects the world into a circle. Computed on a sphere of radius {@code a}.</p>
  *
- * <p>proj4js's vandg forward leaves the equator/meridian/pole special cases unreturned,
- * so the general formula overwrites them and divides by zero at the equator (it throws
- * on the resulting non-finite value). This port returns those special cases, matching
- * PROJ, so the equator and poles project correctly.</p>
+ * <p>The equator/meridian/pole branches return immediately so the general formula
+ * cannot divide by zero on either axis. This matches PROJ and current proj4js
+ * (7e58cf1).</p>
  */
 public class VanDerGrinten implements Projection {
 

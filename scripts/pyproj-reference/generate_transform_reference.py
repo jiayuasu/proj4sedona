@@ -132,8 +132,11 @@ def get_projection_coverage_pairs() -> List[Dict[str, Any]]:
         {
             "name": "proj_eqc",
             "from_crs": "EPSG:4326",
-            "to_crs": "+proj=eqc +lat_ts=30 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs",
-            "desc": "Equidistant Cylindrical",
+            # The small nonzero origin makes an omitted origin shift obvious while
+            # keeping every shared +/-89.9-degree point inside proj4js's adjust_lat
+            # domain, where its behavior can be compared directly with PROJ.
+            "to_crs": "+proj=eqc +lat_0=0.05 +lat_ts=30 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs",
+            "desc": "Equidistant Cylindrical (nonzero natural origin)",
         },
         {
             "name": "proj_cea",

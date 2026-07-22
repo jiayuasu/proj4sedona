@@ -58,17 +58,30 @@ public class Mercator implements Projection {
         this.es = 1 - con * con;
         this.e = Math.sqrt(this.es);
 
-        // Determine k0 based on lat_ts or explicit k0
-        // Mirrors: lib/projections/merc.js lines 26-40
-        if (latTs != null) {
-            if (sphere) {
-                this.k0 = Math.cos(latTs);
+        this.k0 = resolveScaleFactor(params);
+    }
+
+    /** Resolve Mercator's lat_ts precedence followed by Proj's falsy scale fallback. */
+    public static double resolveScaleFactor(ProjectionParams params) {
+        Double latitudeOfTrueScale = params.latTs;
+        double scale;
+        if (latitudeOfTrueScale != null
+                && latitudeOfTrueScale != 0.0
+                && !Double.isNaN(latitudeOfTrueScale)) {
+            if (params.sphere) {
+                scale = Math.cos(latitudeOfTrueScale);
             } else {
-                this.k0 = ProjMath.msfnz(this.e, Math.sin(latTs), Math.cos(latTs));
+                // merc.init recomputes eccentricity from the axes, as current
+                // proj4js does. In particular, +R_A may set params.es to zero
+                // before Mercator restores the ellipsoidal value here.
+                double axisRatio = params.b / params.a;
+                double eccentricity = Math.sqrt(1.0 - axisRatio * axisRatio);
+                scale = ProjMath.msfnz(eccentricity,
+                    Math.sin(latitudeOfTrueScale), Math.cos(latitudeOfTrueScale));
             }
-        } else {
-            this.k0 = params.k0;
+            return scale == 0.0 || Double.isNaN(scale) ? 1.0 : scale;
         }
+        return params.getK0OrDefault(1.0);
     }
 
     /**

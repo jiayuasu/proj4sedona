@@ -39,7 +39,8 @@ public class GaussSchreiberTransverseMercator implements Projection {
         double pc = Math.asin(sinz / rs);
         double sinzpc = Math.sin(pc);
         this.cp = ProjMath.latiso(0, pc, sinzpc) - rs * ProjMath.latiso(e, lat0, sinz);
-        this.n2 = params.k0 * params.a * Math.sqrt(1 - e * e) / (1 - e * e * sinz * sinz);
+        double k0 = params.getK0OrDefault(1.0);
+        this.n2 = k0 * params.a * Math.sqrt(1 - e * e) / (1 - e * e * sinz * sinz);
         this.xs = params.x0;
         this.ys = params.y0 - n2 * pc;
     }

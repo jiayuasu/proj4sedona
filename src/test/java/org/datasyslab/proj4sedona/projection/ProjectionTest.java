@@ -49,6 +49,17 @@ class ProjectionTest {
     }
 
     @Test
+    void testSphereWithSemiMajorAxisOnly() {
+        DeriveConstants.SphereResult result = DeriveConstants.sphere(
+            6400000.0, null, null, null, null
+        );
+
+        assertEquals(6400000.0, result.a, 0.0);
+        assertEquals(6400000.0, result.b, 0.0);
+        assertTrue(result.sphere);
+    }
+
+    @Test
     void testSphereWithEllipsoidName() {
         // No explicit params, lookup by name
         DeriveConstants.SphereResult result = DeriveConstants.sphere(

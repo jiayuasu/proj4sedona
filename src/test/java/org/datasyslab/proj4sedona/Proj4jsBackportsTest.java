@@ -3,6 +3,7 @@ package org.datasyslab.proj4sedona;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.datasyslab.proj4sedona.constants.Datum;
 import org.datasyslab.proj4sedona.constants.Values;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
@@ -22,6 +23,58 @@ class Proj4jsBackportsTest {
     @BeforeAll
     static void setup() {
         ProjectionRegistry.start();
+    }
+
+    @Test
+    @DisplayName("proj4js 6fa5384: Carthage uses the Clarke 1880 (IGN) ellipsoid")
+    void testCarthageEllipsoid() {
+        Datum carthage = Datum.get("carthage");
+        assertNotNull(carthage);
+        assertEquals("clrk80ign", carthage.getEllipse(), "current upstream ellipsoid code");
+
+        Proj crs = new Proj("+proj=longlat +datum=carthage +no_defs");
+        assertEquals("clrk80ign", crs.getParams().ellps, "resolved ellipsoid code");
+        assertEquals(6378249.2, crs.getParams().a, 1e-9, "semi-major axis");
+        assertEquals(6356515.0, crs.getParams().b, 1e-9, "semi-minor axis");
+        assertEquals(293.4660213, crs.getParams().rf, 1e-9, "inverse flattening");
+
+        // Current proj4js testData vector, also matching PROJ.
+        Converter conv = Proj4.proj4(WGS84,
+            "+proj=utm +zone=32 +datum=carthage +units=m +no_defs");
+        Point xy = conv.forward(new Point(10, 36));
+        assertEquals(590082.503079214, xy.x, 0.01, "easting");
+        assertEquals(3983954.003957999, xy.y, 0.01, "northing");
+    }
+
+    @Test
+    @DisplayName("proj4js 71b4ffc: scale-one projections retain their default")
+    void testProjectionScaleOneDefaults() {
+        // These are the four projection initializers that current proj4js explicitly
+        // defaults to one after moving the generic default past projection init.
+        String[][] cases = {
+            {"+proj=tmerc +lat_0=0 +lon_0=3 +ellps=WGS84 +units=m +no_defs", "4", "50"},
+            {"+proj=gstmerc +lat_0=-21.116666667 +lon_0=55.53333333 "
+                + "+x_0=160000 +y_0=50000 +ellps=intl +units=m +no_defs", "55.5", "-21.1"},
+            {"+proj=omerc +lat_0=37.4769061 +lonc=141.0039618 +alpha=202.22 "
+                + "+x_0=138 +y_0=77.65 +ellps=WGS84 +units=m +no_defs", "141.003611", "37.476802"},
+            {"+proj=somerc +lat_0=46.95240555555556 +lon_0=7.439583333333333 "
+                + "+x_0=600000 +y_0=200000 +ellps=bessel +units=m +no_defs", "8.55", "47.37"},
+        };
+
+        for (String[] c : cases) {
+            Proj implicit = new Proj(c[0]);
+            Proj explicit = new Proj(c[0] + " +k=1");
+            assertEquals(1.0, implicit.getParams().k0, 0.0, c[0]);
+
+            Point input = new Point(
+                Double.parseDouble(c[1]) * Values.D2R,
+                Double.parseDouble(c[2]) * Values.D2R);
+            Point actual = implicit.forward(input);
+            Point expected = explicit.forward(input);
+            assertTrue(Double.isFinite(actual.x) && Double.isFinite(actual.y), c[0]);
+            assertEquals(expected.x, actual.x, 1e-8, "default-one easting: " + c[0]);
+            assertEquals(expected.y, actual.y, 1e-8, "default-one northing: " + c[0]);
+        }
     }
 
     @Test

@@ -132,17 +132,17 @@ import org.datasyslab.proj4sedona.Proj4;
 import org.datasyslab.proj4sedona.mgrs.MGRS;
 
 // Convert lon/lat to MGRS
-String mgrs = Proj4.toMGRS(-77.0369, 38.9072);  // "18SUJ2338308451"
+String mgrs = Proj4.toMGRS(-77.0369, 38.9072);  // "18SUJ2338308450"
 
-// With custom accuracy (1=10km, 2=1km, 3=100m, 4=10m, 5=1m)
+// With custom accuracy (0=100km, 1=10km, 2=1km, 3=100m, 4=10m, 5=1m)
 String mgrs1km = Proj4.toMGRS(-77.0369, 38.9072, 2);  // "18SUJ2308"
 
 // Convert MGRS to lon/lat
-double[] lonLat = Proj4.fromMGRS("18SUJ2338308451");  // [-77.0369, 38.9072]
+double[] lonLat = Proj4.fromMGRS("18SUJ2338308450");  // [-77.0369, 38.9072]
 
 // Or use the MGRS class directly
 String mgrs2 = MGRS.forward(new double[]{-77.0369, 38.9072}, 5);
-double[] point = MGRS.toPoint("18SUJ2338308451");
+double[] point = MGRS.toPoint("18SUJ2338308450");
 double[] bbox = MGRS.inverse("18SUJ23");  // [left, bottom, right, top]
 ```
 
@@ -272,7 +272,11 @@ known to be wrong; each is noted in the relevant Javadoc and pinned by a test):
 |---|---|---|
 | [proj4js](https://github.com/proj4js/proj4js) | commit `695c191` | 2026-07-05 |
 | [wkt-parser](https://github.com/proj4js/wkt-parser) | v1.5.5 | 2026-07-13 (audit) |
-| [mgrs](https://github.com/proj4js/mgrs) | v1.0.0 | — |
+| [mgrs](https://github.com/proj4js/mgrs) | v2.2.0 | 2026-07-21 |
+
+The projection-parity fixtures additionally target proj4js master commit `888ce3a`.
+Some covered behavior is newer than the published `proj4@2.20.9` npm package and may
+differ until the next upstream release.
 
 To find upstream changes that may need porting since the last sync:
 
@@ -282,6 +286,9 @@ git log 695c191..origin/master -- lib/
 
 # For wkt-parser, diff the published packages:
 npm pack wkt-parser@1.5.5 && npm pack wkt-parser@latest
+
+# For MGRS, diff the published packages:
+npm pack mgrs@2.2.0 && npm pack mgrs@latest
 ```
 
 When updating this table, audit each new commit/diff hunk as ported, not applicable,
