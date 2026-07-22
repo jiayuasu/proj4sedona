@@ -112,9 +112,11 @@ UTM zone number (1-60)
 MGRS follows the UTM zone system with two exceptions for Norway and Svalbard:
 
 - Zone 32V is widened to cover southwestern Norway (normally zone 31V)
-- Zones 32X, 34X, and 36X do not exist; they are merged into zones 31X, 33X, 35X, and 37X for Svalbard
+- From 72°N up to, but not including, 84°N, zones 32X, 34X, and 36X are merged into zones 31X, 33X, 35X, and 37X for Svalbard
 
-Proj4Sedona handles these special zones automatically.
+Proj4Sedona handles these special zones automatically. At exactly 84°N, matching
+mgrs 2.2.0, ordinary zone selection applies; references in 32X, 34X, and 36X can
+therefore occur at that supported northern boundary and are accepted on decode.
 
 ## UPS (Universal Polar Stereographic)
 
@@ -164,6 +166,13 @@ for (double[] city : cities) {
 ## Error Handling
 
 MGRS input is case-insensitive and may contain whitespace, so `4QFJ 12345 67890` and `4QFJ1234567890` decode identically. Invalid coordinates, accuracies, and MGRS strings throw an `IllegalArgumentException`. Longitude must be finite and between -180 and 180, latitude must be finite and between -80 and 84, accuracy must be between 0 and 5, UTM zones must be between 1 and 60, and each decoded axis may contain at most five digits.
+
+Two input-handling differences from mgrs 2.2.0 are intentional. Proj4Sedona
+rejects a 100km easting letter that belongs to the wrong grid set for the numeric
+zone; upstream accepts it and may return a coordinate outside that zone.
+Proj4Sedona also removes all Java whitespace, including tabs and line breaks,
+whereas upstream removes ASCII spaces only. These behaviors are pinned by the
+MGRS regression tests.
 
 ```java
 try {

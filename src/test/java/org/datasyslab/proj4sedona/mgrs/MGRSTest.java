@@ -160,10 +160,12 @@ public class MGRSTest {
     }
 
     @Test
-    void testWhitespaceTolerantDecoding() {
+    void testIntentionalWhitespaceNormalizationDivergenceFromUpstream() {
         double[] expectedPoint = MGRS.toPoint("4QFJ1234567890");
         double[] expectedBounds = MGRS.inverse("4QFJ1234567890");
 
+        // mgrs 2.2.0 strips ASCII spaces only. The Java API deliberately ignores
+        // every Character.isWhitespace character, including tabs and line breaks.
         assertArrayEquals(expectedPoint, MGRS.toPoint("4QFJ 12345 67890"), 0.0);
         assertArrayEquals(expectedPoint, MGRS.toPoint("\t4QFJ\n12345 67890\r"), 0.0);
         assertArrayEquals(expectedBounds, MGRS.inverse("4Q FJ 12345 67890"), 0.0);
@@ -245,6 +247,30 @@ public class MGRSTest {
         
         assertTrue(mgrs.startsWith("33X"), "Svalbard should use zone 33X");
         System.out.println("Longyearbyen, Svalbard: " + mgrs);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "8.9, 32XMU9883228094, 31X",
+        "20.9, 34XDU9883228094, 33X",
+        "32.9, 36XVU9883228094, 35X"
+    })
+    void testExactNorthernBoundaryUsesOrdinarySvalbardZones(
+            double lon, String expectedMgrs, String belowBoundaryZone) {
+        String mgrs = MGRS.forward(new double[]{lon, 84.0}, 5);
+
+        // The upstream Svalbard remap covers 72 <= latitude < 84. At exactly
+        // 84 degrees, ordinary zoning can therefore produce 32X, 34X, or 36X.
+        assertEquals(expectedMgrs, mgrs);
+        assertTrue(MGRS.forward(new double[]{lon, Math.nextDown(84.0)}, 5)
+            .startsWith(belowBoundaryZone));
+
+        double[] point = MGRS.toPoint(mgrs);
+        double[] bounds = MGRS.inverse(mgrs);
+        assertEquals(lon, point[0], TOLERANCE);
+        assertEquals(84.0, point[1], TOLERANCE);
+        assertEquals((bounds[0] + bounds[2]) / 2, point[0], 0.0);
+        assertEquals((bounds[1] + bounds[3]) / 2, point[1], 0.0);
     }
 
     // ========== Edge Case Tests ==========
@@ -380,7 +406,20 @@ public class MGRSTest {
         assertThrows(IllegalArgumentException.class, () -> MGRS.toPoint("33UIA"));
         assertThrows(IllegalArgumentException.class, () -> MGRS.toPoint("33UXZ"));
         assertThrows(IllegalArgumentException.class, () -> MGRS.toPoint("33UAP"));
-        assertThrows(IllegalArgumentException.class, () -> MGRS.toPoint("32XNA"));
+    }
+
+    @Test
+    void testWrongSet100kmColumnIsRejectedUnlikeUpstream() {
+        // mgrs 2.2.0 accepts this zone-18 reference even though J belongs to the
+        // wrong 100km column set, then returns a coordinate outside the zone.
+        String wrongSet = "18SJJ2338308450";
+
+        IllegalArgumentException pointError = assertThrows(
+            IllegalArgumentException.class, () -> MGRS.toPoint(wrongSet));
+        IllegalArgumentException inverseError = assertThrows(
+            IllegalArgumentException.class, () -> MGRS.inverse(wrongSet));
+        assertTrue(pointError.getMessage().contains("for 100km set"));
+        assertTrue(inverseError.getMessage().contains("for 100km set"));
     }
 
     @Test

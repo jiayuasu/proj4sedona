@@ -15,6 +15,14 @@ package org.datasyslab.proj4sedona.mgrs;
  * - Easting and northing within the grid square (variable precision)
  * 
  * Example: "33UUP0500011950" represents a point in UTM zone 33U
+ *
+ * <p>Input validation intentionally differs from mgrs 2.2.0 in two places. This
+ * decoder rejects a 100km easting letter that does not belong to the numeric
+ * zone's grid set; upstream accepts such references and can return a coordinate
+ * outside the named zone. This decoder also ignores every character recognized
+ * by {@link Character#isWhitespace(char)}, while upstream removes ASCII spaces
+ * only. These stricter grid checks and broader whitespace normalization are
+ * deliberate Java API behavior.</p>
  * 
  * Usage:
  * <pre>
@@ -388,9 +396,6 @@ public final class MGRS {
         if (zoneLetter <= 'A' || zoneLetter == 'B' || zoneLetter == 'Y' || zoneLetter >= 'Z' 
             || zoneLetter == 'I' || zoneLetter == 'O') {
             throw new IllegalArgumentException("Invalid zone letter '" + zoneLetter + "' in: " + mgrsString);
-        }
-        if (zoneLetter == 'X' && (zoneNumber == 32 || zoneNumber == 34 || zoneNumber == 36)) {
-            throw new IllegalArgumentException("Invalid Svalbard MGRS zone: " + zoneNumber + zoneLetter);
         }
 
         // Parse 100km grid square
