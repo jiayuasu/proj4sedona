@@ -147,8 +147,8 @@ class CoreTest {
     void testProjectionDefDefaults() {
         ProjectionDef def = new ProjectionDef();
         
-        // Raw definitions retain omission; the resolved projection default is 1.0.
-        assertNull(def.getK0());
+        assertEquals(1.0, def.getK0(), DELTA);
+        assertFalse(def.isK0Specified());
         assertEquals(0.0, def.getX0(), DELTA);
         assertEquals(0.0, def.getY0(), DELTA);
         assertEquals("enu", def.getAxis());
@@ -171,7 +171,12 @@ class CoreTest {
         assertEquals(0.5, def.getLat0(), DELTA);
         assertEquals(1.0, def.getLong0(), DELTA);
         assertEquals(0.9996, def.getK0(), DELTA);
+        assertTrue(def.isK0Specified());
         assertEquals(500000.0, def.getX0(), DELTA);
+
+        def.setK0(null);
+        assertNull(def.getK0());
+        assertFalse(def.isK0Specified());
     }
 
     @Test

@@ -522,7 +522,7 @@ public final class CRSSerializer {
 
         StringBuilder sb = new StringBuilder();
 
-        boolean isGeographic = "longlat".equals(params.projName);
+        boolean isGeographic = "longlat".equals(normalizeProjName(params.projName));
 
         if (isGeographic) {
             sb.append("GEOGCS[");
@@ -818,7 +818,7 @@ public final class CRSSerializer {
 
         StringBuilder sb = new StringBuilder();
 
-        boolean isGeographic = "longlat".equals(params.projName);
+        boolean isGeographic = "longlat".equals(normalizeProjName(params.projName));
 
         if (isGeographic) {
             sb.append("GEOGCRS[");
@@ -1127,7 +1127,7 @@ public final class CRSSerializer {
 
         Map<String, Object> json = new LinkedHashMap<>();
 
-        boolean isGeographic = "longlat".equals(params.projName);
+        boolean isGeographic = "longlat".equals(normalizeProjName(params.projName));
 
         if (isGeographic) {
             json.put("type", "GeographicCRS");
@@ -2668,6 +2668,7 @@ public final class CRSSerializer {
             throw unsupportedStandardParameter(
                 "Geocentric CRS export is not implemented for " + formatName(format));
         }
+        validateFiniteStandardParameters(params, proj, format);
         if (isTwoPointObliqueMercator(proj, params)) {
             throw unsupportedStandardParameter(
                 "Two-point Oblique Mercator has no executable " + formatName(format)
@@ -2760,6 +2761,115 @@ public final class CRSSerializer {
         return format == StandardFormat.PROJJSON ? "PROJJSON" : format.name();
     }
 
+    /** Validate every numeric value this standard exporter is about to emit. */
+    private static void validateFiniteStandardParameters(
+            ProjectionParams params, String proj, StandardFormat format) {
+        requireFiniteStandardValue("semi-major axis", params.a, format);
+        requireFiniteStandardValue("semi-minor axis", params.b, format);
+        requireFiniteStandardValue("inverse flattening", effectiveRf(params), format);
+        requireFiniteStandardAngle("prime meridian", params.fromGreenwich, format);
+
+        if (hasNonFiniteTowgs84(params.datum)) {
+            throw unsupportedStandardParameter(
+                "Non-finite TOWGS84 values have no valid " + formatName(format)
+                    + " representation");
+        }
+
+        if ("longlat".equals(proj)) {
+            return;
+        }
+
+        double unitToMeter = standardLinearUnitToMeter(params, format);
+        if (isGeocentric(params)) {
+            return;
+        }
+
+        requireFiniteStandardValue("false easting", params.x0, format);
+        requireFiniteStandardValue("false northing", params.y0, format);
+        if (format != StandardFormat.PROJJSON && unitToMeter > 0.0) {
+            requireFiniteStandardValue(
+                "false easting in CRS units", params.x0 / unitToMeter, format);
+            requireFiniteStandardValue(
+                "false northing in CRS units", params.y0 / unitToMeter, format);
+        }
+
+        if ("krovak".equals(proj)) {
+            requireFiniteStandardAngle(
+                "latitude of projection centre", krovakLatitudeOfCentre(params), format);
+            requireFiniteStandardAngle(
+                "longitude of origin", krovakLongitudeOfOrigin(params), format);
+        } else if ("omerc".equals(proj)) {
+            requireFiniteStandardAngle("latitude of projection centre", params.lat0, format);
+            requireFiniteStandardAngle("longitude of projection centre", params.longc, format);
+            requireFiniteStandardAngle("azimuth", params.alpha, format);
+            requireFiniteStandardAngle(
+                "rectified grid angle", params.rectifiedGridAngle, format);
+            if (format == StandardFormat.WKT1) {
+                requireFiniteStandardAngle("central meridian", params.long0, format);
+            }
+            if (params.alpha == null && params.rectifiedGridAngle == null) {
+                requireFiniteStandardAngle("first point longitude", params.long1, format);
+                requireFiniteStandardAngle("first point latitude", params.lat1, format);
+                requireFiniteStandardAngle("second point longitude", params.long2, format);
+                requireFiniteStandardAngle("second point latitude", params.lat2, format);
+            }
+        } else {
+            boolean polarStereoVariantB = isPolarStereographicVariantB(proj, params);
+            if (!polarStereoVariantB) {
+                requireFiniteStandardAngle("latitude of origin", params.lat0, format);
+            }
+            if (params.long0 != null || polarStereoVariantB) {
+                requireFiniteStandardAngle("central meridian", params.getLong0(), format);
+            }
+            if (usesLatTsAsStandardParallel(proj, params)) {
+                requireFiniteStandardAngle("latitude of true scale",
+                    latitudeOfTrueScaleForSerialization(proj, params), format);
+            } else if (usesStandardParallels(proj)) {
+                requireFiniteStandardAngle("first standard parallel", params.lat1, format);
+                requireFiniteStandardAngle("second standard parallel", params.lat2, format);
+            }
+            if ("geos".equals(proj)) {
+                requireFiniteStandardValueIfPresent("satellite height", params.h, format);
+            }
+        }
+
+        // This validates the effective scale that will be emitted, while preserving
+        // proj4js-style defaults where a raw zero/NaN scale is intentionally ignored.
+        standardScaleFactor(proj, params);
+    }
+
+    private static double standardLinearUnitToMeter(
+            ProjectionParams params, StandardFormat format) {
+        Double namedFactor = params.units != null ? Units.getToMeter(params.units) : null;
+        double factor = namedFactor != null ? namedFactor
+            : params.toMeter != null ? params.toMeter : 1.0;
+        requireFiniteStandardValue("linear unit conversion factor", factor, format);
+        return factor;
+    }
+
+    private static void requireFiniteStandardAngle(
+            String name, Double radians, StandardFormat format) {
+        if (radians != null) {
+            requireFiniteStandardValue(name, radians * RAD_TO_DEG, format);
+        }
+    }
+
+    private static void requireFiniteStandardValueIfPresent(
+            String name, Double value, StandardFormat format) {
+        if (value != null) {
+            requireFiniteStandardValue(name, value, format);
+        }
+    }
+
+    private static void requireFiniteStandardValue(
+            String name, double value, StandardFormat format) {
+        if (!Double.isFinite(value)) {
+            throw unsupportedStandardParameter(
+                "Non-finite " + name + " has no valid " + formatName(format)
+                    + " representation");
+        }
+    }
+
     private static boolean isTwoPointObliqueMercator(
             String proj, ProjectionParams params) {
         return "omerc".equals(proj)
@@ -2774,6 +2884,18 @@ public final class CRSSerializer {
         double[] human = toHumanTowgs84(datum);
         for (double value : human) {
             if (value != 0.0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasNonFiniteTowgs84(DatumParams datum) {
+        if (datum == null || datum.getDatumParams() == null) {
+            return false;
+        }
+        for (double value : toHumanTowgs84(datum)) {
+            if (!Double.isFinite(value)) {
                 return true;
             }
         }
@@ -3041,7 +3163,11 @@ public final class CRSSerializer {
     }
 
     private static String formatAngle(double degrees) {
-        if (degrees == Math.floor(degrees)) {
+        if (!Double.isFinite(degrees)) {
+            return Double.toString(degrees);
+        }
+        if (degrees == Math.floor(degrees)
+                && degrees >= Integer.MIN_VALUE && degrees <= Integer.MAX_VALUE) {
             return String.valueOf((int) degrees);
         }
         return String.valueOf(degrees);

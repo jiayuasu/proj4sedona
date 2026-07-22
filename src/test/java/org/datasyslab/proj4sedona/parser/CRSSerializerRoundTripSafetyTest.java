@@ -172,6 +172,65 @@ class CRSSerializerRoundTripSafetyTest {
     }
 
     @Test
+    void standardsRejectNonFiniteTowgs84Parameters() {
+        for (String value : new String[]{"NaN", "Infinity"}) {
+            Proj nonFinite = new Proj(
+                "+proj=longlat +ellps=WGS84 +towgs84=" + value + ",0,0 +no_defs");
+            assertAllStandardsReject(nonFinite);
+        }
+    }
+
+    @Test
+    void standardsRejectNonFinitePrimeMeridiansAndProjectionAngles() {
+        for (double value : new double[]{Double.NaN, Double.POSITIVE_INFINITY}) {
+            Proj primeMeridian = new Proj(WGS84);
+            primeMeridian.getParams().fromGreenwich = value;
+            assertAllStandardsReject(primeMeridian);
+
+            Proj projected = new Proj(
+                "+proj=tmerc +lat_0=0 +lon_0=3 +ellps=WGS84 +units=m +no_defs");
+            projected.getParams().lat0 = value;
+            assertAllStandardsReject(projected);
+        }
+        assertTrue(CRSSerializer.toProjString(new Proj(
+            "+proj=longlat +ellps=WGS84 +pm=Infinity +no_defs")).contains("+pm=Infinity"));
+    }
+
+    @Test
+    void projAnglesOutsideIntegerRangeAreNotClamped() {
+        double expectedDegrees = 3_000_000_000.0;
+        Proj projected = new Proj(
+            "+proj=eqc +lon_0=0 +R=6371000 +units=m +no_defs");
+        projected.getParams().long0 = expectedDegrees / (180.0 / Math.PI);
+
+        String serialized = CRSSerializer.toProjString(projected);
+        int valueStart = serialized.indexOf("+lon_0=") + "+lon_0=".length();
+        int valueEnd = serialized.indexOf(' ', valueStart);
+        double serializedDegrees = Double.parseDouble(
+            serialized.substring(valueStart, valueEnd));
+        assertEquals(expectedDegrees, serializedDegrees, 0.0, serialized);
+    }
+
+    @Test
+    void geographicProjectionAliasesUseGeographicStandardRoots() {
+        for (String alias : new String[]{"identity", "LongLat"}) {
+            Proj original = new Proj(
+                "+proj=" + alias + " +datum=WGS84 +no_defs");
+            String wkt1 = CRSSerializer.toWkt1(original);
+            String wkt2 = CRSSerializer.toWkt2(original);
+            String projJson = CRSSerializer.toProjJson(original, false);
+
+            assertTrue(wkt1.startsWith("GEOGCS["), wkt1);
+            assertTrue(wkt2.startsWith("GEOGCRS["), wkt2);
+            assertTrue(projJson.contains("\"type\":\"GeographicCRS\""), projJson);
+            assertFalse(projJson.contains("\"conversion\""), projJson);
+            assertEquals("longlat", new Proj(wkt1).getParams().projName, wkt1);
+            assertEquals("longlat", new Proj(wkt2).getParams().projName, wkt2);
+            assertEquals("longlat", new Proj(projJson).getParams().projName, projJson);
+        }
+    }
+
+    @Test
     void geocentricWktFailsInsteadOfEmittingInvalidProjectedCrs() {
         Proj geocentric = new Proj("+proj=geocent +datum=WGS84 +units=m +no_defs");
         assertThrows(UnsupportedOperationException.class, () -> CRSSerializer.toWkt1(geocentric));

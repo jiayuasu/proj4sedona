@@ -312,8 +312,8 @@ public class Proj {
         p.sweep = def.getSweep();
 
         // Scale and offsets
-        p.k0Specified = def.getK0() != null;
-        p.k0 = p.k0Specified ? def.getK0() : 1.0;
+        p.k0Specified = def.isK0Specified();
+        p.k0 = def.getK0() != null ? def.getK0() : 1.0;
         p.x0 = def.getX0() != null ? def.getX0() : 0.0;
         p.y0 = def.getY0() != null ? def.getY0() : 0.0;
 
