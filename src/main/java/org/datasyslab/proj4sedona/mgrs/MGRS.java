@@ -1,7 +1,5 @@
 package org.datasyslab.proj4sedona.mgrs;
 
-import java.util.Locale;
-
 /**
  * Military Grid Reference System (MGRS) coordinate converter.
  * Mirrors: proj4js/mgrs v2.2.0 {@code mgrs.js}
@@ -343,11 +341,21 @@ public final class MGRS {
         StringBuilder normalized = new StringBuilder(mgrsString.length());
         for (int index = 0; index < mgrsString.length(); index++) {
             char character = mgrsString.charAt(index);
-            if (!Character.isWhitespace(character)) {
+            if (Character.isWhitespace(character)) {
+                continue;
+            }
+            if (character >= 'a' && character <= 'z') {
+                normalized.append((char) (character - ('a' - 'A')));
+            } else if (isAsciiDigit(character)
+                    || (character >= 'A' && character <= 'Z')) {
                 normalized.append(character);
+            } else {
+                throw new IllegalArgumentException(
+                    "MGRS strings may contain only ASCII letters, digits, and whitespace: "
+                        + mgrsString);
             }
         }
-        mgrsString = normalized.toString().toUpperCase(Locale.ROOT);
+        mgrsString = normalized.toString();
         if (mgrsString.isEmpty()) {
             throw new IllegalArgumentException("MGRS string cannot be blank");
         }
@@ -357,7 +365,7 @@ public final class MGRS {
         int i = 0;
 
         // Parse zone number
-        while (i < length && Character.isDigit(mgrsString.charAt(i))) {
+        while (i < length && isAsciiDigit(mgrsString.charAt(i))) {
             if (i >= 2) {
                 throw new IllegalArgumentException("Invalid MGRS string: " + mgrsString);
             }
@@ -459,11 +467,15 @@ public final class MGRS {
 
     private static boolean allDigits(String value) {
         for (int i = 0; i < value.length(); i++) {
-            if (!Character.isDigit(value.charAt(i))) {
+            if (!isAsciiDigit(value.charAt(i))) {
                 return false;
             }
         }
         return true;
+    }
+
+    private static boolean isAsciiDigit(char value) {
+        return value >= '0' && value <= '9';
     }
 
     /**
