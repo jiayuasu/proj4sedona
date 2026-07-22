@@ -159,9 +159,9 @@ public class ExtendedTransverseMercator implements Projection {
         if (projectionName == null) {
             return false;
         }
-        String normalized = projectionName.trim().replace('_', ' ')
-            .replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
-        return "fast transverse mercator".equals(normalized);
+        String normalized = ProjectionRegistry.getNormalizedProjName(
+            projectionName.toLowerCase(java.util.Locale.ROOT));
+        return "fast_transverse_mercator".equals(normalized);
     }
 
     /**

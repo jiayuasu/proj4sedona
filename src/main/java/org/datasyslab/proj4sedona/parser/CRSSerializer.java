@@ -461,6 +461,9 @@ public final class CRSSerializer {
         }
 
         // Flags
+        if (Boolean.TRUE.equals(params.rA)) {
+            sb.append(" +R_A");
+        }
         if (Boolean.TRUE.equals(params.over)) {
             sb.append(" +over");
         }
@@ -514,7 +517,7 @@ public final class CRSSerializer {
         if (params == null) {
             return null;
         }
-        rejectNonRepresentableSphericalCea(params);
+        rejectNonRepresentableStandardParameters(params);
         if ("ob_tran".equals(params.projName)) {
             throw new UnsupportedOperationException(
                 "ob_tran has no standard WKT1 representation; use toProjString instead");
@@ -783,7 +786,7 @@ public final class CRSSerializer {
         if (params == null) {
             return null;
         }
-        rejectNonRepresentableSphericalCea(params);
+        rejectNonRepresentableStandardParameters(params);
         if ("ob_tran".equals(params.projName)) {
             throw new UnsupportedOperationException(
                 "ob_tran has no standard WKT2 representation; use toProjString instead");
@@ -1085,7 +1088,7 @@ public final class CRSSerializer {
         if (params == null) {
             return null;
         }
-        rejectNonRepresentableSphericalCea(params);
+        rejectNonRepresentableStandardParameters(params);
         String normalizedProj = normalizeProjName(params.projName);
         if (isApproximateTransverseMercator(normalizedProj, params)) {
             throw new UnsupportedOperationException(
@@ -2296,7 +2299,8 @@ public final class CRSSerializer {
 
     /** Effective scale to serialize, or null when another parameter defines it. */
     private static Double serializedScaleFactor(String proj, ProjectionParams params) {
-        if (isPolarStereographicVariantB(proj, params)
+        if ("cea".equals(proj) || "eqc".equals(proj)
+                || isPolarStereographicVariantB(proj, params)
                 || mercatorLatTsDeterminesScale(proj, params)) {
             return null;
         }
@@ -2337,13 +2341,37 @@ public final class CRSSerializer {
             && params.latTs != 0.0 && Double.isFinite(params.latTs);
     }
 
-    private static void rejectNonRepresentableSphericalCea(ProjectionParams params) {
+    private static void rejectNonRepresentableStandardParameters(ProjectionParams params) {
+        if (Boolean.TRUE.equals(params.rA)) {
+            throw new UnsupportedOperationException(
+                "+R_A cannot be represented losslessly in WKT/PROJJSON; "
+                    + "use toProjString instead");
+        }
         String proj = normalizeProjName(params.projName);
         if ("cea".equals(proj) && params.sphere && params.latTs != null
                 && !Double.isFinite(params.latTs)) {
             throw new UnsupportedOperationException(
                 "Spherical Cylindrical Equal Area with nonfinite lat_ts has no valid "
                     + "WKT/PROJJSON representation; use toProjString instead");
+        }
+        Double effectiveLatTs = latitudeOfTrueScaleForSerialization(proj, params);
+        if ("eqc".equals(proj) && effectiveLatTs != null
+                && !Double.isFinite(effectiveLatTs)) {
+            throw new UnsupportedOperationException(
+                "Equidistant Cylindrical with nonfinite lat_ts has no valid "
+                    + "WKT/PROJJSON representation; use toProjString instead");
+        }
+        Double standardLatTs = null;
+        if (mercatorLatTsDeterminesScale(proj, params)) {
+            standardLatTs = params.latTs;
+        } else if ("cea".equals(proj) || "eqc".equals(proj)) {
+            standardLatTs = effectiveLatTs;
+        }
+        if (standardLatTs != null && Double.isFinite(standardLatTs)
+                && Math.abs(standardLatTs) >= Values.HALF_PI) {
+            throw new UnsupportedOperationException(
+                "Latitude of true scale must be strictly between -90 and 90 degrees "
+                    + "in WKT/PROJJSON; use toProjString instead");
         }
     }
 

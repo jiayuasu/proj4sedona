@@ -71,7 +71,11 @@ public class Mercator implements Projection {
             if (params.sphere) {
                 scale = Math.cos(latitudeOfTrueScale);
             } else {
-                double eccentricity = Math.sqrt(params.es);
+                // merc.init recomputes eccentricity from the axes, as current
+                // proj4js does. In particular, +R_A may set params.es to zero
+                // before Mercator restores the ellipsoidal value here.
+                double axisRatio = params.b / params.a;
+                double eccentricity = Math.sqrt(1.0 - axisRatio * axisRatio);
                 scale = ProjMath.msfnz(eccentricity,
                     Math.sin(latitudeOfTrueScale), Math.cos(latitudeOfTrueScale));
             }

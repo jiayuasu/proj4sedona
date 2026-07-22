@@ -10,6 +10,11 @@ import org.datasyslab.proj4sedona.core.Point;
  * 
  * <p>A cylindrical projection that preserves area. Also known as Lambert
  * Cylindrical Equal Area when lat_ts=0.</p>
+ *
+ * <p>A spherical definition with omitted {@code lat_ts} intentionally follows
+ * PROJ and defaults to the equator. Current proj4js leaves that value undefined
+ * and produces non-finite coordinates; the PROJ behavior is executable and is
+ * pinned by {@code ScaleFactorZeroParityTest}.</p>
  */
 public class CylindricalEqualArea implements Projection {
 
@@ -41,7 +46,11 @@ public class CylindricalEqualArea implements Projection {
         this.e = Math.sqrt(es);
         this.lat0 = params.getLat0();
         // CEA reads lat_ts directly upstream; lat_0 is not a fallback true-scale
-        // latitude. Omission therefore means the equator.
+        // latitude. Ellipsoidal proj4js effectively defaults omission to the equator
+        // through its post-init scale fallback, while its spherical path leaks the
+        // missing value into cos(undefined) and returns NaN. Follow PROJ's usable
+        // equatorial default for both paths; the intentional divergence is pinned by
+        // ScaleFactorZeroParityTest.
         this.latTs = params.latTs != null ? params.latTs : 0.0;
         this.long0 = params.getLong0();
         this.x0 = params.x0;

@@ -70,6 +70,12 @@ class ScaleFactorZeroParityTest {
                 4, 50));
     }
 
+    static Stream<Arguments> nonStandardTrueScaleCases() {
+        return Stream.of("merc", "cea", "eqc")
+            .flatMap(projection -> Stream.of("90", "100")
+                .map(latitude -> Arguments.of(projection, latitude)));
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("scaleOneCases")
     @DisplayName("Explicit zero uses the projection's scale-one fallback")
@@ -222,6 +228,33 @@ class ScaleFactorZeroParityTest {
     }
 
     @Test
+    @DisplayName("Approximate transverse Mercator preserves R_A in PROJ strings")
+    void testApproximateTransverseMercatorAuthalicFlagRoundTrip() {
+        Proj projection = new Proj(
+            "+proj=tmerc +approx +R_A +lat_0=0 +lon_0=3 "
+                + "+ellps=WGS84 +units=m +no_defs");
+        Point projected = project(projection, 10, 50);
+        // Current proj4js 888ce3a takes the spherical traditional-TM path.
+        assertEquals(500664.2004314585, projected.x, 1e-8);
+        assertEquals(5589456.452970307, projected.y, 1e-8);
+
+        String serialized = CRSSerializer.toProjString(projection);
+        assertTrue(serialized.contains("+R_A"), serialized);
+        assertPointEquals(projected, project(new Proj(serialized), 10, 50),
+            1e-8, serialized);
+
+        for (Runnable serializer : new Runnable[] {
+                () -> CRSSerializer.toWkt1(projection),
+                () -> CRSSerializer.toWkt2(projection),
+                () -> CRSSerializer.toProjJson(projection)}) {
+            UnsupportedOperationException exception = assertThrows(
+                UnsupportedOperationException.class, serializer::run);
+            assertTrue(exception.getMessage().contains("use toProjString"),
+                exception.getMessage());
+        }
+    }
+
+    @Test
     @DisplayName("Pinned proj4js +approx a-only fixture uses spherical tmerc")
     void testApproximateTransverseMercatorUpstreamFixture() {
         Proj projection = new Proj(
@@ -266,6 +299,23 @@ class ScaleFactorZeroParityTest {
                     exception.getMessage());
             }
         }
+    }
+
+    @Test
+    @DisplayName("Hyphenated Fast transverse Mercator alias selects approximate math")
+    void testHyphenatedFastTransverseMercatorAlias() {
+        Proj projection = new Proj(
+            "+proj=Fast-Transverse-Mercator +R=6371000 +lon_0=3 +no_defs");
+        Point projected = project(projection, 4, 50);
+        // Current proj4js 888ce3a normalizes hyphens before alias lookup.
+        assertEquals(71474.09080788007, projected.x, 1e-8);
+        assertEquals(5560224.158597246, projected.y, 1e-8);
+
+        String serialized = CRSSerializer.toProjString(projection);
+        assertTrue(serialized.startsWith("+proj=tmerc "), serialized);
+        assertTrue(serialized.contains("+approx"), serialized);
+        assertPointEquals(projected, project(new Proj(serialized), 4, 50),
+            1e-8, serialized);
     }
 
     @Test
@@ -363,6 +413,21 @@ class ScaleFactorZeroParityTest {
         }
     }
 
+    @Test
+    @DisplayName("Mercator derives lat_ts scale from its recomputed axes with R_A")
+    void testMercatorAuthalicFlagLatTsScale() {
+        Proj projection = new Proj(
+            "+proj=merc +R_A +lat_ts=30 +ellps=WGS84 +units=m +no_defs");
+        Point projected = project(projection, 10, 50);
+        // Current proj4js 888ce3a: merc.init recomputes eccentricity from a/b.
+        assertEquals(964862.8025089651, projected.x, 1e-8);
+        assertEquals(5558928.87201279, projected.y, 1e-8);
+
+        String serialized = CRSSerializer.toProjString(projection);
+        assertPointEquals(projected, project(new Proj(serialized), 10, 50),
+            1e-8, serialized);
+    }
+
     @ParameterizedTest(name = "k={0}")
     @ValueSource(strings = {"-0.5", "Infinity"})
     @DisplayName("Nonstandard truthy scales stay in PROJ strings and reject standard formats")
@@ -411,6 +476,17 @@ class ScaleFactorZeroParityTest {
     }
 
     @Test
+    @DisplayName("Spherical CEA omission follows PROJ's equatorial default")
+    void testSphericalCeaOmittedLatTsUsesProjDefault() {
+        Proj projection = new Proj("+proj=cea +R=6371000 +units=m +no_defs");
+        Point projected = project(projection, 10, 20);
+        // PROJ 9.5.1. Current proj4js leaks undefined into cos() and returns NaN;
+        // this is an intentional, documented correctness divergence.
+        assertEquals(1111949.2664455874, projected.x, 1e-8);
+        assertEquals(2179010.3331278353, projected.y, 1e-8);
+    }
+
+    @Test
     @DisplayName("Spherical CEA nonfinite lat_ts is preserved only in PROJ strings")
     void testSphericalCeaNonfiniteLatTsSerialization() {
         Proj projection = new Proj(
@@ -433,6 +509,74 @@ class ScaleFactorZeroParityTest {
     }
 
     @Test
+    @DisplayName("EQC preserves infinite lat_ts only in PROJ strings")
+    void testEqcInfiniteLatTsSerialization() {
+        Proj projection = new Proj(
+            "+proj=eqc +lat_ts=Infinity +R=6371000 +units=m +no_defs");
+        Point projected = project(projection, 10, 20);
+        assertFalse(Double.isFinite(projected.x));
+
+        String projString = CRSSerializer.toProjString(projection);
+        assertTrue(projString.contains("+lat_ts=Infinity"), projString);
+        assertFalse(Double.isFinite(project(new Proj(projString), 10, 20).x));
+
+        for (Runnable serializer : new Runnable[] {
+                () -> CRSSerializer.toWkt1(projection),
+                () -> CRSSerializer.toWkt2(projection),
+                () -> CRSSerializer.toProjJson(projection)}) {
+            UnsupportedOperationException exception = assertThrows(
+                UnsupportedOperationException.class, serializer::run);
+            assertTrue(exception.getMessage().contains("use toProjString"),
+                exception.getMessage());
+        }
+    }
+
+    @ParameterizedTest(name = "+proj={0} +lat_ts={1}")
+    @MethodSource("nonStandardTrueScaleCases")
+    @DisplayName("Pole and out-of-range true-scale latitudes are PROJ-string-only")
+    void testOutOfRangeTrueScaleRejectsStandardFormats(
+            String projectionName, String latitudeOfTrueScale) {
+        Proj projection = new Proj("+proj=" + projectionName
+            + " +lat_ts=" + latitudeOfTrueScale + " +R=6371000 +no_defs");
+        String projString = CRSSerializer.toProjString(projection);
+        assertTrue(projString.contains("+lat_ts=" + latitudeOfTrueScale), projString);
+
+        for (Runnable serializer : new Runnable[] {
+                () -> CRSSerializer.toWkt1(projection),
+                () -> CRSSerializer.toWkt2(projection),
+                () -> CRSSerializer.toProjJson(projection)}) {
+            UnsupportedOperationException exception = assertThrows(
+                UnsupportedOperationException.class, serializer::run);
+            assertTrue(exception.getMessage().contains("use toProjString"),
+                exception.getMessage());
+        }
+    }
+
+    @ParameterizedTest(name = "+proj={0}")
+    @ValueSource(strings = {"cea", "eqc"})
+    @DisplayName("CEA and EQC omit ignored input scale factors")
+    void testTrueScaleOnlyProjectionsOmitIgnoredScale(String projectionName) {
+        String definition = "+proj=" + projectionName
+            + " +lat_ts=30 +R=6371000 +units=m +no_defs";
+        Proj projection = new Proj(definition + " +k=-0.5");
+        Point projected = project(projection, 10, 20);
+        assertPointEquals(project(new Proj(definition), 10, 20), projected,
+            1e-8, projectionName);
+
+        for (String serialized : new String[] {
+                CRSSerializer.toProjString(projection),
+                CRSSerializer.toWkt1(projection),
+                CRSSerializer.toWkt2(projection),
+                CRSSerializer.toProjJson(projection)}) {
+            assertFalse(serialized.contains("+k_0="), serialized);
+            assertFalse(serialized.toLowerCase().contains("scale_factor"), serialized);
+            assertFalse(serialized.toLowerCase().contains("scale factor"), serialized);
+            assertPointEquals(projected, project(new Proj(serialized), 10, 20),
+                1e-8, serialized);
+        }
+    }
+
+    @Test
     @DisplayName("A-only Mercator is a serializable sphere matching PROJ")
     void testAOnlyMercatorSphere() {
         Proj projection = new Proj("+proj=merc +a=6400000 +no_defs");
@@ -443,6 +587,26 @@ class ScaleFactorZeroParityTest {
         String serialized = CRSSerializer.toProjString(projection);
         assertTrue(serialized.contains("+a=6400000.0"), serialized);
         assertTrue(serialized.contains("+b=6400000.0"), serialized);
+        assertPointEquals(projected, project(new Proj(serialized), 2, 1),
+            1e-8, serialized);
+    }
+
+    @ParameterizedTest(name = "+{0}")
+    @ValueSource(strings = {"ellps=WGS84", "datum=WGS84"})
+    @DisplayName("Explicit a retains named ellipsoid or datum flattening")
+    void testAWithNamedEllipsoidUsesProjFlattening(String figureDefinition) {
+        Proj projection = new Proj(
+            "+proj=merc +a=6400000 +" + figureDefinition + " +no_defs");
+        assertFalse(projection.getParams().sphere);
+        assertEquals(298.257223563, projection.getParams().rf, 0.0);
+        assertEquals(6378542.011745616, projection.getParams().b, 1e-8);
+
+        Point projected = project(projection, 2, 1);
+        // PROJ 9.5.1 for +a=6400000 with WGS84 inverse flattening.
+        assertEquals(223402.14425527418, projected.x, 1e-8);
+        assertEquals(110959.01160795633, projected.y, 1e-8);
+
+        String serialized = CRSSerializer.toProjString(projection);
         assertPointEquals(projected, project(new Proj(serialized), 2, 1),
             1e-8, serialized);
     }
