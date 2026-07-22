@@ -2,10 +2,11 @@ package org.datasyslab.proj4sedona.mgrs;
 
 /**
  * Military Grid Reference System (MGRS) coordinate converter.
- * Mirrors: node_modules/mgrs/mgrs.js
+ * Mirrors: proj4js/mgrs v2.2.0 {@code mgrs.js}
  * 
  * MGRS is a geocoordinate standard used by NATO militaries for locating points
- * on Earth. It is derived from the UTM system, but uses a different notation.
+ * on Earth. This converter covers the UTM latitude bands from 80°S through 84°N;
+ * the separate {@link UPS} API covers polar coordinates.
  * 
  * An MGRS coordinate consists of:
  * - Zone number (1-60)
@@ -14,19 +15,27 @@ package org.datasyslab.proj4sedona.mgrs;
  * - Easting and northing within the grid square (variable precision)
  * 
  * Example: "33UUP0500011950" represents a point in UTM zone 33U
+ *
+ * <p>Input validation intentionally differs from mgrs 2.2.0 in two places. This
+ * decoder rejects a 100km easting letter that does not belong to the numeric
+ * zone's grid set; upstream accepts such references and can return a coordinate
+ * outside the named zone. This decoder also ignores every character recognized
+ * by {@link Character#isWhitespace(char)}, while upstream removes ASCII spaces
+ * only. These stricter grid checks and broader whitespace normalization are
+ * deliberate Java API behavior.</p>
  * 
  * Usage:
  * <pre>
  * // Convert lat/lon to MGRS
- * String mgrs = MGRS.forward(new double[]{-77.0, 38.9}, 5);
+ * String mgrs = MGRS.forward(new double[]{-77.0369, 38.9072}, 5);
  * // Returns: "18SUJ2338308450"
  * 
  * // Convert MGRS to lat/lon
  * double[] point = MGRS.toPoint("18SUJ2338308450");
- * // Returns: [-77.0, 38.9]
+ * // Returns approximately: [-77.0369, 38.9072]
  * 
  * // Get bounding box for MGRS reference
- * double[] bbox = MGRS.inverse("18SUJ23384");
+ * double[] bbox = MGRS.inverse("18SUJ2308");
  * // Returns: [left, bottom, right, top]
  * </pre>
  */
@@ -83,15 +92,36 @@ public final class MGRS {
      * Convert latitude/longitude to MGRS string.
      * 
      * @param lonLat Array with [longitude, latitude] in degrees (WGS84)
-     * @param accuracy Accuracy in digits (1-5): 5=1m, 4=10m, 3=100m, 2=1km, 1=10km
+     * @param accuracy Accuracy in digits (0-5): 5=1m, 4=10m, 3=100m, 2=1km,
+     *                 1=10km, 0=100km
      * @return MGRS string for the given location
-     * @throws IllegalArgumentException if coordinates are outside MGRS bounds
+     * @throws IllegalArgumentException if the coordinate array, values, or accuracy are invalid
      */
     public static String forward(double[] lonLat, int accuracy) {
-        if (accuracy < 1 || accuracy > 5) {
-            accuracy = 5; // Default to 1m accuracy
+        if (lonLat == null) {
+            throw new IllegalArgumentException("MGRS forward coordinate cannot be null");
         }
-        UTMCoordinate utm = llToUTM(lonLat[1], lonLat[0]);
+        if (lonLat.length < 2) {
+            throw new IllegalArgumentException("MGRS forward coordinate must contain [longitude, latitude]");
+        }
+
+        double lon = lonLat[0];
+        double lat = lonLat[1];
+        if (!Double.isFinite(lon) || lon < -180.0 || lon > 180.0) {
+            throw new IllegalArgumentException("Invalid longitude: " + lon);
+        }
+        if (!Double.isFinite(lat) || lat < -90.0 || lat > 90.0) {
+            throw new IllegalArgumentException("Invalid latitude: " + lat);
+        }
+        if (lat < -80.0 || lat > 84.0) {
+            throw new IllegalArgumentException(
+                "MGRS does not support polar latitudes below 80°S or above 84°N: " + lat);
+        }
+
+        if (accuracy < 0 || accuracy > 5) {
+            throw new IllegalArgumentException("MGRS accuracy must be between 0 and 5: " + accuracy);
+        }
+        UTMCoordinate utm = llToUTM(lat, lon);
         return encode(utm, accuracy);
     }
 
@@ -113,7 +143,7 @@ public final class MGRS {
      * @throws IllegalArgumentException if MGRS string is invalid
      */
     public static double[] inverse(String mgrs) {
-        UTMCoordinate utm = decode(mgrs.toUpperCase());
+        UTMCoordinate utm = decode(mgrs);
         LatLonResult result = utmToLL(utm);
         
         if (result.isPoint) {
@@ -130,7 +160,7 @@ public final class MGRS {
      * @throws IllegalArgumentException if MGRS string is invalid
      */
     public static double[] toPoint(String mgrs) {
-        UTMCoordinate utm = decode(mgrs.toUpperCase());
+        UTMCoordinate utm = decode(mgrs);
         LatLonResult result = utmToLL(utm);
         
         if (result.isPoint) {
@@ -214,8 +244,8 @@ public final class MGRS {
         }
 
         return new UTMCoordinate(
-            Math.round(northing),
-            Math.round(easting),
+            (long) northing,
+            (long) easting,
             zoneNumber,
             getLetterDesignator(lat),
             0 // No accuracy for forward conversion
@@ -226,7 +256,7 @@ public final class MGRS {
      * Convert UTM coordinates to lat/lon using WGS84.
      */
     private static LatLonResult utmToLL(UTMCoordinate utm) {
-        if (utm.zoneNumber < 0 || utm.zoneNumber > 60) {
+        if (utm.zoneNumber < 1 || utm.zoneNumber > 60) {
             throw new IllegalArgumentException("Invalid UTM zone number: " + utm.zoneNumber);
         }
 
@@ -298,8 +328,8 @@ public final class MGRS {
      * Encode UTM coordinates as MGRS string.
      */
     private static String encode(UTMCoordinate utm, int accuracy) {
-        String seasting = String.format("%05d", (int) utm.easting);
-        String snorthing = String.format("%05d", (int) utm.northing);
+        String seasting = "00000" + (long) utm.easting;
+        String snorthing = "00000" + (long) utm.northing;
 
         return String.valueOf(utm.zoneNumber) 
             + utm.zoneLetter 
@@ -312,8 +342,30 @@ public final class MGRS {
      * Decode MGRS string to UTM coordinates.
      */
     private static UTMCoordinate decode(String mgrsString) {
-        if (mgrsString == null || mgrsString.isEmpty()) {
-            throw new IllegalArgumentException("MGRS string cannot be empty");
+        if (mgrsString == null) {
+            throw new IllegalArgumentException("MGRS string cannot be null");
+        }
+
+        StringBuilder normalized = new StringBuilder(mgrsString.length());
+        for (int index = 0; index < mgrsString.length(); index++) {
+            char character = mgrsString.charAt(index);
+            if (Character.isWhitespace(character)) {
+                continue;
+            }
+            if (character >= 'a' && character <= 'z') {
+                normalized.append((char) (character - ('a' - 'A')));
+            } else if (isAsciiDigit(character)
+                    || (character >= 'A' && character <= 'Z')) {
+                normalized.append(character);
+            } else {
+                throw new IllegalArgumentException(
+                    "MGRS strings may contain only ASCII letters, digits, and whitespace: "
+                        + mgrsString);
+            }
+        }
+        mgrsString = normalized.toString();
+        if (mgrsString.isEmpty()) {
+            throw new IllegalArgumentException("MGRS string cannot be blank");
         }
 
         int length = mgrsString.length();
@@ -321,7 +373,7 @@ public final class MGRS {
         int i = 0;
 
         // Parse zone number
-        while (i < length && !Character.isLetter(mgrsString.charAt(i))) {
+        while (i < length && isAsciiDigit(mgrsString.charAt(i))) {
             if (i >= 2) {
                 throw new IllegalArgumentException("Invalid MGRS string: " + mgrsString);
             }
@@ -329,10 +381,13 @@ public final class MGRS {
             i++;
         }
 
-        int zoneNumber = Integer.parseInt(sb.toString());
-
         if (i == 0 || i + 3 > length) {
             throw new IllegalArgumentException("Invalid MGRS string: " + mgrsString);
+        }
+
+        int zoneNumber = Integer.parseInt(sb.toString());
+        if (zoneNumber < 1 || zoneNumber > 60) {
+            throw new IllegalArgumentException("Invalid MGRS zone number: " + zoneNumber);
         }
 
         char zoneLetter = mgrsString.charAt(i++);
@@ -347,7 +402,11 @@ public final class MGRS {
         String hunK = mgrsString.substring(i, i + 2);
         i += 2;
 
+        validateGridLetter(hunK.charAt(0), "easting");
+        validateGridLetter(hunK.charAt(1), "northing");
+
         int set = get100kSetForZone(zoneNumber);
+        validateEastingForSet(hunK.charAt(0), set);
         double east100k = getEastingFromChar(hunK.charAt(0), set);
         double north100k = getNorthingFromChar(hunK.charAt(1), set);
 
@@ -358,20 +417,22 @@ public final class MGRS {
 
         // Parse easting/northing digits
         int remainder = length - i;
-        if (remainder % 2 != 0) {
+        if (remainder % 2 != 0 || remainder > 10) {
             throw new IllegalArgumentException(
-                "MGRS string must have even number of digits after zone and grid square: " + mgrsString);
+                "MGRS string must have 0-5 digits per axis: " + mgrsString);
         }
 
         int sep = remainder / 2;
         double sepEasting = 0.0;
         double sepNorthing = 0.0;
-        double accuracyBonus = 0;
+        double accuracyBonus = 100000.0 / Math.pow(10, sep);
 
         if (sep > 0) {
-            accuracyBonus = 100000.0 / Math.pow(10, sep);
             String sepEastingString = mgrsString.substring(i, i + sep);
             String sepNorthingString = mgrsString.substring(i + sep);
+            if (!allDigits(sepEastingString) || !allDigits(sepNorthingString)) {
+                throw new IllegalArgumentException("Invalid MGRS numeric precision: " + mgrsString);
+            }
             sepEasting = Double.parseDouble(sepEastingString) * accuracyBonus;
             sepNorthing = Double.parseDouble(sepNorthingString) * accuracyBonus;
         }
@@ -384,11 +445,49 @@ public final class MGRS {
 
     // ========== Helper Methods ==========
 
+    private static void validateGridLetter(char letter, String component) {
+        if (letter < 'A' || letter > 'Z' || letter == 'I' || letter == 'O') {
+            throw new IllegalArgumentException("Invalid MGRS " + component + " grid letter: " + letter);
+        }
+    }
+
+    private static void validateEastingForSet(char letter, int set) {
+        String validLetters;
+        switch ((set - 1) % 3) {
+            case 0:
+                validLetters = "ABCDEFGH";
+                break;
+            case 1:
+                validLetters = "JKLMNPQR";
+                break;
+            default:
+                validLetters = "STUVWXYZ";
+                break;
+        }
+        if (validLetters.indexOf(letter) < 0) {
+            throw new IllegalArgumentException(
+                "Invalid MGRS easting grid letter " + letter + " for 100km set " + set);
+        }
+    }
+
+    private static boolean allDigits(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            if (!isAsciiDigit(value.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isAsciiDigit(char value) {
+        return value >= '0' && value <= '9';
+    }
+
     /**
      * Get the MGRS latitude band letter for a given latitude.
      */
     private static char getLetterDesignator(double lat) {
-        if (lat >= 84 || lat < -80) {
+        if (lat > 84 || lat < -80) {
             return 'Z'; // Outside MGRS bounds
         }
 
