@@ -533,7 +533,7 @@ public final class ProjJsonBuilder {
     private static void convertAxis(List<Object> node, Map<String, Object> result) {
         if (!result.containsKey("coordinate_system")) {
             Map<String, Object> coordSystem = new HashMap<>();
-            coordSystem.put("type", "unspecified");
+            // An AXIS node alone does not identify a coordinate-system subtype.
             coordSystem.put("axis", new ArrayList<Map<String, Object>>());
             result.put("coordinate_system", coordSystem);
         }

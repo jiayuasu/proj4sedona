@@ -235,7 +235,6 @@ class WktParserTest {
 
     @Test
     @DisplayName("Parse WKT2 PROJCRS (UTM)")
-    @SuppressWarnings("unchecked")
     void testParseWkt2ProjcrsUtm() {
         String wkt = "PROJCRS[\"WGS 84 / UTM zone 32N\"," +
                 "BASEGEOGCRS[\"WGS 84\"," +
@@ -262,11 +261,29 @@ class WktParserTest {
         assertEquals(500000.0, def.getX0(), 0.1);
 
         Map<String, Object> projjson = WktParser.parseWkt2ToProjJson(wkt);
-        Map<String, Object> coordinateSystem =
-            (Map<String, Object>) projjson.get("coordinate_system");
+        Object coordinateSystemValue = projjson.get("coordinate_system");
+        assertTrue(coordinateSystemValue instanceof Map);
+        Map<?, ?> coordinateSystem = (Map<?, ?>) coordinateSystemValue;
         assertEquals("Cartesian", coordinateSystem.get("subtype"));
         assertFalse(coordinateSystem.containsKey("type"),
             "PROJJSON coordinate systems use the subtype key");
+    }
+
+    @Test
+    @DisplayName("Standalone AXIS fallback does not invent a coordinate-system subtype")
+    void testStandaloneAxisFallbackOmitsUnknownSubtype() {
+        Map<String, Object> projjson = ProjJsonBuilder.convert(
+            List.<Object>of("AXIS", "easting", "east"), new HashMap<>());
+
+        Object coordinateSystemValue = projjson.get("coordinate_system");
+        assertTrue(coordinateSystemValue instanceof Map);
+        Map<?, ?> coordinateSystem = (Map<?, ?>) coordinateSystemValue;
+        assertFalse(coordinateSystem.containsKey("type"));
+        assertFalse(coordinateSystem.containsKey("subtype"));
+
+        Object axes = coordinateSystem.get("axis");
+        assertTrue(axes instanceof List);
+        assertEquals(1, ((List<?>) axes).size());
     }
 
     @Test
