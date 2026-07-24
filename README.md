@@ -277,6 +277,17 @@ known to be wrong; each is noted in the relevant Javadoc and pinned by a test):
 Some covered behavior is newer than the published `proj4@2.20.9` npm package and may
 differ until the next upstream release.
 
+The datum registry is synchronized as a complete snapshot of proj4js's generated
+`lib/constants/Datum.js`, rather than inferred from the commit range above. The pinned
+snapshot contains 438 canonical records and is guarded by an exhaustive count,
+content-hash, field, and alias parity test. To verify or refresh it from a clean
+proj4js checkout:
+
+```bash
+node scripts/sync-proj4js-datums.mjs --check /path/to/proj4js
+# Omit --check to refresh the snapshot after intentionally advancing the pin.
+```
+
 To find upstream changes that may need porting since the last sync:
 
 ```bash
