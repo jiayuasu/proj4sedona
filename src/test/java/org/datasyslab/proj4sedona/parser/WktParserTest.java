@@ -235,6 +235,7 @@ class WktParserTest {
 
     @Test
     @DisplayName("Parse WKT2 PROJCRS (UTM)")
+    @SuppressWarnings("unchecked")
     void testParseWkt2ProjcrsUtm() {
         String wkt = "PROJCRS[\"WGS 84 / UTM zone 32N\"," +
                 "BASEGEOGCRS[\"WGS 84\"," +
@@ -259,6 +260,13 @@ class WktParserTest {
         assertEquals(6378137.0, def.getA(), 0.1);
         assertEquals(0.9996, def.getK0(), 1e-6);
         assertEquals(500000.0, def.getX0(), 0.1);
+
+        Map<String, Object> projjson = WktParser.parseWkt2ToProjJson(wkt);
+        Map<String, Object> coordinateSystem =
+            (Map<String, Object>) projjson.get("coordinate_system");
+        assertEquals("Cartesian", coordinateSystem.get("subtype"));
+        assertFalse(coordinateSystem.containsKey("type"),
+            "PROJJSON coordinate systems use the subtype key");
     }
 
     @Test
@@ -708,12 +716,17 @@ class WktParserTest {
     @Test
     @DisplayName("GEODCRS geocentric (WKT2-2015 form, no USAGE) parses as geocent")
     void testGeodcrsGeocentric2015() {
-        // Documented divergence from proj4js/wkt-parser 1.5.5, which honors the CS
-        // subtype only in its WKT2-2019 builder and silently parses this form as
-        // longlat. USAGE does not exist in WKT2-2015, and PROJ's own WKT2:2015
-        // output for EPSG:4978 is exactly this shape — PROJ parses it as geocentric
-        // (verified via pyproj 3.7.2: CRS.from_wkt(...).is_geocentric == True).
-        assertGeocentric4978(GEODCRS_4978_HEAD + GEODCRS_4978_CS + ",ID[\"EPSG\",4978]]");
+        // Exact wkt-parser 1.5.6 fixture added by b7abacf.
+        String wkt = "GEODCRS[\"WGS 84\","
+            + "DATUM[\"World Geodetic System 1984\","
+            + "ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]]],"
+            + "PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "CS[Cartesian,3],"
+            + "AXIS[\"(X)\",geocentricX,ORDER[1],LENGTHUNIT[\"metre\",1]],"
+            + "AXIS[\"(Y)\",geocentricY,ORDER[2],LENGTHUNIT[\"metre\",1]],"
+            + "AXIS[\"(Z)\",geocentricZ,ORDER[3],LENGTHUNIT[\"metre\",1]],"
+            + "ID[\"EPSG\",4978]]";
+        assertGeocentric4978(wkt);
     }
 
     @Test
