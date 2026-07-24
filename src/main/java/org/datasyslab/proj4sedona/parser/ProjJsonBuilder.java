@@ -162,11 +162,6 @@ public final class ProjJsonBuilder {
             }
         }
 
-        // WKT2 SIMPLIFIED omits units from conversion parameters. Angular
-        // parameters inherit the base CRS angular unit, linear parameters inherit
-        // the projected coordinate-system unit, and scale parameters use unity.
-        applyInheritedConversionUnits(result);
-
         // Find ID
         Map<String, Object> id = getId(node);
         if (id != null) {
@@ -436,98 +431,6 @@ public final class ProjJsonBuilder {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private static void applyInheritedConversionUnits(Map<String, Object> projectedCrs) {
-        Object conversionObject = projectedCrs.get("conversion");
-        if (!(conversionObject instanceof Map)) {
-            return;
-        }
-        Object parametersObject =
-            ((Map<String, Object>) conversionObject).get("parameters");
-        if (!(parametersObject instanceof List)) {
-            return;
-        }
-
-        Map<String, Object> angularUnit = coordinateSystemUnit(
-            projectedCrs.get("base_crs"));
-        Map<String, Object> linearUnit = coordinateSystemUnit(projectedCrs);
-        Map<String, Object> scaleUnit = new HashMap<>();
-        scaleUnit.put("type", "ScaleUnit");
-        scaleUnit.put("name", "unity");
-        scaleUnit.put("conversion_factor", 1.0);
-
-        for (Map<String, Object> parameter
-                : (List<Map<String, Object>>) parametersObject) {
-            if (parameter.containsKey("unit")) {
-                continue;
-            }
-            Object nameObject = parameter.get("name");
-            if (nameObject == null) {
-                continue;
-            }
-            String name = nameObject.toString().toLowerCase()
-                .replace(' ', '_').replace('-', '_');
-            Map<String, Object> inherited = inheritedParameterUnit(
-                name, angularUnit, linearUnit, scaleUnit);
-            if (inherited != null) {
-                parameter.put("unit", inherited);
-            }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> coordinateSystemUnit(Object crsObject) {
-        if (!(crsObject instanceof Map)) {
-            return null;
-        }
-        Object coordinateSystem =
-            ((Map<String, Object>) crsObject).get("coordinate_system");
-        if (!(coordinateSystem instanceof Map)) {
-            return null;
-        }
-        Object unit = ((Map<String, Object>) coordinateSystem).get("unit");
-        return unit instanceof Map ? (Map<String, Object>) unit : null;
-    }
-
-    private static Map<String, Object> inheritedParameterUnit(
-            String name,
-            Map<String, Object> angularUnit,
-            Map<String, Object> linearUnit,
-            Map<String, Object> scaleUnit) {
-        switch (name) {
-            case "latitude_of_false_origin":
-            case "latitude_of_natural_origin":
-            case "latitude_of_projection_centre":
-            case "latitude_of_standard_parallel":
-            case "longitude_of_false_origin":
-            case "longitude_of_natural_origin":
-            case "longitude_of_origin":
-            case "longitude_of_projection_centre":
-            case "latitude_of_1st_standard_parallel":
-            case "latitude_of_2nd_standard_parallel":
-            case "latitude_of_pseudo_standard_parallel":
-            case "azimuth":
-            case "azimuth_at_projection_centre":
-            case "co_latitude_of_cone_axis":
-            case "angle_from_rectified_to_skew_grid":
-                return angularUnit;
-            case "easting_at_false_origin":
-            case "false_easting":
-            case "easting_at_projection_centre":
-            case "northing_at_false_origin":
-            case "false_northing":
-            case "northing_at_projection_centre":
-            case "satellite_height":
-                return linearUnit;
-            case "scale_factor_at_natural_origin":
-            case "scale_factor_at_projection_centre":
-            case "scale_factor_on_pseudo_standard_parallel":
-                return scaleUnit;
-            default:
-                return null;
-        }
-    }
-
     /**
      * Convert BOUNDCRS node.
      */
@@ -791,23 +694,33 @@ public final class ProjJsonBuilder {
         String name = node.size() > 1 ? node.get(1).toString() : "Unknown";
         axis.put("name", name);
 
-        String abbreviation = axisAbbreviation(name);
-        if (abbreviation != null) {
-            axis.put("abbreviation", abbreviation);
-        }
-
-        // The explicit WKT direction is authoritative. In polar CRSs an axis named
-        // "(E)" can legitimately point north or south along a named meridian, so
-        // inferring east from the abbreviation would change the coordinate system.
+        // Determine direction
         String direction;
-        if (node.size() > 2) {
+        // Check for abbreviation pattern like "(E)" or "(N)"
+        if (name.matches("^\\([A-Za-z]\\)$")) {
+            String abbrev = name.substring(1, 2).toUpperCase();
+            switch (abbrev) {
+                case "E": direction = "east"; break;
+                case "N": direction = "north"; break;
+                case "U": direction = "up"; break;
+                case "W": direction = "west"; break;
+                case "S": direction = "south"; break;
+                default:
+                    // Not a well-known abbreviation (e.g. "(X)" on geocentric axes):
+                    // fall back to the explicit direction token, as wkt-parser does.
+                    if (node.size() > 2) {
+                        direction = node.get(2).toString();
+                    } else {
+                        throw new IllegalArgumentException("Unknown axis abbreviation: " + abbrev);
+                    }
+                    break;
+            }
+        } else if (node.size() > 2) {
             // Preserve the token's case (wkt-parser 1.5.5): the PROJJSON direction
             // enum is camelCase for geocentricX/Y/Z, so lowercasing produced
             // schema-invalid values in the exposed intermediate PROJJSON. The
             // transformer lowercases at lookup, so parsing tolerance is unchanged.
             direction = node.get(2).toString();
-        } else if (abbreviation != null) {
-            direction = directionFromAbbreviation(abbreviation);
         } else {
             direction = "unknown";
         }
@@ -834,44 +747,7 @@ public final class ProjJsonBuilder {
             axis.put("unit", convertUnit(unitNode));
         }
 
-        // Polar projected axes use MERIDIAN to distinguish two axes that both
-        // point north or south. Preserve it in the PROJJSON-like representation
-        // so the transformer can derive a valid operational PROJ axis mapping.
-        List<Object> meridianNode = findNode(node, "MERIDIAN");
-        if (meridianNode != null && meridianNode.size() > 1) {
-            Map<String, Object> meridian = new HashMap<>();
-            meridian.put("longitude", parseDouble(meridianNode.get(1)));
-            List<Object> angleUnitNode =
-                findNodeAny(meridianNode, "ANGLEUNIT", "UNIT");
-            if (angleUnitNode != null) {
-                meridian.put("unit", convertUnit(angleUnitNode));
-            }
-            axis.put("meridian", meridian);
-        }
-
         return axis;
-    }
-
-    private static String axisAbbreviation(String name) {
-        int open = name.lastIndexOf('(');
-        if (open < 0 || !name.endsWith(")") || open + 2 >= name.length()) {
-            return null;
-        }
-        String abbreviation = name.substring(open + 1, name.length() - 1).trim();
-        return abbreviation.isEmpty() ? null : abbreviation;
-    }
-
-    private static String directionFromAbbreviation(String abbreviation) {
-        switch (abbreviation.toUpperCase()) {
-            case "E": return "east";
-            case "N": return "north";
-            case "U": return "up";
-            case "W": return "west";
-            case "S": return "south";
-            default:
-                throw new IllegalArgumentException(
-                    "Unknown axis abbreviation: " + abbreviation);
-        }
     }
 
     /**

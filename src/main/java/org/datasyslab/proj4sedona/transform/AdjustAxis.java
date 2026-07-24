@@ -26,7 +26,7 @@ public final class AdjustAxis {
      * @return A new point in ENU order, or null if axis is invalid
      */
     public static Point adjustAxisToEnu(String axis, Point point, boolean hasZ) {
-        if (!isValidAxisPermutation(axis)) {
+        if (axis == null || axis.length() != 3) {
             return null;
         }
 
@@ -68,7 +68,7 @@ public final class AdjustAxis {
      * @return A new point in CRS axis order, or null if axis is invalid
      */
     public static Point adjustAxisFromEnu(String axis, Point point, boolean hasZ) {
-        if (!isValidAxisPermutation(axis)) {
+        if (axis == null || axis.length() != 3) {
             return null;
         }
 
@@ -102,34 +102,6 @@ public final class AdjustAxis {
         }
         result.m = point.m;
         return result;
-    }
-
-    private static boolean isValidAxisPermutation(String axis) {
-        if (axis == null || axis.length() != 3) {
-            return false;
-        }
-        int eastWest = 0;
-        int northSouth = 0;
-        int vertical = 0;
-        for (int i = 0; i < axis.length(); i++) {
-            switch (axis.charAt(i)) {
-                case 'e':
-                case 'w':
-                    eastWest++;
-                    break;
-                case 'n':
-                case 's':
-                    northSouth++;
-                    break;
-                case 'u':
-                case 'd':
-                    vertical++;
-                    break;
-                default:
-                    return false;
-            }
-        }
-        return eastWest == 1 && northSouth == 1 && vertical == 1;
     }
 
     /**
