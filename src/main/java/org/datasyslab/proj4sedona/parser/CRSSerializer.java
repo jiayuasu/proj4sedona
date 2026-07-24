@@ -44,6 +44,38 @@ public final class CRSSerializer {
     private static final double DEG_TO_RAD = Math.PI / 180.0;
     private static final String DEG_TO_RAD_STR = Double.toString(DEG_TO_RAD);
 
+    /**
+     * Axis-aware projected CRS signatures used for offline authority recovery.
+     *
+     * <p>These are normalized computational PROJ definitions, not full CRS metadata.
+     * EPSG:32661 keeps its northing/easting order as {@code +axis=neu}; without that
+     * token its numeric definition is indistinguishable from EPSG:5041 and must not
+     * be identified as 32661.</p>
+     */
+    private static final String[][] POLAR_AUTHORITY_MATCHES = {
+        {
+            "EPSG:3031",
+            "+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +x_0=0 +y_0=0 "
+                + "+datum=WGS84 +units=m +no_defs"
+        },
+        {
+            "EPSG:32661",
+            "+proj=stere +lat_0=90 +lon_0=0 +k=0.994 "
+                + "+x_0=2000000 +y_0=2000000 +datum=WGS84 "
+                + "+units=m +axis=neu +no_defs"
+        },
+        {
+            "EPSG:3413",
+            "+proj=stere +lat_0=90 +lat_ts=70 +lon_0=-45 +x_0=0 +y_0=0 "
+                + "+datum=WGS84 +units=m +no_defs"
+        },
+        {
+            "EPSG:6931",
+            "+proj=laea +lat_0=90 +lon_0=0 +x_0=0 +y_0=0 "
+                + "+datum=WGS84 +units=m +no_defs"
+        }
+    };
+
     // Projection name mappings: PROJ -> WKT method names (short/generic names)
     private static final Map<String, String> PROJ_TO_WKT_METHOD = new LinkedHashMap<>();
     
@@ -454,9 +486,17 @@ public final class CRSSerializer {
             sb.append(" +pm=").append(formatAngle(params.fromGreenwich * RAD_TO_DEG));
         }
 
-        // Axis order (if not default)
-        if (params.axis != null && !"enu".equals(params.axis)) {
-            sb.append(" +axis=").append(params.axis);
+        // Axis order (if not default). WKT/PROJJSON polar axes can express two
+        // axes with the same direction by attaching different meridians. Their
+        // derived operational mapping is a valid PROJ permutation (e.g. neu),
+        // while the source directions remain available for strict WKT validation.
+        String operationalAxis = effectiveOperationalAxis(params);
+        if (!isValidProjAxisMapping(operationalAxis)) {
+            throw new UnsupportedOperationException(
+                "Axis " + operationalAxis + " is not a valid PROJ axis permutation");
+        }
+        if (operationalAxis != null && !"enu".equals(operationalAxis)) {
+            sb.append(" +axis=").append(operationalAxis);
         }
 
         // Flags
@@ -1618,6 +1658,7 @@ public final class CRSSerializer {
             return "EPSG:3857";
         }
         if (code == 4326 || code == 4269 || code == 3857
+                || code == 3031 || code == 32661 || code == 3413 || code == 6931
                 || code == 5041 || code == 5042
                 || (code >= 32601 && code <= 32660)
                 || (code >= 32701 && code <= 32760)) {
@@ -1842,6 +1883,15 @@ public final class CRSSerializer {
             }
         }
 
+        // These projected CRSs are intentionally matched against bundled PROJ
+        // signatures rather than authority lookups. This keeps raw PROJ-string
+        // recovery offline and makes the UPS axis-order distinction explicit.
+        for (String[] candidate : POLAR_AUTHORITY_MATCHES) {
+            if (matchesProjDefinition(params, candidate[1])) {
+                return candidate[0];
+            }
+        }
+
         // Check UTM zones
         String normalizedProj = normalizeProjName(params.projName);
         if ("tmerc".equals(normalizedProj) || "utm".equals(normalizedProj)) {
@@ -1910,10 +1960,40 @@ public final class CRSSerializer {
     }
 
     private static boolean matchesDefinition(ProjectionParams params, String code) {
+        String localDefinition = polarAuthorityDefinition(code);
+        if (localDefinition != null) {
+            return matchesProjDefinition(params, localDefinition);
+        }
         try {
             Proj ref = new Proj(code);
-            ProjectionParams refParams = ref.getParams();
+            return matchesDefinition(params, ref.getParams());
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
+    private static String polarAuthorityDefinition(String code) {
+        for (String[] candidate : POLAR_AUTHORITY_MATCHES) {
+            if (candidate[0].equalsIgnoreCase(code)) {
+                return candidate[1];
+            }
+        }
+        return null;
+    }
+
+    private static boolean matchesProjDefinition(
+            ProjectionParams params, String projDefinition) {
+        try {
+            Proj ref = new Proj(projDefinition);
+            return matchesDefinition(params, ref.getParams());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean matchesDefinition(
+            ProjectionParams params, ProjectionParams refParams) {
+        try {
             // Compare projection names (normalized to handle aliases)
             String normalizedInput = normalizeProjName(params.projName);
             String normalizedRef = normalizeProjName(refParams.projName);
@@ -2021,7 +2101,8 @@ public final class CRSSerializer {
                 }
             }
 
-            if (!Objects.equals(effectiveAxis(params), effectiveAxis(refParams))
+            if (!Objects.equals(
+                    effectiveOperationalAxis(params), effectiveOperationalAxis(refParams))
                     // WKT/PROJJSON describe UTM as parameterized Transverse
                     // Mercator, so zone/south are already represented by long0,
                     // y0, and the other numeric checks above.
@@ -2969,6 +3050,33 @@ public final class CRSSerializer {
 
     private static String effectiveAxis(ProjectionParams params) {
         return params.axis != null ? params.axis.toLowerCase(Locale.ROOT) : "enu";
+    }
+
+    private static String effectiveOperationalAxis(ProjectionParams params) {
+        String axis = params.getOperationalAxis();
+        return axis != null ? axis.toLowerCase(Locale.ROOT) : "enu";
+    }
+
+    private static boolean isValidProjAxisMapping(String axis) {
+        if (axis == null || axis.length() != 3) {
+            return false;
+        }
+        int eastWest = 0;
+        int northSouth = 0;
+        int vertical = 0;
+        for (int i = 0; i < axis.length(); i++) {
+            char direction = axis.charAt(i);
+            if (isEastWest(direction)) {
+                eastWest++;
+            } else if (isNorthSouth(direction)) {
+                northSouth++;
+            } else if (direction == 'u' || direction == 'd') {
+                vertical++;
+            } else {
+                return false;
+            }
+        }
+        return eastWest == 1 && northSouth == 1 && vertical == 1;
     }
 
     private static void validateStandardAxis(

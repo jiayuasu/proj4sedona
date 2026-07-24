@@ -156,8 +156,9 @@ public final class Transform {
         }
 
         // Step 2: Adjust for source axis order (e.g., "neu" to "enu")
-        if (enforceAxis && srcParams.axis != null && !"enu".equals(srcParams.axis)) {
-            p = AdjustAxis.adjustAxisToEnu(srcParams.axis, p, hasZ);
+        String sourceAxis = srcParams.getOperationalAxis();
+        if (enforceAxis && sourceAxis != null && !"enu".equals(sourceAxis)) {
+            p = AdjustAxis.adjustAxisToEnu(sourceAxis, p, hasZ);
             if (p == null) {
                 return null;
             }
@@ -228,8 +229,10 @@ public final class Transform {
         }
 
         // Step 8: Adjust for destination axis order (e.g., "enu" to "neu")
-        if (enforceAxis && destParams.axis != null && !"enu".equals(destParams.axis)) {
-            p = AdjustAxis.adjustAxisFromEnu(destParams.axis, p, hasZ || isGeocent(destParams));
+        String destinationAxis = destParams.getOperationalAxis();
+        if (enforceAxis && destinationAxis != null && !"enu".equals(destinationAxis)) {
+            p = AdjustAxis.adjustAxisFromEnu(
+                destinationAxis, p, hasZ || isGeocent(destParams));
         }
 
         // Reset z if it wasn't in the original input — except when the destination is

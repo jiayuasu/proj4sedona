@@ -50,6 +50,7 @@ public class ProjectionDef {
     private String units;          // Unit name: m, ft, us-ft, etc.
     private Double fromGreenwich;  // Prime meridian offset in radians
     private String axis;           // Axis order: enu, neu, etc. (default "enu")
+    private String axisMapping;    // Valid PROJ axis mapping when source directions need meridians
 
     // UTM specific
     private Integer zone;          // UTM zone number
@@ -181,6 +182,9 @@ public class ProjectionDef {
 
     public String getAxis() { return axis; }
     public void setAxis(String axis) { this.axis = axis; }
+
+    public String getAxisMapping() { return axisMapping; }
+    public void setAxisMapping(String axisMapping) { this.axisMapping = axisMapping; }
 
     public Integer getZone() { return zone; }
     public void setZone(Integer zone) { this.zone = zone; }

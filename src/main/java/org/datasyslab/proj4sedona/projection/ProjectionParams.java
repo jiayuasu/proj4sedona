@@ -124,6 +124,21 @@ public class ProjectionParams {
     /** Axis order string (+axis), defaults to "enu" (east-north-up) */
     public String axis = "enu";
 
+    /**
+     * Valid PROJ axis mapping derived from source axis roles when WKT/PROJJSON
+     * directions require meridians and cannot be expressed by {@link #axis}.
+     */
+    public String axisMapping;
+
+    /**
+     * Axis mapping used by transformations and PROJ-string serialization.
+     *
+     * @return the derived mapping when present, otherwise the source axis string
+     */
+    public String getOperationalAxis() {
+        return axisMapping != null ? axisMapping : axis;
+    }
+
     // ==================== UTM Specific ====================
     
     /** UTM zone number (1-60) */
