@@ -454,9 +454,19 @@ public final class CRSSerializer {
             sb.append(" +pm=").append(formatAngle(params.fromGreenwich * RAD_TO_DEG));
         }
 
-        // Axis order (if not default)
-        if (params.axis != null && !"enu".equals(params.axis)) {
-            sb.append(" +axis=").append(params.axis);
+        // WKT2 and PROJJSON can describe polar axes that both point north or
+        // south, distinguished by MERIDIAN metadata. Legacy PROJ axis strings
+        // cannot represent those directions: they require one east/west, one
+        // north/south, and one vertical axis. Match PROJ's lossy export by
+        // omitting the non-representable polar axis metadata.
+        String axis = effectiveAxis(params);
+        if (!"enu".equals(axis)) {
+            if (isValidProjAxisPermutation(axis)) {
+                sb.append(" +axis=").append(axis);
+            } else if (!isMeridianQualifiedPolarAxis(params, axis)) {
+                throw new UnsupportedOperationException(
+                    "Axis " + axis + " is not representable as a PROJ axis permutation");
+            }
         }
 
         // Flags
@@ -2969,6 +2979,38 @@ public final class CRSSerializer {
 
     private static String effectiveAxis(ProjectionParams params) {
         return params.axis != null ? params.axis.toLowerCase(Locale.ROOT) : "enu";
+    }
+
+    private static boolean isMeridianQualifiedPolarAxis(
+            ProjectionParams params, String axis) {
+        if (params.projStr != null
+                || (!"nnu".equals(axis) && !"ssu".equals(axis))
+                || params.lat0 == null) {
+            return false;
+        }
+        return Math.abs(Math.cos(params.lat0)) <= Values.EPSLN;
+    }
+
+    private static boolean isValidProjAxisPermutation(String axis) {
+        if (axis == null || axis.length() != 3) {
+            return false;
+        }
+        int eastWest = 0;
+        int northSouth = 0;
+        int vertical = 0;
+        for (int i = 0; i < axis.length(); i++) {
+            char direction = axis.charAt(i);
+            if (direction == 'e' || direction == 'w') {
+                eastWest++;
+            } else if (direction == 'n' || direction == 's') {
+                northSouth++;
+            } else if (direction == 'u' || direction == 'd') {
+                vertical++;
+            } else {
+                return false;
+            }
+        }
+        return eastWest == 1 && northSouth == 1 && vertical == 1;
     }
 
     private static void validateStandardAxis(

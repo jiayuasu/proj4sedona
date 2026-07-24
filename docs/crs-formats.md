@@ -232,11 +232,21 @@ String[] auth = proj.toAuthority();   // {"EPSG", "32618"}
 
 ### Export Fidelity
 
-`toProjString()` is the lossless export for PROJ-specific behavior. WKT1, WKT2,
-and PROJJSON describe standard CRS objects and cannot encode every PROJ operation
-parameter. When a standard export would silently change coordinates,
-Proj4Sedona throws `UnsupportedOperationException` and directs the caller to
-`toProjString()`.
+No single export is lossless for every supported definition. `toProjString()`
+preserves PROJ-specific operation parameters that WKT1, WKT2, and PROJJSON cannot
+encode, but legacy PROJ CRS strings cannot preserve all standard CRS metadata.
+For example, WKT2 and PROJJSON can distinguish two polar horizontal axes using
+meridian metadata, while `+axis` cannot represent two axes that both point north
+or south. When a non-PROJ definition at a polar origin parses to `nnu` or `ssu`,
+`toProjString()` therefore omits `+axis`. The same duplicate permutations supplied
+in raw PROJ input, and all other invalid axis permutations, are rejected with
+`UnsupportedOperationException`.
+Callers that need exact axis metadata or authority identifiers should retain the
+original WKT2 or PROJJSON definition.
+
+When a standard export would silently change coordinates, Proj4Sedona throws
+`UnsupportedOperationException` and, where the definition is representable in a
+legacy PROJ string, directs the caller to `toProjString()`.
 
 This is a compatibility change for callers that previously accepted lossy standard
 output: they must now handle `UnsupportedOperationException` or explicitly request a
