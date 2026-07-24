@@ -142,7 +142,7 @@ public final class ProjJsonBuilder {
         if (csNode != null) {
             Map<String, Object> coordSystem = new HashMap<>();
             if (csNode.size() > 1) {
-                coordSystem.put("type", csNode.get(1));
+                coordSystem.put("subtype", csNode.get(1));
             }
             coordSystem.put("axis", extractAxes(node));
             result.put("coordinate_system", coordSystem);
@@ -237,11 +237,10 @@ public final class ProjJsonBuilder {
 
         // Coordinate system. For GEODCRS the CS node's subtype decides geographic
         // (ellipsoidal) vs geocentric (Cartesian) in the downstream transformer.
-        // Divergence from proj4js/wkt-parser 1.5.5, which honors the CS node only in
-        // its WKT2-2019 builder: PROJ's own WKT2:2015 output for EPSG:4978 carries
-        // CS[Cartesian,3] and no USAGE node (USAGE is 2019-only), and PROJ parses it
-        // as geocentric, while proj4js silently yields longlat for it. The subtype is
-        // read here for both forms, matching PROJ.
+        // Backported ahead of wkt-parser 1.5.6 (b7abacf), which now honors the CS
+        // node in WKT2-2015 too. PROJ's own WKT2:2015 output for EPSG:4978 carries
+        // CS[Cartesian,3] and no USAGE node (USAGE is 2019-only), and both parsers
+        // now classify it as geocentric.
         Map<String, Object> coordSystem = new HashMap<>();
         String subtype = "ellipsoidal";
         List<Object> csNode = findNode(node, "CS");
@@ -534,7 +533,7 @@ public final class ProjJsonBuilder {
     private static void convertAxis(List<Object> node, Map<String, Object> result) {
         if (!result.containsKey("coordinate_system")) {
             Map<String, Object> coordSystem = new HashMap<>();
-            coordSystem.put("type", "unspecified");
+            // An AXIS node alone does not identify a coordinate-system subtype.
             coordSystem.put("axis", new ArrayList<Map<String, Object>>());
             result.put("coordinate_system", coordSystem);
         }
