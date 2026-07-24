@@ -20,9 +20,15 @@ class PolarAxisProjSerializationTest {
         Proj proj = new Proj(polarProjJson(latitudeOfOrigin, direction));
 
         assertEquals(parsedAxis, proj.getParams().axis);
-        String serialized = proj.toProjString();
-        assertFalse(serialized.contains("+axis="), serialized);
-        assertEquals(serialized, new Proj(serialized).toProjString());
+        assertPolarAxisOmitted(proj);
+    }
+
+    @Test
+    void omitsNonRepresentablePolarAxesParsedFromWkt2() {
+        Proj proj = new Proj(upsNorthWkt2());
+
+        assertEquals("ssu", proj.getParams().axis);
+        assertPolarAxisOmitted(proj);
     }
 
     @ParameterizedTest
@@ -42,6 +48,12 @@ class PolarAxisProjSerializationTest {
             "+proj=stere +lat_0=90 +datum=WGS84 +units=m +axis=neu");
 
         assertTrue(proj.toProjString().contains("+axis=neu"));
+    }
+
+    private static void assertPolarAxisOmitted(Proj proj) {
+        String serialized = proj.toProjString();
+        assertFalse(serialized.contains("+axis="), serialized);
+        assertEquals(serialized, new Proj(serialized).toProjString());
     }
 
     private static String polarProjJson(int latitudeOfOrigin, String direction) {
@@ -66,5 +78,30 @@ class PolarAxisProjSerializationTest {
             + "\",\"meridian\":{\"longitude\":"
             + northingMeridian
             + "},\"unit\":\"metre\"}]}}";
+    }
+
+    private static String upsNorthWkt2() {
+        return "PROJCRS[\"WGS 84 / UPS North (N,E)\","
+            + "BASEGEOGCRS[\"WGS 84\",DATUM[\"World Geodetic System 1984\","
+            + "ELLIPSOID[\"WGS 84\",6378137,298.257223563]],"
+            + "PRIMEM[\"Greenwich\",0]],"
+            + "CONVERSION[\"Universal Polar Stereographic North\","
+            + "METHOD[\"Polar Stereographic (variant A)\"],"
+            + "PARAMETER[\"Latitude of natural origin\",90,"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "PARAMETER[\"Longitude of natural origin\",0,"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "PARAMETER[\"Scale factor at natural origin\",0.994,"
+            + "SCALEUNIT[\"unity\",1]],"
+            + "PARAMETER[\"False easting\",2000000,LENGTHUNIT[\"metre\",1]],"
+            + "PARAMETER[\"False northing\",2000000,LENGTHUNIT[\"metre\",1]]],"
+            + "CS[Cartesian,2],"
+            + "AXIS[\"northing (N)\",south,MERIDIAN[180,"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "ORDER[1],LENGTHUNIT[\"metre\",1]],"
+            + "AXIS[\"easting (E)\",south,MERIDIAN[90,"
+            + "ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "ORDER[2],LENGTHUNIT[\"metre\",1]],"
+            + "ID[\"EPSG\",32661]]";
     }
 }
