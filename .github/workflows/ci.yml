@@ -7,6 +7,33 @@ on:
     branches: [ main ]
 
 jobs:
+  datum-registry:
+    name: Verify generated datum registry
+    runs-on: ubuntu-latest
+    env:
+      PROJ4JS_DATUM_COMMIT: 888ce3a8a5b27e03f08c062c80121225333de8f8
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Checkout pinned proj4js source
+      uses: actions/checkout@v6
+      with:
+        repository: proj4js/proj4js
+        ref: ${{ env.PROJ4JS_DATUM_COMMIT }}
+        path: .upstream/proj4js
+        persist-credentials: false
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: '24'
+        package-manager-cache: false
+
+    - name: Check generated datum registry
+      run: node scripts/sync-proj4js-datums.mjs --check .upstream/proj4js
+
   test:
     name: Test on Java ${{ matrix.java }}
     runs-on: ${{ matrix.os }}

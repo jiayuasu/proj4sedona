@@ -89,7 +89,19 @@ Proj custom = new Proj("+proj=longlat +a=6378137 +rf=298.257223563 +towgs84=0,0,
 
 ## Built-In Datums
 
-Proj4Sedona includes definitions for common datums. Each datum specifies an ellipsoid and shift parameters.
+Proj4Sedona mirrors proj4js's complete generated registry: 438 canonical datum
+definitions, including EPSG, ESRI, and IGNF authority keys. PROJJSON definitions
+that identify their base geographic CRS by authority therefore receive the same
+`towgs84` transformation as proj4js. For example, an RT90 base CRS identified as
+`EPSG_4124` resolves its seven-parameter Helmert transformation automatically.
+
+These entries follow proj4js's static datum-to-WGS84 model. Modern PROJ can
+instead select a coordinate operation dynamically from the source CRS, target
+CRS, area of use, accuracy, and available grids. PROJ may therefore select a
+different, more accurate operation, so coordinates and stated accuracy can
+differ materially even when the CRS identifiers match.
+
+The short-name definitions most commonly used directly in PROJ strings are:
 
 | Datum Code | Ellipsoid | Shift Type | Datum Name |
 |------------|-----------|------------|------------|
@@ -112,7 +124,7 @@ Proj4Sedona includes definitions for common datums. Each datum specifies an elli
 | `gunung_segara` | bessel | 3-param | Gunung Segara Jakarta |
 | `rnb72` | intl | 7-param | Reseau National Belge 1972 |
 
-Datum names are resolved case-insensitively. Aliases like "World Geodetic System 1984" and "WGS 84" also resolve to `wgs84`.
+Datum names are resolved case-insensitively. Aliases like "World Geodetic System 1984" and "WGS 84" also resolve to `wgs84`. See the [generated registry](../src/main/resources/org/datasyslab/proj4sedona/constants/proj4js-datums.tsv) for the complete authority-code list.
 
 ## Example: Datum Round-Trip
 

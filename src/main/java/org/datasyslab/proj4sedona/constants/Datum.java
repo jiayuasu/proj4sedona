@@ -1,7 +1,16 @@
 package org.datasyslab.proj4sedona.constants;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * Datum definitions with towgs84 transformation parameters.
@@ -37,6 +46,10 @@ public final class Datum {
 
     /** Registry of all known datums, keyed by lowercase code */
     private static final Map<String, Datum> DATUMS = new HashMap<>();
+    /** Fuzzy lookup index matching proj4js's match.js normalization. */
+    private static final Map<String, Datum> NORMALIZED_DATUMS = new HashMap<>();
+    private static final String GENERATED_DATUM_RESOURCE =
+            "/org/datasyslab/proj4sedona/constants/proj4js-datums.tsv";
 
     // Core datums from proj4js
     /** World Geodetic System 1984 - the GPS reference datum */
@@ -101,6 +114,8 @@ public final class Datum {
     // These map the verbose names found in WKT2 and PROJJSON documents to the
     // short PROJ codes already registered above.
     static {
+        loadGeneratedDatums();
+
         registerAlias("World Geodetic System 1984", WGS84);
         registerAlias("World Geodetic System 1984 ensemble", WGS84);
         registerAlias("WGS 84", WGS84);
@@ -137,31 +152,158 @@ public final class Datum {
      * Register a datum with towgs84 transformation parameters.
      */
     private static Datum register(String code, String towgs84, String ellipse, String datumName) {
-        Datum d = new Datum(code, towgs84, ellipse, datumName, null);
-        DATUMS.put(code.toLowerCase(), d);
+        return register(code, towgs84, ellipse, datumName, null);
+    }
+
+    private static Datum register(
+            String code, String towgs84, String ellipse, String datumName, String nadgrids) {
+        Datum datum = new Datum(code, towgs84, ellipse, datumName, nadgrids);
+        registerLookup(code, datum);
         if (datumName != null) {
-            DATUMS.put(datumName.toLowerCase(), d);
+            registerLookup(datumName, datum);
         }
-        return d;
+        return datum;
     }
 
     /**
      * Register an alias name that maps to an existing datum.
      */
     private static void registerAlias(String alias, Datum datum) {
-        DATUMS.put(alias.toLowerCase(), datum);
+        registerLookup(alias, datum);
+    }
+
+    private static void registerLookup(String lookup, Datum datum) {
+        Datum exact = DATUMS.putIfAbsent(lower(lookup), datum);
+        if (exact != null && exact != datum) {
+            throw new IllegalStateException("Conflicting datum lookup key: " + lookup);
+        }
+
+        Datum normalized = NORMALIZED_DATUMS.putIfAbsent(normalizeKey(lookup), datum);
+        if (normalized != null && normalized != datum) {
+            throw new IllegalStateException("Conflicting normalized datum lookup key: " + lookup);
+        }
     }
 
     /**
      * Register a datum that uses NAD grid shift files instead of towgs84 parameters.
      */
     private static Datum registerWithNadgrids(String code, String nadgrids, String ellipse, String datumName) {
-        Datum d = new Datum(code, null, ellipse, datumName, nadgrids);
-        DATUMS.put(code.toLowerCase(), d);
-        if (datumName != null) {
-            DATUMS.put(datumName.toLowerCase(), d);
+        return register(code, null, ellipse, datumName, nadgrids);
+    }
+
+    /**
+     * Load the generated proj4js snapshot after the public legacy constants have
+     * initialized. Existing constants remain the canonical Java objects; the
+     * generated data supplies every datum that was not historically exposed as a
+     * public field.
+     */
+    private static void loadGeneratedDatums() {
+        InputStream input = Datum.class.getResourceAsStream(GENERATED_DATUM_RESOURCE);
+        if (input == null) {
+            throw new IllegalStateException(
+                    "Missing generated datum registry: " + GENERATED_DATUM_RESOURCE);
         }
-        return d;
+
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(input, StandardCharsets.UTF_8))) {
+            String line;
+            int lineNumber = 0;
+            boolean sawHeader = false;
+            Set<String> generatedCodes = new HashSet<>();
+            while ((line = reader.readLine()) != null) {
+                lineNumber++;
+                if (line.isEmpty() || line.startsWith("#")) {
+                    continue;
+                }
+                if (!sawHeader) {
+                    if (!"code\ttowgs84\tellipse\tdatumName\tnadgrids".equals(line)) {
+                        throw malformedGeneratedRegistry(lineNumber, "unexpected header");
+                    }
+                    sawHeader = true;
+                    continue;
+                }
+
+                String[] fields = line.split("\t", -1);
+                if (fields.length != 5) {
+                    throw malformedGeneratedRegistry(lineNumber, "expected five tab-separated fields");
+                }
+                for (String field : fields) {
+                    if (field.isEmpty()) {
+                        throw malformedGeneratedRegistry(
+                                lineNumber, "empty field; use \\N for null");
+                    }
+                }
+                if (!generatedCodes.add(lower(fields[0]))) {
+                    throw malformedGeneratedRegistry(lineNumber, "duplicate datum code " + fields[0]);
+                }
+                mergeGeneratedDatum(
+                        fields[0],
+                        nullMarkerToNull(fields[1]),
+                        nullMarkerToNull(fields[2]),
+                        nullMarkerToNull(fields[3]),
+                        nullMarkerToNull(fields[4]),
+                        lineNumber);
+            }
+            if (!sawHeader) {
+                throw malformedGeneratedRegistry(lineNumber, "missing header");
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not load generated datum registry", e);
+        }
+    }
+
+    private static void mergeGeneratedDatum(
+            String code,
+            String towgs84,
+            String ellipse,
+            String datumName,
+            String nadgrids,
+            int lineNumber) {
+        Datum existing = DATUMS.get(lower(code));
+        if (existing == null) {
+            register(code, towgs84, ellipse, datumName, nadgrids);
+            return;
+        }
+        if (!lower(existing.code).equals(lower(code))) {
+            throw malformedGeneratedRegistry(
+                    lineNumber,
+                    code + " collides with lookup alias for " + existing.code);
+        }
+
+        // Public constants predate the generated registry. Require every upstream
+        // value to agree, while retaining Java-only descriptive metadata on four
+        // EPSG constants for source and binary compatibility.
+        requireGeneratedMatch(code, "towgs84", towgs84, existing.towgs84, lineNumber, true);
+        requireGeneratedMatch(code, "nadgrids", nadgrids, existing.nadgrids, lineNumber, true);
+        requireGeneratedMatch(code, "ellipse", ellipse, existing.ellipse, lineNumber, false);
+        requireGeneratedMatch(code, "datumName", datumName, existing.datumName, lineNumber, false);
+    }
+
+    private static void requireGeneratedMatch(
+            String code,
+            String field,
+            String upstream,
+            String existing,
+            int lineNumber,
+            boolean requireNullEquality) {
+        if ((requireNullEquality || upstream != null) && !Objects.equals(upstream, existing)) {
+            throw malformedGeneratedRegistry(
+                    lineNumber,
+                    code + " " + field + " differs from its public constant");
+        }
+    }
+
+    private static IllegalStateException malformedGeneratedRegistry(int lineNumber, String message) {
+        return new IllegalStateException(
+                "Malformed " + GENERATED_DATUM_RESOURCE + " at line " + lineNumber + ": " + message);
+    }
+
+    private static String nullMarkerToNull(String value) {
+        return "\\N".equals(value) ? null : value;
+    }
+
+    private static String lower(String value) {
+        return value.toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -174,24 +316,18 @@ public final class Datum {
         if (code == null) {
             return null;
         }
-        Datum direct = DATUMS.get(code.toLowerCase());
+        Datum direct = DATUMS.get(lower(code));
         if (direct != null) {
             return direct;
         }
         // Fuzzy fallback, as proj4js's match.js applies to its datum table:
         // whitespace, underscores, hyphens, slashes and parentheses are ignored,
         // so +datum=s-jtsk resolves to s_jtsk.
-        String normalized = normalizeKey(code);
-        for (Map.Entry<String, Datum> entry : DATUMS.entrySet()) {
-            if (normalizeKey(entry.getKey()).equals(normalized)) {
-                return entry.getValue();
-            }
-        }
-        return null;
+        return NORMALIZED_DATUMS.get(normalizeKey(code));
     }
 
     private static String normalizeKey(String key) {
-        return key.toLowerCase().replaceAll("[\\s_\\-/()]", "");
+        return lower(key).replaceAll("[\\s_\\-/()]", "");
     }
 
     /** @return The datum code (e.g., "wgs84") */
