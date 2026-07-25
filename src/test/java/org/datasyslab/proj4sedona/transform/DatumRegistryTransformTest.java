@@ -14,7 +14,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * providers, where the datum is identified by {@code base_crs.id}. Expected
  * coordinates were cross-checked with PROJ using explicit {@code +towgs84}
  * parameters copied from the proj4js registry, not PROJ's EPSG operation
- * database selection.
+ * database selection. The RT90 oracle intentionally follows PROJ. This port
+ * recognizes the zero-shift target datum as WGS84-equivalent and avoids
+ * proj4js's extra WGS84 routing round trip, whose iterative geocentric
+ * conversion changes northing by approximately 0.095 mm.
  */
 class DatumRegistryTransformTest {
 
