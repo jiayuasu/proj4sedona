@@ -311,6 +311,42 @@ class WktParserTest {
         assertEquals(446.448, def.getDatumParams()[0], 0.001);
     }
 
+    @Test
+    @DisplayName("Parse WKT2 BOUNDCRS with geocentric GEODCRS source and target")
+    @SuppressWarnings("unchecked")
+    void testParseWkt2BoundCrsWithGeodcrsNodes() {
+        String source = "GEODCRS[\"Bessel geocentric\","
+            + "DATUM[\"Unknown based on Bessel 1841\","
+            + "ELLIPSOID[\"Bessel 1841\",6377397.155,299.1528128,"
+            + "LENGTHUNIT[\"metre\",1]]],"
+            + "PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + GEODCRS_4978_CS + "]";
+        String target =
+            GEODCRS_4978_HEAD + GEODCRS_4978_CS + ",ID[\"EPSG\",4978]]";
+        String wkt = "BOUNDCRS["
+            + "SOURCECRS[" + source + "],"
+            + "TARGETCRS[" + target + "],"
+            + "ABRIDGEDTRANSFORMATION[\"Transformation to WGS 84\","
+            + "METHOD[\"Geocentric translations (geocentric domain)\","
+            + "ID[\"EPSG\",1031]],"
+            + "PARAMETER[\"X-axis translation\",1,ID[\"EPSG\",8605]],"
+            + "PARAMETER[\"Y-axis translation\",2,ID[\"EPSG\",8606]],"
+            + "PARAMETER[\"Z-axis translation\",3,ID[\"EPSG\",8607]]]]";
+
+        Map<String, Object> projjson = WktParser.parseWkt2ToProjJson(wkt);
+        assertEquals(
+            "GeodeticCRS",
+            ((Map<String, Object>) projjson.get("source_crs")).get("type"));
+        assertEquals(
+            "GeodeticCRS",
+            ((Map<String, Object>) projjson.get("target_crs")).get("type"));
+
+        ProjectionDef def = WktParser.parse(wkt);
+        assertEquals("geocent", def.getProjName());
+        assertArrayEquals(new double[]{1, 2, 3}, def.getDatumParams(), 0.0);
+        assertEquals(6377397.155, def.getA(), 1e-6);
+    }
+
     // ========== PROJJSON Parsing Tests ==========
 
     @Test

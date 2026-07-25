@@ -441,7 +441,8 @@ public final class ProjJsonBuilder {
         List<Object> sourceCrsNode = findNode(node, "SOURCECRS");
         if (sourceCrsNode != null) {
             // Find the actual CRS content within SOURCECRS
-            List<Object> sourceCrsContent = findNodeAny(sourceCrsNode, "PROJCRS", "GEOGCRS");
+            List<Object> sourceCrsContent =
+                findNodeAny(sourceCrsNode, "PROJCRS", "GEOGCRS", "GEODCRS");
             if (sourceCrsContent != null) {
                 result.put("source_crs", convert(sourceCrsContent, new HashMap<>()));
             }
@@ -450,7 +451,8 @@ public final class ProjJsonBuilder {
         // Process TARGETCRS
         List<Object> targetCrsNode = findNode(node, "TARGETCRS");
         if (targetCrsNode != null) {
-            List<Object> targetCrsContent = findNodeAny(targetCrsNode, "PROJCRS", "GEOGCRS");
+            List<Object> targetCrsContent =
+                findNodeAny(targetCrsNode, "PROJCRS", "GEOGCRS", "GEODCRS");
             if (targetCrsContent != null) {
                 result.put("target_crs", convert(targetCrsContent, new HashMap<>()));
             }
