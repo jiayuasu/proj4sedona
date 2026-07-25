@@ -297,7 +297,7 @@ class WktParserTest {
                 "DATUM[\"World Geodetic System 1984\"," +
                 "ELLIPSOID[\"WGS 84\",6378137,298.257223563]]]]," +
                 "ABRIDGEDTRANSFORMATION[\"OSGB 1936 to WGS 84 (6)\"," +
-                "METHOD[\"Position Vector transformation (geog2D domain)\"]," +
+                "METHOD[\"Geocentric translations (geog2D domain)\"]," +
                 "PARAMETER[\"X-axis translation\",446.448,LENGTHUNIT[\"metre\",1]]," +
                 "PARAMETER[\"Y-axis translation\",-125.157,LENGTHUNIT[\"metre\",1]]," +
                 "PARAMETER[\"Z-axis translation\",542.06,LENGTHUNIT[\"metre\",1]]]]";

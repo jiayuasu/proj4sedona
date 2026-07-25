@@ -7,6 +7,8 @@ import org.datasyslab.proj4sedona.transform.Converter;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Regression coverage for serializer fields whose omission changes coordinates. */
@@ -154,8 +156,15 @@ class CRSSerializerRoundTripSafetyTest {
         assertTrue(wkt1.contains("TOWGS84[674.374,15.056,405.346]"), wkt1);
         assertEquals(helmert.getParams().datum.getDatumParams()[0],
             new Proj(wkt1).getParams().datum.getDatumParams()[0], 0.0);
-        assertThrows(UnsupportedOperationException.class, () -> CRSSerializer.toWkt2(helmert));
-        assertThrows(UnsupportedOperationException.class, () -> CRSSerializer.toProjJson(helmert));
+        for (String bound : new String[]{
+                CRSSerializer.toWkt2(helmert),
+                CRSSerializer.toProjJson(helmert)}) {
+            assertEquals(
+                helmert.getParams().datum.getDatumParams()[0],
+                new Proj(bound).getParams().datum.getDatumParams()[0],
+                0.0,
+                bound);
+        }
 
         Proj grid = new Proj("+proj=longlat +datum=NAD27 +no_defs");
         assertTrue(CRSSerializer.toProjString(grid).contains("+datum=NAD27"));
@@ -250,10 +259,14 @@ class CRSSerializerRoundTripSafetyTest {
             if (!candidate.getParams().datum.isGridShift()
                     && !Boolean.TRUE.equals(candidate.getParams().over)
                     && candidate.getParams().longWrap == null) {
-                try {
-                    assertFalse(CRSSerializer.toProjJson(candidate).contains("\"id\""));
-                } catch (UnsupportedOperationException expectedForDatumOperation) {
-                    // Non-WKT1 datum operations are intentionally non-exportable.
+                Map<String, Object> json =
+                    CRSSerializer.toProjJsonMap(candidate.getParams());
+                assertFalse(json.containsKey("id"));
+                if ("BoundCRS".equals(json.get("type"))) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> source =
+                        (Map<String, Object>) json.get("source_crs");
+                    assertFalse(source.containsKey("id"));
                 }
             }
         }

@@ -94,15 +94,16 @@ class SwissObliqueMercatorTest {
     void testSerializationRoundTrip() {
         // Regression guard for the round-trip bug: proj4sedona's serializer emits the
         // method name "Swiss Oblique Mercator", which must re-import (previously failed
-        // with "Unknown projection: Swiss Oblique Mercator"). Compare the projection
-        // math of the lossless PROJ and WKT1 forms against the original. WKT2 and
-        // PROJJSON have no implemented bound-CRS operation, so silently exporting
-        // them would discard the Swiss TOWGS84 transformation.
+        // with "Unknown projection: Swiss Oblique Mercator"). Compare every executable
+        // export against the original; WKT2 and PROJJSON preserve the Swiss TOWGS84
+        // transformation in a BoundCRS.
         Proj original = new Proj(LV03);
         double[][] coords = {{7.439583333, 46.952405556}, {8.55, 47.37}, {6.14, 46.2}};
         for (String serialized : new String[] {
                 CRSSerializer.toProjString(original),
-                CRSSerializer.toWkt1(original)}) {
+                CRSSerializer.toWkt1(original),
+                CRSSerializer.toWkt2(original),
+                CRSSerializer.toProjJson(original)}) {
             Proj reimported = new Proj(serialized); // must not throw
             for (double[] c : coords) {
                 Point want = original.forward(new Point(c[0] * Math.PI / 180, c[1] * Math.PI / 180));
@@ -111,10 +112,6 @@ class SwissObliqueMercatorTest {
                 assertEquals(want.y, got.y, XY_EPSLN, "northing after re-import of " + serialized);
             }
         }
-        assertThrows(UnsupportedOperationException.class,
-            () -> CRSSerializer.toWkt2(original));
-        assertThrows(UnsupportedOperationException.class,
-            () -> CRSSerializer.toProjJson(original));
     }
 
     private void assertForward(String def, double[][] cases) {

@@ -42,7 +42,10 @@ public final class CRSSerializer {
 
     private static final double RAD_TO_DEG = 180.0 / Math.PI;
     private static final double DEG_TO_RAD = Math.PI / 180.0;
+    private static final double ARC_SECOND_TO_RAD = DEG_TO_RAD / 3600.0;
+    private static final double PARTS_PER_MILLION_TO_SCALE = 1e-6;
     private static final String DEG_TO_RAD_STR = Double.toString(DEG_TO_RAD);
+    private static final String TOWGS84_TRANSFORMATION_NAME = "Transformation to WGS 84";
 
     // Projection name mappings: PROJ -> WKT method names (short/generic names)
     private static final Map<String, String> PROJ_TO_WKT_METHOD = new LinkedHashMap<>();
@@ -825,7 +828,22 @@ public final class CRSSerializer {
         rejectNonRepresentableStandardParameters(params, StandardFormat.WKT2);
 
         StringBuilder sb = new StringBuilder();
+        if (needsTowgs84BoundCrs(params)) {
+            sb.append("BOUNDCRS[SOURCECRS[");
+            appendWkt2Crs(sb, params);
+            sb.append("],TARGETCRS[");
+            appendWkt2Wgs84TargetCrs(sb);
+            sb.append("],");
+            appendWkt2Towgs84Transformation(sb, params.datum);
+            sb.append("]");
+            return sb.toString();
+        }
 
+        appendWkt2Crs(sb, params);
+        return sb.toString();
+    }
+
+    private static void appendWkt2Crs(StringBuilder sb, ProjectionParams params) {
         boolean isGeographic = "longlat".equals(normalizeProjName(params.projName));
 
         if (isGeographic) {
@@ -837,8 +855,57 @@ public final class CRSSerializer {
             appendWkt2ProjCRS(sb, params);
             sb.append("]");
         }
+    }
 
-        return sb.toString();
+    private static void appendWkt2Wgs84TargetCrs(StringBuilder sb) {
+        sb.append("GEOGCRS[\"WGS 84\",")
+          .append("DATUM[\"World Geodetic System 1984\",")
+          .append("ELLIPSOID[\"WGS 84\",6378137,298.257223563,")
+          .append("LENGTHUNIT[\"metre\",1]]],")
+          .append("PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",")
+          .append(DEG_TO_RAD_STR)
+          .append("]],CS[ellipsoidal,2],")
+          .append("AXIS[\"latitude\",north,ORDER[1],ANGLEUNIT[\"degree\",")
+          .append(DEG_TO_RAD_STR)
+          .append("]],")
+          .append("AXIS[\"longitude\",east,ORDER[2],ANGLEUNIT[\"degree\",")
+          .append(DEG_TO_RAD_STR)
+          .append("]],ID[\"EPSG\",4326]]");
+    }
+
+    private static void appendWkt2Towgs84Transformation(
+            StringBuilder sb, DatumParams datum) {
+        double[] values = toHumanTowgs84(datum);
+        boolean sevenParameters = values.length == 7;
+
+        sb.append("ABRIDGEDTRANSFORMATION[\"")
+          .append(TOWGS84_TRANSFORMATION_NAME)
+          .append("\",METHOD[\"")
+          .append(sevenParameters
+              ? "Position Vector transformation (geog2D domain)"
+              : "Geocentric translations (geog2D domain)")
+          .append("\",ID[\"EPSG\",")
+          .append(sevenParameters ? 9606 : 9603)
+          .append("]]");
+        appendWkt2Towgs84Parameter(sb, "X-axis translation", values[0], 8605);
+        appendWkt2Towgs84Parameter(sb, "Y-axis translation", values[1], 8606);
+        appendWkt2Towgs84Parameter(sb, "Z-axis translation", values[2], 8607);
+        if (sevenParameters) {
+            appendWkt2Towgs84Parameter(sb, "X-axis rotation", values[3], 8608);
+            appendWkt2Towgs84Parameter(sb, "Y-axis rotation", values[4], 8609);
+            appendWkt2Towgs84Parameter(sb, "Z-axis rotation", values[5], 8610);
+            appendWkt2Towgs84Parameter(
+                sb, "Scale difference",
+                1.0 + values[6] * PARTS_PER_MILLION_TO_SCALE, 8611);
+        }
+        sb.append("]");
+    }
+
+    private static void appendWkt2Towgs84Parameter(
+            StringBuilder sb, String name, double value, int epsgCode) {
+        sb.append(",PARAMETER[\"").append(name).append("\",")
+          .append(formatNumber(value))
+          .append(",ID[\"EPSG\",").append(epsgCode).append("]]");
     }
 
     private static void appendWkt2GeogCRS(StringBuilder sb, ProjectionParams params) {
@@ -1133,6 +1200,23 @@ public final class CRSSerializer {
         }
         rejectNonRepresentableStandardParameters(params, StandardFormat.PROJJSON);
 
+        Map<String, Object> sourceCrs = buildProjJsonCrs(params);
+        if (!needsTowgs84BoundCrs(params)) {
+            return sourceCrs;
+        }
+
+        Map<String, Object> json = new LinkedHashMap<>();
+        boolean geocentric = isGeocentric(params);
+        json.put("type", "BoundCRS");
+        json.put("source_crs", sourceCrs);
+        json.put("target_crs", buildProjJsonWgs84TargetCrs(geocentric));
+        json.put(
+            "transformation",
+            buildProjJsonTowgs84Transformation(params.datum, geocentric));
+        return json;
+    }
+
+    private static Map<String, Object> buildProjJsonCrs(ProjectionParams params) {
         Map<String, Object> json = new LinkedHashMap<>();
 
         boolean isGeographic = "longlat".equals(normalizeProjName(params.projName));
@@ -1160,17 +1244,128 @@ public final class CRSSerializer {
         // Add "id" field when the authority is known
         String[] authority = toAuthority(params);
         if (authority != null) {
-            Map<String, Object> id = new LinkedHashMap<>();
-            id.put("authority", authority[0]);
+            Object code;
             try {
-                id.put("code", Integer.parseInt(authority[1]));
+                code = Integer.parseInt(authority[1]);
             } catch (NumberFormatException e) {
-                id.put("code", authority[1]);
+                code = authority[1];
             }
-            json.put("id", id);
+            json.put("id", buildProjJsonId(authority[0], code));
         }
 
         return json;
+    }
+
+    private static Map<String, Object> buildProjJsonWgs84TargetCrs(boolean geocentric) {
+        Map<String, Object> targetCrs = new LinkedHashMap<>();
+        targetCrs.put("type", geocentric ? "GeodeticCRS" : "GeographicCRS");
+        targetCrs.put("name", "WGS 84");
+
+        Map<String, Object> datum = new LinkedHashMap<>();
+        datum.put("type", "GeodeticReferenceFrame");
+        datum.put("name", "World Geodetic System 1984");
+
+        Map<String, Object> ellipsoid = new LinkedHashMap<>();
+        ellipsoid.put("name", "WGS 84");
+        ellipsoid.put("semi_major_axis", 6378137);
+        ellipsoid.put("inverse_flattening", 298.257223563);
+        datum.put("ellipsoid", ellipsoid);
+
+        targetCrs.put("datum", datum);
+        targetCrs.put(
+            "coordinate_system",
+            geocentric ? buildProjJsonGeocentricCS() : buildProjJsonGeogCS());
+        targetCrs.put("id", buildProjJsonId("EPSG", geocentric ? 4978 : 4326));
+        return targetCrs;
+    }
+
+    private static Map<String, Object> buildProjJsonTowgs84Transformation(
+            DatumParams datum, boolean geocentric) {
+        double[] values = toHumanTowgs84(datum);
+        boolean sevenParameters = values.length == 7;
+
+        Map<String, Object> transformation = new LinkedHashMap<>();
+        transformation.put("name", TOWGS84_TRANSFORMATION_NAME);
+
+        Map<String, Object> method = new LinkedHashMap<>();
+        if (geocentric) {
+            method.put("name", sevenParameters
+                ? "Position Vector transformation (geocentric domain)"
+                : "Geocentric translations (geocentric domain)");
+            method.put("id", buildProjJsonId("EPSG", sevenParameters ? 1033 : 1031));
+        } else {
+            method.put("name", sevenParameters
+                ? "Position Vector transformation (geog2D domain)"
+                : "Geocentric translations (geog2D domain)");
+            method.put("id", buildProjJsonId("EPSG", sevenParameters ? 9606 : 9603));
+        }
+        transformation.put("method", method);
+
+        List<Map<String, Object>> parameters = new ArrayList<>();
+        parameters.add(buildProjJsonTowgs84Parameter(
+            "X-axis translation", values[0], "metre", 8605));
+        parameters.add(buildProjJsonTowgs84Parameter(
+            "Y-axis translation", values[1], "metre", 8606));
+        parameters.add(buildProjJsonTowgs84Parameter(
+            "Z-axis translation", values[2], "metre", 8607));
+        if (sevenParameters) {
+            parameters.add(buildProjJsonTowgs84Parameter(
+                "X-axis rotation", values[3],
+                buildProjJsonUnit("AngularUnit", "arc-second", ARC_SECOND_TO_RAD),
+                8608));
+            parameters.add(buildProjJsonTowgs84Parameter(
+                "Y-axis rotation", values[4],
+                buildProjJsonUnit("AngularUnit", "arc-second", ARC_SECOND_TO_RAD),
+                8609));
+            parameters.add(buildProjJsonTowgs84Parameter(
+                "Z-axis rotation", values[5],
+                buildProjJsonUnit("AngularUnit", "arc-second", ARC_SECOND_TO_RAD),
+                8610));
+            parameters.add(buildProjJsonTowgs84Parameter(
+                "Scale difference", values[6],
+                buildProjJsonUnit(
+                    "ScaleUnit", "parts per million", PARTS_PER_MILLION_TO_SCALE),
+                8611));
+        }
+        transformation.put("parameters", parameters);
+        return transformation;
+    }
+
+    private static Map<String, Object> buildProjJsonTowgs84Parameter(
+            String name, double value, Object unit, int epsgCode) {
+        Map<String, Object> parameter = new LinkedHashMap<>();
+        parameter.put("name", name);
+        parameter.put("value", value);
+        parameter.put("unit", unit);
+        parameter.put("id", buildProjJsonId("EPSG", epsgCode));
+        return parameter;
+    }
+
+    private static Map<String, Object> buildProjJsonUnit(
+            String type, String name, double conversionFactor) {
+        Map<String, Object> unit = new LinkedHashMap<>();
+        unit.put("type", type);
+        unit.put("name", name);
+        unit.put("conversion_factor", conversionFactor);
+        return unit;
+    }
+
+    private static Map<String, Object> buildProjJsonId(String authority, Object code) {
+        Map<String, Object> id = new LinkedHashMap<>();
+        id.put("authority", authority);
+        id.put("code", code);
+        return id;
+    }
+
+    private static Map<String, Object> buildProjJsonGeocentricCS() {
+        Map<String, Object> cs = new LinkedHashMap<>();
+        cs.put("subtype", "Cartesian");
+        cs.put("axis", Arrays.asList(
+            buildGeocentricAxis("Geocentric X", "X", "geocentricX", "metre"),
+            buildGeocentricAxis("Geocentric Y", "Y", "geocentricY", "metre"),
+            buildGeocentricAxis("Geocentric Z", "Z", "geocentricZ", "metre")
+        ));
+        return cs;
     }
 
     /**
@@ -2640,9 +2835,9 @@ public final class CRSSerializer {
 
     /**
      * Fail instead of emitting a syntactically plausible CRS that silently drops a
-     * transform-affecting PROJ extension.  These exporters describe a CRS, not an
-     * arbitrary PROJ operation pipeline; callers can always request the lossless
-     * PROJ string instead.
+     * transform-affecting PROJ extension. These exporters describe a CRS, not an
+     * arbitrary PROJ operation pipeline; the one supported operation wrapper is a
+     * BoundCRS for PROJ's three- and seven-parameter TOWGS84 semantics.
      */
     private static void rejectNonRepresentableStandardParameters(
             ProjectionParams params, StandardFormat format) {
@@ -2700,11 +2895,6 @@ public final class CRSSerializer {
         if (datum != null && datum.isGridShift()) {
             throw unsupportedStandardParameter(
                 "Grid-shift datum operations cannot be represented losslessly");
-        }
-        if (format != StandardFormat.WKT1 && hasTransformingTowgs84(datum)) {
-            throw unsupportedStandardParameter(
-                "TOWGS84 datum operations cannot be represented losslessly in "
-                    + formatName(format));
         }
 
         validateStandardAxis(params, proj, format);
@@ -2865,7 +3055,7 @@ public final class CRSSerializer {
             && params.alpha == null && params.rectifiedGridAngle == null;
     }
 
-    /** Non-zero Helmert values affect coordinates; an all-zero list does not. */
+    /** Whether at least one Helmert parameter is non-zero. */
     private static boolean hasTransformingTowgs84(DatumParams datum) {
         if (datum == null || datum.getDatumParams() == null) {
             return false;
@@ -2877,6 +3067,35 @@ public final class CRSSerializer {
             }
         }
         return false;
+    }
+
+    /**
+     * An explicit zero-valued Helmert operation is still significant when its source
+     * ellipsoid is not WGS 84: the geodetic/geocentric conversion changes coordinates
+     * even though the Cartesian translation, rotation, and scale are identities.
+     * Canonical named datums can stay unbound because their operation is recovered
+     * from the datum identity, and an unnamed WGS 84 ellipsoid with zero parameters
+     * is already equivalent to the target.
+     */
+    private static boolean needsTowgs84BoundCrs(ProjectionParams params) {
+        DatumParams datum = params.datum;
+        if (datum == null || datum.getDatumParams() == null) {
+            return false;
+        }
+        if (hasTransformingTowgs84(datum)) {
+            return true;
+        }
+        return resolveProjDatumToken(params) == null
+            && !hasWgs84EquivalentEllipsoid(params);
+    }
+
+    private static boolean hasWgs84EquivalentEllipsoid(ProjectionParams params) {
+        Ellipsoid wgs84 = Ellipsoid.get("WGS84");
+        double rf = effectiveRf(params);
+        double b = params.b > 0 ? params.b
+            : rf > 0 ? params.a * (1 - 1 / rf) : params.a;
+        return Math.abs(params.a - wgs84.getA()) < 1e-6
+            && Math.abs(b - wgs84.getB()) < 1e-6;
     }
 
     private static boolean hasNonFiniteTowgs84(DatumParams datum) {

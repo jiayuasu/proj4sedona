@@ -509,7 +509,8 @@ public final class ProjJsonBuilder {
         // Adjust Scale difference parameter if present (for 7-param transforms)
         if (parameters.size() == 7) {
             Map<String, Object> scaleDiff = parameters.get(6);
-            if ("Scale difference".equals(scaleDiff.get("name"))) {
+            if ("Scale difference".equals(scaleDiff.get("name"))
+                    || hasEpsgId(scaleDiff, 8611)) {
                 Object valueObj = scaleDiff.get("value");
                 if (valueObj instanceof Number) {
                     double value = ((Number) valueObj).doubleValue();
@@ -524,6 +525,19 @@ public final class ProjJsonBuilder {
         if (id != null) {
             result.put("id", id);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean hasEpsgId(Map<String, Object> object, int expectedCode) {
+        Object idValue = object.get("id");
+        if (!(idValue instanceof Map)) {
+            return false;
+        }
+        Map<String, Object> id = (Map<String, Object>) idValue;
+        Object authority = id.get("authority");
+        Double code = parseDouble(id.get("code"));
+        return authority != null && "EPSG".equalsIgnoreCase(authority.toString())
+            && code != null && code == expectedCode;
     }
 
     /**
