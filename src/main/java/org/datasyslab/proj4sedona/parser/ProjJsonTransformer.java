@@ -45,10 +45,14 @@ public final class ProjJsonTransformer {
         }
 
         if ("ProjectedCRS".equals(projjson.get("type"))
-                && (projjson.containsKey("id") || projjson.containsKey("ids"))
-                && !(projjson.get("coordinate_system") instanceof Map)) {
-            throw new IllegalArgumentException(
-                "Identified ProjectedCRS requires a coordinate_system");
+                && (projjson.containsKey("id") || projjson.containsKey("ids"))) {
+            Object coordinateSystem = projjson.get("coordinate_system");
+            if (!(coordinateSystem instanceof Map)) {
+                throw new IllegalArgumentException(
+                    "Identified ProjectedCRS requires a coordinate_system");
+            }
+            validateIdentifiedProjectedCoordinateSystem(
+                (Map<String, Object>) coordinateSystem);
         }
 
         ProjectionDef def = new ProjectionDef();
@@ -94,6 +98,31 @@ public final class ProjJsonTransformer {
         WktUtils.applyProjectionDefaults(def);
 
         return def;
+    }
+
+    private static void validateIdentifiedProjectedCoordinateSystem(
+            Map<String, Object> coordinateSystem) {
+        Object subtype = coordinateSystem.get("subtype");
+        if (subtype == null || subtype.toString().trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                "Identified ProjectedCRS coordinate_system requires a subtype");
+        }
+        Object axisValue = coordinateSystem.get("axis");
+        if (!(axisValue instanceof List)) {
+            throw new IllegalArgumentException(
+                "Identified ProjectedCRS coordinate_system requires an axis array");
+        }
+        List<?> axes = (List<?>) axisValue;
+        if (axes.size() < 2 || axes.size() > 3) {
+            throw new IllegalArgumentException(
+                "Identified ProjectedCRS requires two or three coordinate axes");
+        }
+        for (Object axis : axes) {
+            if (!(axis instanceof Map)) {
+                throw new IllegalArgumentException(
+                    "Identified ProjectedCRS coordinate axes must be objects");
+            }
+        }
     }
 
     /**
@@ -174,14 +203,18 @@ public final class ProjJsonTransformer {
 
             case "id":
                 if (value instanceof Map) {
-                    Map<String, Object> id = (Map<String, Object>) value;
-                    Object authority = id.get("authority");
-                    Object code = id.get("code");
-                    if (authority != null && code != null) {
-                        String authorityCode = authority.toString() + ":" + toIntString(code);
-                        def.setTitle(authorityCode);
-                        // Store authority:code in srsCode for toEpsgCode()/toAuthority() lookup
-                        def.setSrsCode(authorityCode);
+                    processAuthorityId((Map<String, Object>) value, def);
+                }
+                break;
+
+            case "ids":
+                if (value instanceof List) {
+                    for (Object id : (List<?>) value) {
+                        if (id instanceof Map
+                                && processAuthorityId(
+                                    (Map<String, Object>) id, def)) {
+                            break;
+                        }
                     }
                 }
                 break;
@@ -266,6 +299,21 @@ public final class ProjJsonTransformer {
         }
     }
 
+    private static boolean processAuthorityId(
+            Map<String, Object> id, ProjectionDef def) {
+        Object authority = id.get("authority");
+        Object code = id.get("code");
+        if (authority == null || code == null) {
+            return false;
+        }
+        String authorityCode =
+            authority.toString() + ":" + toIntString(code);
+        def.setTitle(authorityCode);
+        // Store authority:code for toEpsgCode()/toAuthority() lookup.
+        def.setSrsCode(authorityCode);
+        return true;
+    }
+
     /**
      * Process datum/datum_ensemble node.
      */
@@ -328,11 +376,10 @@ public final class ProjJsonTransformer {
     /**
      * Calculate ellipsoid parameters.
      */
-    @SuppressWarnings("unchecked")
     private static void calculateEllipsoid(Map<String, Object> ellipsoid, ProjectionDef def) {
         Object radius = ellipsoid.get("radius");
         if (radius != null) {
-            double r = toDouble(radius);
+            double r = lengthInMetres(radius);
             def.setA(r);
             def.setRf(0.0);
             return;
@@ -340,22 +387,7 @@ public final class ProjJsonTransformer {
 
         Object sma = ellipsoid.get("semi_major_axis");
         if (sma != null) {
-            double a;
-            if (sma instanceof Map) {
-                // Handle { value: x, unit: { conversion_factor: y } }
-                Map<String, Object> smaMap = (Map<String, Object>) sma;
-                double value = toDouble(smaMap.get("value"));
-                Object unit = smaMap.get("unit");
-                if (unit instanceof Map) {
-                    Object cf = ((Map<String, Object>) unit).get("conversion_factor");
-                    if (cf != null) {
-                        value *= toDouble(cf);
-                    }
-                }
-                a = value;
-            } else {
-                a = toDouble(sma);
-            }
+            double a = lengthInMetres(sma);
             def.setA(a);
 
             Object invFlat = ellipsoid.get("inverse_flattening");
@@ -364,11 +396,32 @@ public final class ProjJsonTransformer {
             } else {
                 Object smb = ellipsoid.get("semi_minor_axis");
                 if (smb != null) {
-                    double b = toDouble(smb);
-                    def.setRf(a / (a - b));
+                    double b = lengthInMetres(smb);
+                    def.setRf(a == b ? 0.0 : a / (a - b));
                 }
             }
         }
+    }
+
+    /**
+     * Decode a PROJJSON value_in_metre_or_value_and_unit value.
+     */
+    @SuppressWarnings("unchecked")
+    private static double lengthInMetres(Object length) {
+        if (!(length instanceof Map)) {
+            return toDouble(length);
+        }
+        Map<String, Object> valueAndUnit = (Map<String, Object>) length;
+        double value = toDouble(valueAndUnit.get("value"));
+        Object unit = valueAndUnit.get("unit");
+        if (unit instanceof Map) {
+            Object conversionFactor =
+                ((Map<String, Object>) unit).get("conversion_factor");
+            if (conversionFactor != null) {
+                value *= toDouble(conversionFactor);
+            }
+        }
+        return value;
     }
 
     /**

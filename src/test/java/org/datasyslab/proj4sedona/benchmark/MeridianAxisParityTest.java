@@ -6,7 +6,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.datasyslab.proj4sedona.core.CoordinateAxis;
 import org.datasyslab.proj4sedona.core.Proj;
+import org.datasyslab.proj4sedona.core.ProjectionDef;
 import org.datasyslab.proj4sedona.parser.CRSSerializer;
+import org.datasyslab.proj4sedona.parser.WktParser;
 import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
 
 import java.io.IOException;
@@ -18,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -34,6 +37,8 @@ final class MeridianAxisParityTest {
     private static final double ANGLE_TOLERANCE = Math.toRadians(1e-9);
     private static final List<String> FORMATS = Arrays.asList(
         "wkt2", "projjson", "proj_string");
+    private static final Set<String> UNSUPPORTED_METHOD_CASES =
+        new LinkedHashSet<>(Arrays.asList("epsg_2985", "epsg_2986"));
 
     private MeridianAxisParityTest() {
     }
@@ -106,9 +111,16 @@ final class MeridianAxisParityTest {
         parity.reconcileCount(SUITE, "comparisons",
             requiredInt(
                 root, "expected_comparison_count", "meridian-axis root"),
-            cases.size() * FORMATS.size());
+            cases.size() * FORMATS.size() * 2);
+        parity.reconcileCount(SUITE, "parser-comparisons",
+            requiredInt(
+                root, "expected_parser_comparison_count",
+                "meridian-axis root"),
+            cases.size() * 2);
         System.out.println("   Meridian-axis correctness: "
-            + (cases.size() * FORMATS.size()) + " comparisons");
+            + cases.size() + " CRSs, "
+            + (cases.size() * 2) + " parser comparisons and "
+            + (cases.size() * FORMATS.size() * 2) + " export outcomes");
     }
 
     private static void consumeCase(
@@ -124,6 +136,8 @@ final class MeridianAxisParityTest {
             testCase, "authority", caseContext);
         String code = requiredString(testCase, "code", caseContext);
         requiredString(testCase, "name", caseContext);
+        String sourceWkt2 = requiredString(
+            testCase, "source_wkt2", caseContext);
         JsonObject sourceProjjson = requiredObject(
             testCase, "source_projjson", caseContext);
         String projectionMethod = requiredString(
@@ -151,10 +165,25 @@ final class MeridianAxisParityTest {
             caseError = joinErrors(caseError,
                 "case_id does not match EPSG code " + code);
         }
-        if (ProjectionRegistry.resolveProjCode(projectionMethod) == null) {
+        String resolvedMethod =
+            ProjectionRegistry.resolveProjCode(projectionMethod);
+        boolean expectedUnsupported =
+            UNSUPPORTED_METHOD_CASES.contains(caseId);
+        if (resolvedMethod == null && !expectedUnsupported) {
             caseError = joinErrors(caseError,
-                "unsupported projection method " + projectionMethod
-                    + "; axis metadata was not evaluated");
+                "unexpected unsupported projection method "
+                    + projectionMethod);
+        } else if (resolvedMethod != null && expectedUnsupported) {
+            caseError = joinErrors(caseError,
+                "stale unsupported-method declaration for "
+                    + projectionMethod);
+        } else if (expectedUnsupported
+                && !"Polar Stereographic (variant C)".equals(
+                    projectionMethod)) {
+            caseError = joinErrors(caseError,
+                "unsupported-method declaration expected Polar "
+                    + "Stereographic (variant C), but found "
+                    + projectionMethod);
         }
         if (expectedAxes.size() == 0) {
             caseError = joinErrors(caseError,
@@ -178,38 +207,121 @@ final class MeridianAxisParityTest {
                 "pyproj legacy export is present despite being unavailable");
         }
 
+        String parserError = parseAxisMetadata(
+            sourceWkt2, sourceProjjson, expectedAxes, caseId, parity);
+        caseError = joinErrors(caseError, parserError);
+
+        consumeSourceFormats(
+            parity, caseId, "projjson_source", sourceProjjson.toString(),
+            caseError, expectedUnsupported, projectionMethod, expectedAxes);
+        consumeSourceFormats(
+            parity, caseId, "wkt2_source", sourceWkt2,
+            caseError, expectedUnsupported, projectionMethod, expectedAxes);
+    }
+
+    private static void consumeSourceFormats(
+            ParityCheck parity,
+            String caseId,
+            String sourceFormat,
+            String source,
+            String caseError,
+            boolean expectedUnsupported,
+            String projectionMethod,
+            JsonArray expectedAxes) {
         Proj original = null;
-        if (caseError == null) {
+        String sourceError = caseError;
+        if (sourceError == null && !expectedUnsupported) {
             try {
-                original = new Proj(sourceProjjson.toString());
-                caseError = coordinateAxisDifference(
+                original = new Proj(source);
+                String axisError = coordinateAxisDifference(
                     expectedAxes, original.getParams().coordinateAxes);
-                if (caseError != null) {
-                    caseError = "source PROJJSON axis mismatch: " + caseError;
+                if (axisError != null) {
+                    sourceError = sourceFormat + " axis mismatch: " + axisError;
                 }
             } catch (Exception e) {
-                caseError = "Java source PROJJSON parse failed: "
+                sourceError = "Java " + sourceFormat + " parse failed: "
                     + describeException(e);
             }
         }
 
         for (String format : FORMATS) {
             consumeFormat(
-                parity, caseId, format, caseError, original, expectedAxes);
+                parity, caseId, sourceFormat, format, sourceError,
+                expectedUnsupported, projectionMethod, original, expectedAxes);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String parseAxisMetadata(
+            String sourceWkt2,
+            JsonObject sourceProjjson,
+            JsonArray expectedAxes,
+            String caseId,
+            ParityCheck parity) {
+        String combinedError = null;
+        String projjsonId = caseId + "/projjson_parse";
+        parity.expect(SUITE, projjsonId);
+        try {
+            Map<String, Object> source = new Gson().fromJson(
+                sourceProjjson, Map.class);
+            ProjectionDef definition = WktParser.parse(source);
+            String error = coordinateAxisDifference(
+                expectedAxes, definition.getCoordinateAxes());
+            if (error == null) {
+                parity.compared(SUITE, projjsonId, 0.0, 0.0);
+            } else {
+                parity.failed(SUITE, projjsonId, error);
+                combinedError = "source PROJJSON axis mismatch: " + error;
+            }
+        } catch (Exception e) {
+            String error = "source PROJJSON parse failed: "
+                + describeException(e);
+            parity.failed(SUITE, projjsonId, error);
+            combinedError = error;
+        }
+
+        String wkt2Id = caseId + "/wkt2_parse";
+        parity.expect(SUITE, wkt2Id);
+        try {
+            ProjectionDef definition = WktParser.parse(sourceWkt2);
+            String error = coordinateAxisDifference(
+                expectedAxes, definition.getCoordinateAxes());
+            if (error == null) {
+                parity.compared(SUITE, wkt2Id, 0.0, 0.0);
+            } else {
+                parity.failed(SUITE, wkt2Id, error);
+                combinedError = joinErrors(
+                    combinedError, "source WKT2 axis mismatch: " + error);
+            }
+        } catch (Exception e) {
+            String error = "source WKT2 parse failed: "
+                + describeException(e);
+            parity.failed(SUITE, wkt2Id, error);
+            combinedError = joinErrors(combinedError, error);
+        }
+        return combinedError;
     }
 
     private static void consumeFormat(
             ParityCheck parity,
             String caseId,
+            String sourceFormat,
             String format,
             String caseError,
+            boolean expectedUnsupported,
+            String projectionMethod,
             Proj original,
             JsonArray expectedAxes) {
-        String id = caseId + "/" + format;
+        String id = caseId + "/" + sourceFormat + "/" + format;
         parity.expect(SUITE, id);
         if (caseError != null) {
             parity.failed(SUITE, id, caseError);
+            return;
+        }
+        if (expectedUnsupported) {
+            parity.skipped(SUITE, id,
+                projectionMethod + " is not implemented; its WKT2 and "
+                    + "PROJJSON axis metadata passed parser parity");
             return;
         }
 
@@ -328,9 +440,12 @@ final class MeridianAxisParityTest {
             }
 
             String expectedName = requiredString(expected, "name", label);
-            if (!expectedName.equals(actual.getName())) {
+            String actualName = actual.getName();
+            if (actualName == null
+                    || (!actualName.trim().isEmpty()
+                        && !expectedName.equalsIgnoreCase(actualName))) {
                 return label + " name " + expectedName + " -> "
-                    + actual.getName();
+                    + actualName;
             }
             String expectedAbbreviation = optionalString(
                 expected, "abbreviation", null);

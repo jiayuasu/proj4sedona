@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
 import org.datasyslab.proj4sedona.constants.Values;
 import org.datasyslab.proj4sedona.core.Point;
+import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.core.ProjectionDef;
 
 import java.util.HashMap;
@@ -374,6 +375,43 @@ class WktParserTest {
         assertEquals("longlat", def.getProjName());
         assertEquals(6378137.0, def.getA(), 0.1);
         assertEquals(298.257223563, def.getRf(), 1e-6);
+    }
+
+    @Test
+    @DisplayName("Parse PROJJSON ellipsoid radius with an explicit length unit")
+    void testParseProjJsonRadiusWithUnit() {
+        String projjson = "{"
+            + "\"type\":\"GeographicCRS\","
+            + "\"datum\":{\"ellipsoid\":{"
+            + "\"name\":\"Sphere\","
+            + "\"radius\":{\"value\":6371.228,\"unit\":{"
+            + "\"type\":\"LinearUnit\",\"name\":\"kilometre\","
+            + "\"conversion_factor\":1000}}}}}";
+
+        Proj proj = new Proj(projjson);
+
+        assertEquals(6371228.0, proj.getA(), 0.0);
+        assertEquals(6371228.0, proj.getB(), 0.0);
+    }
+
+    @Test
+    @DisplayName("Parse PROJJSON ellipsoid semi-minor axis with an explicit length unit")
+    void testParseProjJsonSemiMinorAxisWithUnit() {
+        String projjson = "{"
+            + "\"type\":\"GeographicCRS\","
+            + "\"datum\":{\"ellipsoid\":{"
+            + "\"name\":\"WGS 84\","
+            + "\"semi_major_axis\":{\"value\":6378.137,\"unit\":{"
+            + "\"type\":\"LinearUnit\",\"name\":\"kilometre\","
+            + "\"conversion_factor\":1000}},"
+            + "\"semi_minor_axis\":{\"value\":6356.752314245,\"unit\":{"
+            + "\"type\":\"LinearUnit\",\"name\":\"kilometre\","
+            + "\"conversion_factor\":1000}}}}}";
+
+        Proj proj = new Proj(projjson);
+
+        assertEquals(6378137.0, proj.getA(), 0.0);
+        assertEquals(6356752.314245, proj.getB(), 1e-6);
     }
 
     @Test

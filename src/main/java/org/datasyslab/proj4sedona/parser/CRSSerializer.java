@@ -7,6 +7,7 @@ import org.datasyslab.proj4sedona.constants.Datum;
 import org.datasyslab.proj4sedona.constants.Ellipsoid;
 import org.datasyslab.proj4sedona.constants.Units;
 import org.datasyslab.proj4sedona.constants.Values;
+import org.datasyslab.proj4sedona.core.CoordinateAxis;
 import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.defs.Defs;
@@ -209,6 +210,13 @@ public final class CRSSerializer {
     public static String toProjString(ProjectionParams params) {
         if (params == null) {
             return null;
+        }
+        if (requiresMeridianAxisValidation(params)) {
+            String axisError =
+                meridianAxisValidationError(params, effectiveAxis(params));
+            if (axisError != null) {
+                throw new UnsupportedOperationException(axisError);
+            }
         }
 
         StringBuilder sb = new StringBuilder();
@@ -941,13 +949,16 @@ public final class CRSSerializer {
 
         // Coordinate System
         sb.append("CS[Cartesian,2],");
+        boolean meridianAxes = hasMeridianAxisMetadata(params);
         if ("krovak".equals(proj) && !isKrovakNorthOrientated(params)) {
             sb.append("AXIS[\"southing\",south,ORDER[1]],");
             sb.append("AXIS[\"westing\",west,ORDER[2]],");
         } else {
-            appendWkt2HorizontalAxes(sb, params, false, true);
+            appendWkt2HorizontalAxes(sb, params, false, !meridianAxes);
         }
-        appendWkt2Unit(sb, params);
+        if (!meridianAxes) {
+            appendWkt2Unit(sb, params);
+        }
     }
 
     private static void appendWkt2Datum(StringBuilder sb, ProjectionParams params) {
@@ -1107,6 +1118,11 @@ public final class CRSSerializer {
     private static void appendWkt2HorizontalAxes(
             StringBuilder sb, ProjectionParams params, boolean geographic,
             boolean trailingComma) {
+        if (!geographic && hasMeridianAxisMetadata(params)) {
+            appendWkt2MeridianAxes(sb, params.coordinateAxes, trailingComma);
+            return;
+        }
+
         String axis = effectiveAxis(params);
         for (int i = 0; i < 2; i++) {
             if (i > 0) {
@@ -1126,6 +1142,69 @@ public final class CRSSerializer {
         if (trailingComma) {
             sb.append(",");
         }
+    }
+
+    private static void appendWkt2MeridianAxes(
+            StringBuilder sb, List<CoordinateAxis> axes, boolean trailingComma) {
+        for (int i = 0; i < axes.size(); i++) {
+            if (i > 0) {
+                sb.append(",");
+            }
+            CoordinateAxis axis = axes.get(i);
+            sb.append("AXIS[\"")
+              .append(escapeWktQuotedText(wkt2AxisLabel(axis)))
+              .append("\",")
+              .append(axis.getDirection().toLowerCase(Locale.ROOT));
+
+            CoordinateAxis.Meridian meridian = axis.getMeridian();
+            if (meridian != null) {
+                sb.append(",MERIDIAN[")
+                  .append(formatAngle(meridian.getLongitude()));
+                appendWkt2CoordinateAxisUnit(
+                    sb, meridian.getUnit(), true);
+                sb.append("]");
+            }
+
+            int order = axis.getOrder() != null ? axis.getOrder() : i + 1;
+            sb.append(",ORDER[").append(order).append("]");
+            appendWkt2CoordinateAxisUnit(sb, axis.getUnit(), false);
+            sb.append("]");
+        }
+        if (trailingComma) {
+            sb.append(",");
+        }
+    }
+
+    private static String wkt2AxisLabel(CoordinateAxis axis) {
+        String name = axis.getName() != null ? axis.getName().trim() : "";
+        String abbreviation = axis.getAbbreviation() != null
+            ? axis.getAbbreviation().trim() : "";
+        if (abbreviation.isEmpty()) {
+            return name;
+        }
+        if (name.isEmpty()) {
+            return "(" + abbreviation + ")";
+        }
+        return name + " (" + abbreviation + ")";
+    }
+
+    private static String escapeWktQuotedText(String value) {
+        return value.replace("\"", "\"\"");
+    }
+
+    private static void appendWkt2CoordinateAxisUnit(
+            StringBuilder sb, CoordinateAxis.Unit unit, boolean angular) {
+        String defaultName = angular ? "degree" : "metre";
+        String name = unit != null && unit.getName() != null
+            ? unit.getName() : defaultName;
+        Double factor = unit != null ? unit.getConversionFactor() : null;
+        sb.append(",")
+          .append(angular ? "ANGLEUNIT" : "LENGTHUNIT")
+          .append("[\"")
+          .append(escapeWktQuotedText(name))
+          .append("\",")
+          .append(factor)
+          .append("]");
     }
 
     private static void appendWkt2AngleParameter(
@@ -1435,6 +1514,10 @@ public final class CRSSerializer {
     private static Map<String, Object> buildProjJsonEllipsoid(ProjectionParams params) {
         Map<String, Object> ellipsoid = new LinkedHashMap<>();
         ellipsoid.put("name", getEllipsoidName(params));
+        if (params.a > 0.0 && params.a == params.b) {
+            ellipsoid.put("radius", params.a);
+            return ellipsoid;
+        }
         ellipsoid.put("semi_major_axis", params.a);
         // Emit the rf literal only when it is consistent with the effective
         // semi-minor axis; b is authoritative when both are present, so a stale
@@ -1622,6 +1705,15 @@ public final class CRSSerializer {
     private static Map<String, Object> buildProjJsonProjCS(ProjectionParams params) {
         Map<String, Object> cs = new LinkedHashMap<>();
         cs.put("subtype", "Cartesian");
+
+        if (hasMeridianAxisMetadata(params)) {
+            List<Map<String, Object>> axes = new ArrayList<>();
+            for (CoordinateAxis axis : params.coordinateAxes) {
+                axes.add(buildProjJsonCoordinateAxis(params, axis));
+            }
+            cs.put("axis", axes);
+            return cs;
+        }
         
         String unitName = linearUnitName(params);
         double unitToMeter = linearUnitToMeter(params);
@@ -1639,6 +1731,49 @@ public final class CRSSerializer {
             ));
         }
         return cs;
+    }
+
+    private static Map<String, Object> buildProjJsonCoordinateAxis(
+            ProjectionParams params, CoordinateAxis axis) {
+        MeridianAxisRole role = meridianAxisRole(params, axis);
+        Map<String, Object> result = new LinkedHashMap<>();
+        String name = axis.getName();
+        if (name == null || name.trim().isEmpty()) {
+            name = role == MeridianAxisRole.EASTING ? "Easting" : "Northing";
+        }
+        String abbreviation = axis.getAbbreviation();
+        if (abbreviation == null || abbreviation.trim().isEmpty()) {
+            abbreviation = role == MeridianAxisRole.EASTING ? "E" : "N";
+        }
+        result.put("name", name);
+        result.put("abbreviation", abbreviation);
+        result.put("direction", axis.getDirection().toLowerCase(Locale.ROOT));
+
+        CoordinateAxis.Meridian meridian = axis.getMeridian();
+        if (meridian != null) {
+            Map<String, Object> meridianJson = new LinkedHashMap<>();
+            Map<String, Object> longitude = new LinkedHashMap<>();
+            longitude.put("value", meridian.getLongitude());
+            longitude.put(
+                "unit",
+                buildProjJsonCoordinateAxisUnit(
+                    meridian.getUnit(), "AngularUnit"));
+            meridianJson.put("longitude", longitude);
+            result.put("meridian", meridianJson);
+        }
+        result.put(
+            "unit",
+            buildProjJsonCoordinateAxisUnit(axis.getUnit(), "LinearUnit"));
+        return result;
+    }
+
+    private static Map<String, Object> buildProjJsonCoordinateAxisUnit(
+            CoordinateAxis.Unit unit, String canonicalType) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("type", canonicalType);
+        result.put("name", unit.getName());
+        result.put("conversion_factor", unit.getConversionFactor());
+        return result;
     }
 
     private static Map<String, Object> createAxis(
@@ -1708,6 +1843,11 @@ public final class CRSSerializer {
      */
     public static String[] toAuthority(ProjectionParams params) {
         if (params == null) {
+            return null;
+        }
+        String axis = effectiveAxis(params);
+        if (requiresMeridianAxisValidation(params)
+                && meridianAxisValidationError(params, axis) != null) {
             return null;
         }
 
@@ -2226,7 +2366,7 @@ public final class CRSSerializer {
                 }
             }
 
-            if (!Objects.equals(effectiveAxis(params), effectiveAxis(refParams))
+            if (!axesMatchDefinition(params, refParams)
                     // WKT/PROJJSON describe UTM as parameterized Transverse
                     // Mercator, so zone/south are already represented by long0,
                     // y0, and the other numeric checks above.
@@ -2245,6 +2385,33 @@ public final class CRSSerializer {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private static boolean axesMatchDefinition(
+            ProjectionParams params, ProjectionParams reference) {
+        String inputAxis = effectiveAxis(params);
+        String referenceAxis = effectiveAxis(reference);
+        if (Objects.equals(inputAxis, referenceAxis)) {
+            return true;
+        }
+        if (meridianAxisValidationError(params, inputAxis) != null
+                || referenceAxis.length() != 3 || referenceAxis.charAt(2) != 'u'
+                || params.coordinateAxes == null
+                || params.coordinateAxes.size() != 2) {
+            return false;
+        }
+        for (int i = 0; i < 2; i++) {
+            MeridianAxisRole role =
+                meridianAxisRole(params, params.coordinateAxes.get(i));
+            char referenceDirection = referenceAxis.charAt(i);
+            if ((role == MeridianAxisRole.EASTING && referenceDirection != 'e')
+                    || (role == MeridianAxisRole.NORTHING
+                        && referenceDirection != 'n')
+                    || role == MeridianAxisRole.UNKNOWN) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean isUtmTmercPair(String left, String right) {
@@ -2543,6 +2710,9 @@ public final class CRSSerializer {
      * when they conflict, and 0 for spheres, per WKT convention.
      */
     private static double effectiveRf(ProjectionParams params) {
+        if (params.a > 0.0 && params.a == params.b) {
+            return 0.0;
+        }
         if (params.b > 0 && !rfConsistentWithB(params)) {
             return params.a == params.b ? 0 : params.a / (params.a - params.b);
         }
@@ -3181,8 +3351,7 @@ public final class CRSSerializer {
      * @param proj pre-normalized projection short name (from normalizeProjName)
      */
     private static boolean isPolarStereographic(String proj, ProjectionParams params) {
-        return "stere".equals(proj) && params.lat0 != null
-                && Math.abs(Math.cos(params.lat0)) <= Values.EPSLN;
+        return "stere".equals(proj) && isPolarLatitude(params.lat0);
     }
 
     private static boolean hasNonGreenwichPrimeMeridian(ProjectionParams params) {
@@ -3202,12 +3371,43 @@ public final class CRSSerializer {
 
     private static boolean isMeridianQualifiedPolarAxis(
             ProjectionParams params, String axis) {
-        if (params.projStr != null
-                || (!"nnu".equals(axis) && !"ssu".equals(axis))
-                || params.lat0 == null) {
+        return meridianAxisValidationError(params, axis) == null;
+    }
+
+    private static boolean hasMeridianAxisMetadata(ProjectionParams params) {
+        if (params.coordinateAxes == null) {
             return false;
         }
-        return Math.abs(Math.cos(params.lat0)) <= Values.EPSLN;
+        for (CoordinateAxis axis : params.coordinateAxes) {
+            if (axis != null && axis.getMeridian() != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasRetainedPolarCoordinateSystem(
+            ProjectionParams params) {
+        return params.coordinateSystemType != null
+            && isPolarLatitude(params.lat0)
+            && !"longlat".equals(normalizeProjName(params.projName))
+            && !isGeocentric(params);
+    }
+
+    private static boolean isPolarLatitude(Double latitude) {
+        return latitude != null
+            && Double.isFinite(latitude)
+            && Math.abs(Math.abs(latitude) - Values.HALF_PI) <= Values.EPSLN;
+    }
+
+    private static boolean requiresMeridianAxisValidation(
+            ProjectionParams params) {
+        String axis = effectiveAxis(params);
+        return hasMeridianAxisMetadata(params)
+            || "nnu".equals(axis)
+            || "ssu".equals(axis)
+            || (hasRetainedPolarCoordinateSystem(params)
+                && parseAuthorityCode(params.srsCode) != null);
     }
 
     private static boolean isValidProjAxisPermutation(String axis) {
@@ -3235,6 +3435,16 @@ public final class CRSSerializer {
     private static void validateStandardAxis(
             ProjectionParams params, String proj, StandardFormat format) {
         String axis = effectiveAxis(params);
+        if (requiresMeridianAxisValidation(params)) {
+            String error = meridianAxisValidationError(params, axis);
+            if (format != StandardFormat.WKT1 && error == null) {
+                return;
+            }
+            if (error == null) {
+                error = "Meridian-qualified polar axes cannot be represented by WKT1";
+            }
+            throw unsupportedStandardParameter(error);
+        }
         if ("krovak".equals(proj)) {
             if ("enu".equals(axis) || "swu".equals(axis)) {
                 return;
@@ -3262,6 +3472,173 @@ public final class CRSSerializer {
                 "Axis " + axis + " cannot be represented by a two-dimensional "
                     + formatName(format) + " CRS");
         }
+    }
+
+    private static String meridianAxisValidationError(
+            ProjectionParams params, String axisOrder) {
+        if (!"nnu".equals(axisOrder) && !"ssu".equals(axisOrder)) {
+            return "Meridian-qualified axes require two matching north or south directions";
+        }
+        if (params.coordinateAxes == null || params.coordinateAxes.size() != 2) {
+            return "Axis " + axisOrder
+                + " requires two retained meridian-qualified horizontal axes";
+        }
+        if (params.coordinateSystemType == null
+                || !"Cartesian".equalsIgnoreCase(params.coordinateSystemType)) {
+            return "Meridian-qualified projected axes require a Cartesian coordinate system";
+        }
+        if (!isPolarLatitude(params.lat0)) {
+            return "Meridian-qualified horizontal axes require a polar latitude of origin";
+        }
+
+        boolean northPole = params.lat0 > 0.0;
+        String expectedDirection = northPole ? "south" : "north";
+        boolean anyOrder = false;
+        boolean allOrder = true;
+        MeridianAxisRole firstRole = null;
+        MeridianAxisRole secondRole = null;
+        double expectedLinearFactor = linearUnitToMeter(params);
+
+        for (int i = 0; i < params.coordinateAxes.size(); i++) {
+            CoordinateAxis coordinateAxis = params.coordinateAxes.get(i);
+            if (coordinateAxis == null || coordinateAxis.getDirection() == null
+                    || !expectedDirection.equalsIgnoreCase(
+                        coordinateAxis.getDirection())) {
+                return "Polar axis directions must both be " + expectedDirection
+                    + " at the " + (northPole ? "north" : "south") + " pole";
+            }
+
+            char parsedDirection = mapStandardAxisDirection(
+                coordinateAxis.getDirection());
+            if (parsedDirection != axisOrder.charAt(i)) {
+                return "Retained coordinate-axis order does not match axis "
+                    + axisOrder;
+            }
+
+            Integer order = coordinateAxis.getOrder();
+            anyOrder |= order != null;
+            allOrder &= order != null;
+            if (order != null && order != i + 1) {
+                return "WKT axis ORDER must match its position in the coordinate system";
+            }
+
+            CoordinateAxis.Unit linearUnit = coordinateAxis.getUnit();
+            String linearUnitError = validateCoordinateAxisUnit(
+                linearUnit, "LinearUnit", "horizontal axis");
+            if (linearUnitError != null) {
+                return linearUnitError;
+            }
+            double linearFactor = linearUnit.getConversionFactor();
+            if (!sameUnitFactor(linearFactor, expectedLinearFactor)) {
+                return "Horizontal-axis units must match the projected CRS unit";
+            }
+
+            CoordinateAxis.Meridian meridian = coordinateAxis.getMeridian();
+            if (meridian == null || !Double.isFinite(meridian.getLongitude())) {
+                return "Each duplicate polar axis requires a finite meridian";
+            }
+            String angularUnitError = validateCoordinateAxisUnit(
+                meridian.getUnit(), "AngularUnit", "axis meridian");
+            if (angularUnitError != null) {
+                return angularUnitError;
+            }
+
+            MeridianAxisRole role = meridianAxisRole(params, coordinateAxis);
+            if (role == MeridianAxisRole.UNKNOWN) {
+                return "Axis meridians must identify one easting and one northing axis";
+            }
+            if (i == 0) {
+                firstRole = role;
+            } else {
+                secondRole = role;
+            }
+
+        }
+
+        if (anyOrder != allOrder) {
+            return "WKT axis ORDER must be present on every axis or none";
+        }
+        if (firstRole == secondRole) {
+            return "Polar axes must identify one easting and one northing axis";
+        }
+        return null;
+    }
+
+    private static String validateCoordinateAxisUnit(
+            CoordinateAxis.Unit unit, String expectedType, String label) {
+        if (unit == null || unit.getConversionFactor() == null
+                || !Double.isFinite(unit.getConversionFactor())
+                || unit.getConversionFactor() <= 0.0) {
+            return "The " + label + " requires a positive finite unit factor";
+        }
+        if (unit.getType() != null
+                && !expectedType.equalsIgnoreCase(unit.getType())) {
+            return "The " + label + " must use a " + expectedType;
+        }
+        if (unit.getName() == null || unit.getName().trim().isEmpty()) {
+            return "The " + label + " requires a unit name";
+        }
+        return null;
+    }
+
+    private static boolean sameUnitFactor(double left, double right) {
+        return Math.abs(left - right)
+            <= 1e-12 * Math.max(Math.max(Math.abs(left), Math.abs(right)), 1.0);
+    }
+
+    private static boolean sameLongitude(double left, double right) {
+        return Math.abs(Math.IEEEremainder(left - right, 2.0 * Math.PI))
+            <= Values.EPSLN;
+    }
+
+    private static char mapStandardAxisDirection(String direction) {
+        if ("north".equalsIgnoreCase(direction)) {
+            return 'n';
+        }
+        if ("south".equalsIgnoreCase(direction)) {
+            return 's';
+        }
+        if ("east".equalsIgnoreCase(direction)) {
+            return 'e';
+        }
+        if ("west".equalsIgnoreCase(direction)) {
+            return 'w';
+        }
+        return '\0';
+    }
+
+    private static MeridianAxisRole meridianAxisRole(
+            ProjectionParams params, CoordinateAxis axis) {
+        if (axis == null || axis.getMeridian() == null
+                || axis.getMeridian().getUnit() == null
+                || axis.getMeridian().getUnit().getConversionFactor() == null
+                || !isPolarLatitude(params.lat0)) {
+            return MeridianAxisRole.UNKNOWN;
+        }
+        CoordinateAxis.Meridian meridian = axis.getMeridian();
+        double actual = meridian.getLongitude()
+            * meridian.getUnit().getConversionFactor();
+        if (!Double.isFinite(actual)) {
+            return MeridianAxisRole.UNKNOWN;
+        }
+        double central = params.long0 != null ? params.long0 : 0.0;
+        double easting = central + Values.HALF_PI;
+        double northing = central + (params.lat0 > 0.0 ? Math.PI : 0.0);
+        boolean matchesEasting = sameLongitude(actual, easting);
+        boolean matchesNorthing = sameLongitude(actual, northing);
+        if (matchesEasting && !matchesNorthing) {
+            return MeridianAxisRole.EASTING;
+        }
+        if (matchesNorthing && !matchesEasting) {
+            return MeridianAxisRole.NORTHING;
+        }
+        return MeridianAxisRole.UNKNOWN;
+    }
+
+    private enum MeridianAxisRole {
+        EASTING,
+        NORTHING,
+        UNKNOWN
     }
 
     private static boolean isEastWest(char direction) {

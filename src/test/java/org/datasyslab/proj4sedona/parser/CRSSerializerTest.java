@@ -898,6 +898,32 @@ class CRSSerializerTest {
         
         String json = CRSSerializer.toProjJson(proj);
         assertTrue(json.contains("6370997"));
+        assertTrue(json.contains("\"radius\""), json);
+
+        String compact = proj.toProjJson(false);
+        String firstRoundTrip = new Proj(compact).toProjJson(false);
+        assertEquals(
+            firstRoundTrip,
+            new Proj(firstRoundTrip).toProjJson(false));
+    }
+
+    @Test
+    @DisplayName("PROJJSON equal ellipsoid axes reparse as a sphere")
+    void testEqualEllipsoidAxesRoundTripAsSphere() {
+        Proj sphere = new Proj(
+            "+proj=merc +R=6371228 +lat_ts=0 +lon_0=0 "
+                + "+x_0=0 +y_0=0 +k=1 +units=m");
+        String radiusJson = sphere.toProjJson(false);
+        String equalAxesJson = radiusJson.replaceFirst(
+            "\"radius\":([0-9.Ee+\\-]+)",
+            "\"semi_major_axis\":$1,\"semi_minor_axis\":$1");
+
+        assertNotEquals(radiusJson, equalAxesJson);
+        String firstRoundTrip = new Proj(equalAxesJson).toProjJson(false);
+        assertTrue(firstRoundTrip.contains("\"radius\""), firstRoundTrip);
+        assertEquals(
+            firstRoundTrip,
+            new Proj(firstRoundTrip).toProjJson(false));
     }
 
     @Test

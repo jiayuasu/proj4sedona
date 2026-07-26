@@ -217,7 +217,8 @@ def _discover_cases(verbose: bool) -> List[Dict[str, Any]]:
                 "EPSG:{} was selected without a normalized meridian".format(info.code)
             )
 
-        wkt_roundtrip = CRS.from_wkt(crs.to_wkt(version="WKT2_2019"))
+        source_wkt2 = crs.to_wkt(version="WKT2_2019")
+        wkt_roundtrip = CRS.from_wkt(source_wkt2)
         if _axis_signature(wkt_roundtrip) != expected_axes:
             raise ValueError(
                 "EPSG:{} changes axis metadata in pyproj WKT2 round trip".format(
@@ -245,6 +246,7 @@ def _discover_cases(verbose: bool) -> List[Dict[str, Any]]:
             "authority": str(info.auth_name),
             "code": str(info.code),
             "name": str(info.name),
+            "source_wkt2": source_wkt2,
             "source_projjson": source_projjson,
             "expected_axes": expected_axes,
             "legacy_proj_string": legacy_proj_string,
@@ -284,7 +286,10 @@ def generate_meridian_axis_reference(
         "baseline_codes": BASELINE_CODES,
         "expected_case_count": len(cases),
         "expected_formats": EXPECTED_FORMATS,
-        "expected_comparison_count": len(cases) * len(EXPECTED_FORMATS),
+        "expected_comparison_count": (
+            len(cases) * len(EXPECTED_FORMATS) * 2
+        ),
+        "expected_parser_comparison_count": len(cases) * 2,
         "test_cases": cases,
     }
 

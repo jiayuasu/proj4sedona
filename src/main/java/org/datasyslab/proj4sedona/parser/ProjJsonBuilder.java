@@ -773,8 +773,8 @@ public final class ProjJsonBuilder {
         if (unitNode == null || unitNode.size() < 3) {
             return null;
         }
-        double factor = parseDouble(unitNode.get(2));
-        return factor > 0 ? factor : null;
+        Double factor = parseDouble(unitNode.get(2));
+        return factor != null && Double.isFinite(factor) && factor > 0 ? factor : null;
     }
 
     /**

@@ -173,6 +173,22 @@ class CoordinateAxisParserTest {
             () -> WktParser.parse(object(
                 "type", "ProjectedCRS",
                 "id", object("authority", "EPSG", "code", 32661))));
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> WktParser.parse(object(
+                "type", "ProjectedCRS",
+                "coordinate_system", object(
+                    "subtype", "Cartesian", "axis", Arrays.asList()),
+                "id", object("authority", "EPSG", "code", 5041))));
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> WktParser.parse(object(
+                "type", "ProjectedCRS",
+                "coordinate_system", object(
+                    "axis", Arrays.asList(
+                        object("name", "X", "direction", "east"),
+                        object("name", "Y", "direction", "north"))),
+                "id", object("authority", "EPSG", "code", 5041))));
 
         Map<String, Object> fractionalOrder = object(
             "name", "Northing", "direction", "north", "order", 1.5);
@@ -206,6 +222,13 @@ class CoordinateAxisParserTest {
         assertThrows(
             IllegalArgumentException.class,
             () -> WktParser.parse(missingWktMeridianUnit));
+
+        String malformedWktMeridianUnit = upsNorthSimplifiedWkt2().replace(
+            "MERIDIAN[180,UNIT[\"degree\",0.0174532925199433]]",
+            "MERIDIAN[180,UNIT[\"degree\",\"bogus\"]]");
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> WktParser.parse(malformedWktMeridianUnit));
     }
 
     private static void assertAxis(
