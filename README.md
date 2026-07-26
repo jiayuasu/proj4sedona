@@ -327,8 +327,9 @@ mvn verify -Pbenchmarks
 This generates `target/benchmark_report.md` containing:
 1. **Speedup vs pyproj**: Performance comparison table
 2. **Correctness vs pyproj**: Error statistics (max/avg error per category)
-3. **Parity coverage**: Every generated transform, grid, parser, and serializer case
-   is reported as compared, explicitly skipped with a reason, or failed
+3. **Parity coverage**: Every generated transform, grid, parser, serializer, and
+   exhaustive active-EPSG meridian-axis case is reported as compared, explicitly
+   skipped with a reason, or failed
 
 The correctness pass is a build gate, not a best-effort benchmark. Missing or duplicate
 reference rows, non-finite results, parse/serialization errors, stale skip or tolerance
