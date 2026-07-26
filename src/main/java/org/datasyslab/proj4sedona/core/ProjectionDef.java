@@ -1,5 +1,9 @@
 package org.datasyslab.proj4sedona.core;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Projection definition - holds all parsed parameters for a coordinate system.
  * Mirrors: ProjectionDefinition type in lib/defs.js
@@ -50,6 +54,8 @@ public class ProjectionDef {
     private String units;          // Unit name: m, ft, us-ft, etc.
     private Double fromGreenwich;  // Prime meridian offset in radians
     private String axis;           // Axis order: enu, neu, etc. (default "enu")
+    private String coordinateSystemType;
+    private List<CoordinateAxis> coordinateAxes = Collections.emptyList();
 
     // UTM specific
     private Integer zone;          // UTM zone number
@@ -181,6 +187,21 @@ public class ProjectionDef {
 
     public String getAxis() { return axis; }
     public void setAxis(String axis) { this.axis = axis; }
+
+    public String getCoordinateSystemType() { return coordinateSystemType; }
+    public void setCoordinateSystemType(String coordinateSystemType) {
+        this.coordinateSystemType = coordinateSystemType;
+    }
+
+    public List<CoordinateAxis> getCoordinateAxes() { return coordinateAxes; }
+    public void setCoordinateAxes(List<CoordinateAxis> coordinateAxes) {
+        if (coordinateAxes == null || coordinateAxes.isEmpty()) {
+            this.coordinateAxes = Collections.emptyList();
+        } else {
+            this.coordinateAxes =
+                Collections.unmodifiableList(new ArrayList<>(coordinateAxes));
+        }
+    }
 
     public Integer getZone() { return zone; }
     public void setZone(Integer zone) { this.zone = zone; }

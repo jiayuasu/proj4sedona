@@ -328,6 +328,8 @@ public class Proj {
         p.units = def.getUnits();
         p.fromGreenwich = def.getFromGreenwich();
         p.axis = def.getAxis() != null ? def.getAxis() : "enu";
+        p.coordinateSystemType = def.getCoordinateSystemType();
+        p.coordinateAxes = def.getCoordinateAxes();
 
         // UTM
         p.zone = def.getZone();
