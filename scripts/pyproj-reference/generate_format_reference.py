@@ -100,11 +100,7 @@ def get_test_crs_definitions() -> List[Dict[str, Any]]:
         {
             "input": "+proj=longlat +ellps=intl +towgs84=-87,-98,-121 +axis=enu +no_defs",
             "name": "longlat_three_parameter_datum",
-            "desc": "Geographic CRS with a three-parameter datum transformation",
-            # The Java implementation deliberately refuses standard formats that
-            # would otherwise discard the bound-CRS operation.  A refusal is part
-            # of the contract and is checked by the benchmark.
-            "java_supported_formats": ["wkt1", "proj_string"]
+            "desc": "Geographic CRS with a three-parameter datum transformation"
         },
     ]
 

@@ -258,9 +258,17 @@ mode (`+R_A`), `ob_tran`, Tilted Perspective, unsupported Oblique Mercator varia
 Mercator is format-dependent: WKT2 and PROJJSON reject it, while WKT1 emits
 the executable `Fast_Transverse_Mercator` method. Other uses of `+approx` are rejected
 by all standard exporters. WKT2 and
-PROJJSON also reject non-zero `+towgs84` operations until bound-CRS export is
-implemented; WKT1 preserves them with `TOWGS84`. Geocentric CRS export is supported as
-a PROJ string or PROJJSON, but not yet as WKT.
+PROJJSON preserve coordinate-affecting three- and seven-parameter `+towgs84`
+operations as a `BoundCRS` targeting WGS 84. This includes zero-valued operations
+on a non-WGS84 ellipsoid when they are not recoverable from a canonical named datum;
+the ellipsoid conversion still changes coordinates in that case.
+Geographic and projected sources target EPSG:4326 with EPSG methods 9603 and 9606;
+geocentric PROJJSON targets EPSG:4978 with methods 1031 and 1033. Helmert BoundCRS
+import is limited to those target/method combinations so an arbitrary target or
+coordinate-frame rotation cannot be silently rewritten as `+towgs84`. WKT1 preserves
+the same operation with `TOWGS84`. Grid-shift operations remain importable but are not
+yet exportable. Geocentric CRS export is supported as a PROJ string or PROJJSON, but
+not yet as WKT.
 
 For supported definitions, standard exports preserve projection parameters,
 linear-unit factors, horizontal axis order and direction, and non-Greenwich prime

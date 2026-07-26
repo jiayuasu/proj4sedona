@@ -8,6 +8,8 @@ import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
 
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -1085,8 +1087,8 @@ class CRSSerializerTest {
     @DisplayName("Issue #46: WKT2 round-trip should not drift lat_0 for EPSG:28992 (sterea)")
     void testWkt2RoundTripNoDriftSterea28992() {
         // Projection parameters of EPSG:28992 (Amersfoort / RD New), without its
-        // Helmert operation: this test targets angle drift, while WKT2 export now
-        // correctly rejects CRS definitions whose TOWGS84 operation would be lost.
+        // Helmert operation: this test isolates angle drift; BoundCRS operation
+        // round trips are covered separately.
         Proj proj = new Proj("+proj=sterea +lat_0=52.15616055555555 "
             + "+lon_0=5.38763888888889 +k=0.9999079 +x_0=155000 +y_0=463000 "
             + "+ellps=bessel +units=m +no_defs");
@@ -1476,7 +1478,12 @@ class CRSSerializerTest {
         // export carried the 4326 id for a non-WGS84 ellipsoid.
         Proj q = new Proj("+proj=longlat +datum=WGS84 +a=6378137 +b=6300000 +rf=298.257223563 +no_defs");
         assertNull(CRSSerializer.toAuthority(q.getParams()), "conflicting b must not identify");
-        assertFalse(CRSSerializer.toProjJson(q).contains("4326"), "no EPSG:4326 id");
+        Map<String, Object> json = CRSSerializer.toProjJsonMap(q.getParams());
+        assertFalse(json.containsKey("id"), "the BoundCRS wrapper must not carry a source id");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> source = (Map<String, Object>) json.get("source_crs");
+        assertNotNull(source);
+        assertFalse(source.containsKey("id"), "the source CRS must not carry EPSG:4326");
 
         // Genuine WGS84 still identifies, and the rf discrimination still separates
         // GRS 1980 (b only 0.1 mm away) from WGS 84.
