@@ -5,10 +5,12 @@ import java.util.Objects;
 /**
  * Coordinate-system axis metadata retained from WKT2 and PROJJSON definitions.
  *
- * <p>The compact PROJ {@code +axis=} value remains the representation used by
- * coordinate transforms. This value object keeps the richer standard-format
- * metadata needed to reproduce axis definitions that cannot be expressed by a
- * PROJ axis permutation, such as polar axes qualified by meridians.</p>
+ * <p>The compact PROJ {@code +axis=} value remains the operational
+ * representation for ordinary coordinate systems. This value object keeps the
+ * richer standard-format metadata needed to reproduce axis definitions that
+ * cannot be expressed by a PROJ axis permutation. When axis enforcement is
+ * requested for meridian-qualified polar axes, their retained meridians also
+ * distinguish the easting and northing coordinate roles.</p>
  */
 public final class CoordinateAxis {
 

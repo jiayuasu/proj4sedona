@@ -130,7 +130,10 @@ public class ProjectionParams {
     /** Coordinate-system subtype retained from WKT2/PROJJSON (for example Cartesian). */
     public String coordinateSystemType;
 
-    /** Detailed WKT2/PROJJSON coordinate-axis metadata, when available. */
+    /**
+     * Detailed WKT2/PROJJSON coordinate-axis metadata, used for faithful
+     * serialization and duplicate-direction polar axis enforcement.
+     */
     public List<CoordinateAxis> coordinateAxes = Collections.emptyList();
 
     // ==================== UTM Specific ====================

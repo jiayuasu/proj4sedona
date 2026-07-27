@@ -252,10 +252,14 @@ supplied in raw PROJ input, incomplete or inconsistent meridian metadata, and al
 other invalid axis permutations are rejected with
 `UnsupportedOperationException`.
 
-The retained meridians are CRS serialization metadata. Coordinate transforms keep
-proj4js-compatible axis behavior and do not interpret meridians; callers should
-leave axis enforcement disabled for `nnu` and `ssu`. Ordinary valid PROJ axis
-permutations such as `enu` and `neu` are unchanged.
+The retained meridians also make duplicate-direction polar axes enforceable.
+With `enforceAxis=true`, coordinate transforms resolve each `nnu` or `ssu`
+horizontal coordinate to its positive easting or northing role from the axis
+meridian and projection origin. This supports both easting-first and
+northing-first definitions without treating the shared north/south direction as
+a sign inversion. Missing, malformed, or drifted metadata fails safely instead
+of dropping a coordinate. The default `enforceAxis=false` behavior and ordinary
+valid PROJ permutations such as `enu` and `neu` are unchanged.
 
 When a standard export would silently change coordinates, Proj4Sedona throws
 `UnsupportedOperationException` and, where the definition is representable in a

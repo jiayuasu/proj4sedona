@@ -1,6 +1,7 @@
 package org.datasyslab.proj4sedona.transform;
 
 import org.datasyslab.proj4sedona.constants.Values;
+import org.datasyslab.proj4sedona.common.MeridianAxisResolver;
 import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
@@ -155,11 +156,19 @@ public final class Transform {
             srcParams = source.getParams();
         }
 
-        // Step 2: Adjust for source axis order (e.g., "neu" to "enu")
-        if (enforceAxis && srcParams.axis != null && !"enu".equals(srcParams.axis)) {
-            p = AdjustAxis.adjustAxisToEnu(srcParams.axis, p, hasZ);
-            if (p == null) {
+        // Step 2: Adjust for source axis order (e.g., "neu" to "enu").
+        // Duplicate polar directions (nnu/ssu) are resolved from their retained
+        // axis meridians; those direction tokens are geometry, not sign changes.
+        if (enforceAxis) {
+            String sourceAxis = axisForEnforcement(srcParams);
+            if (sourceAxis == null) {
                 return null;
+            }
+            if (!"enu".equals(sourceAxis)) {
+                p = AdjustAxis.adjustAxisToEnu(sourceAxis, p, hasZ);
+                if (p == null) {
+                    return null;
+                }
             }
         }
 
@@ -228,8 +237,15 @@ public final class Transform {
         }
 
         // Step 8: Adjust for destination axis order (e.g., "enu" to "neu")
-        if (enforceAxis && destParams.axis != null && !"enu".equals(destParams.axis)) {
-            p = AdjustAxis.adjustAxisFromEnu(destParams.axis, p, hasZ || isGeocent(destParams));
+        if (enforceAxis) {
+            String destinationAxis = axisForEnforcement(destParams);
+            if (destinationAxis == null) {
+                return null;
+            }
+            if (!"enu".equals(destinationAxis)) {
+                p = AdjustAxis.adjustAxisFromEnu(
+                    destinationAxis, p, hasZ || isGeocent(destParams));
+            }
         }
 
         // Reset z if it wasn't in the original input — except when the destination is
@@ -240,6 +256,25 @@ public final class Transform {
         }
 
         return p;
+    }
+
+    /**
+     * Return the ordinary ENU permutation used by the axis adjuster.
+     *
+     * <p>Most definitions use the compact PROJ axis string directly. Polar
+     * coordinate systems with duplicate north/south directions require the
+     * richer meridian metadata to distinguish easting from northing. Invalid or
+     * drifted retained metadata returns {@code null} so enforcement fails
+     * safely instead of silently duplicating or dropping a coordinate.</p>
+     */
+    private static String axisForEnforcement(ProjectionParams params) {
+        if (!MeridianAxisResolver.requiresResolution(params)) {
+            return params.axis != null ? params.axis : "enu";
+        }
+        MeridianAxisResolver.Resolution resolution =
+            MeridianAxisResolver.resolve(params);
+        return resolution.isValid()
+            ? resolution.getConventionalAxis() : null;
     }
 
     /**
