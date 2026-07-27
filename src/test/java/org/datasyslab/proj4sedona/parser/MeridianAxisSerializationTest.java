@@ -1,5 +1,6 @@
 package org.datasyslab.proj4sedona.parser;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -44,7 +45,11 @@ class MeridianAxisSerializationTest {
         String jsonFromWkt = new Proj(wkt2).toProjJson(false);
         assertEquals(jsonFromWkt, new Proj(jsonFromWkt).toProjJson(false));
 
-        assertThrows(UnsupportedOperationException.class, proj::toWkt1);
+        UnsupportedOperationException wkt1Error = assertThrows(
+            UnsupportedOperationException.class, proj::toWkt1);
+        assertTrue(
+            wkt1Error.getMessage().contains("use toProjString instead"),
+            wkt1Error.getMessage());
         assertEquals("EPSG:" + code, proj.toEpsgCode());
     }
 
@@ -259,6 +264,47 @@ class MeridianAxisSerializationTest {
         assertEquals(Integer.toString(code), proj.toAuthority()[1]);
     }
 
+    @ParameterizedTest(name = "EPSG:{0}")
+    @MethodSource("ordinaryPolarCrs")
+    void ordinaryPolarAxesRemainExportableWithoutUnverifiedAuthority(int code) {
+        Proj reparsed = new Proj(new Proj("EPSG:" + code).toWkt2());
+
+        assertEquals("enu", reparsed.getParams().axis);
+        assertNull(reparsed.toAuthority());
+        assertDoesNotThrow(reparsed::toProjString);
+        assertDoesNotThrow(reparsed::toWkt1);
+        assertDoesNotThrow(reparsed::toWkt2);
+        assertFalse(
+            CRSSerializer.toProjJsonMap(reparsed.getParams()).containsKey("id"));
+    }
+
+    @Test
+    void malformedMeridianAxesDoNotAdvertiseAnUnavailableProjFallback() {
+        String definition = polarCrs(
+            6931,
+            "Lambert Azimuthal Equal Area",
+            naturalOriginParameters(90, 0),
+            axis(
+                "Easting", "X", "south", null,
+                "\"metre\"", null),
+            axis(
+                "Northing", "Y", "south", meridian(180),
+                "\"metre\"", null));
+        Proj proj = new Proj(definition);
+
+        UnsupportedOperationException projError = assertThrows(
+            UnsupportedOperationException.class, proj::toProjString);
+        UnsupportedOperationException wkt2Error = assertThrows(
+            UnsupportedOperationException.class, proj::toWkt2);
+
+        assertFalse(
+            projError.getMessage().contains("use toProjString instead"),
+            projError.getMessage());
+        assertFalse(
+            wkt2Error.getMessage().contains("use toProjString instead"),
+            wkt2Error.getMessage());
+    }
+
     private static Stream<Arguments> sedonaPolarCrs() {
         return Stream.of(
             Arguments.of(
@@ -343,6 +389,10 @@ class MeridianAxisSerializationTest {
                         "\"metre\"", null))));
     }
 
+    private static Stream<Arguments> ordinaryPolarCrs() {
+        return Stream.of(Arguments.of(5041), Arguments.of(5042));
+    }
+
     private static Stream<Arguments> invalidPolarMetadata() {
         String parameters = naturalOriginParameters(90, 0);
         String validEasting =
@@ -353,14 +403,6 @@ class MeridianAxisSerializationTest {
             + "\"conversion_factor\":0.3048}";
 
         return Stream.of(
-            Arguments.of(
-                "ordinary east/north directions omit required polar meridians",
-                polarCrs(
-                    6931,
-                    "Lambert Azimuthal Equal Area",
-                    parameters,
-                    axis("Easting", "X", "east", null, "\"metre\"", null),
-                    axis("Northing", "Y", "north", null, "\"metre\"", null))),
             Arguments.of(
                 "one meridian is missing",
                 polarCrs(

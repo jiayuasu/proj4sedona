@@ -168,28 +168,6 @@ class CoordinateAxisParserTest {
 
     @Test
     void rejectsMalformedExplicitAxisMetadata() {
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> WktParser.parse(object(
-                "type", "ProjectedCRS",
-                "id", object("authority", "EPSG", "code", 32661))));
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> WktParser.parse(object(
-                "type", "ProjectedCRS",
-                "coordinate_system", object(
-                    "subtype", "Cartesian", "axis", Arrays.asList()),
-                "id", object("authority", "EPSG", "code", 5041))));
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> WktParser.parse(object(
-                "type", "ProjectedCRS",
-                "coordinate_system", object(
-                    "axis", Arrays.asList(
-                        object("name", "X", "direction", "east"),
-                        object("name", "Y", "direction", "north"))),
-                "id", object("authority", "EPSG", "code", 5041))));
-
         Map<String, Object> fractionalOrder = object(
             "name", "Northing", "direction", "north", "order", 1.5);
         assertThrows(

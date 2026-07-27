@@ -672,6 +672,45 @@ class CRSSerializerTest {
     }
 
     @Test
+    @DisplayName("identified ProjectedCRS remains usable without coordinate_system")
+    void testIdentifiedProjectedCrsWithoutCoordinateSystem() {
+        String utmWithoutCoordinateSystem =
+            "{\"type\":\"ProjectedCRS\",\"name\":\"WGS 84 / UTM zone 32N\","
+            + "\"base_crs\":{\"name\":\"WGS 84\",\"datum\":{"
+            + "\"type\":\"GeodeticReferenceFrame\","
+            + "\"name\":\"World Geodetic System 1984\","
+            + "\"ellipsoid\":{\"name\":\"WGS 84\","
+            + "\"semi_major_axis\":6378137,"
+            + "\"inverse_flattening\":298.257223563}}},"
+            + "\"conversion\":{\"name\":\"UTM zone 32N\","
+            + "\"method\":{\"name\":\"Transverse Mercator\"},"
+            + "\"parameters\":["
+            + "{\"name\":\"Latitude of natural origin\","
+            + "\"value\":0,\"unit\":\"degree\"},"
+            + "{\"name\":\"Longitude of natural origin\","
+            + "\"value\":9,\"unit\":\"degree\"},"
+            + "{\"name\":\"Scale factor at natural origin\",\"value\":0.9996},"
+            + "{\"name\":\"False easting\",\"value\":500000},"
+            + "{\"name\":\"False northing\",\"value\":0}]},"
+            + "\"id\":{\"authority\":\"EPSG\",\"code\":32632}}";
+
+        Proj proj = new Proj(utmWithoutCoordinateSystem);
+        Point projected = Proj4.proj4(
+            "+proj=longlat +datum=WGS84",
+            utmWithoutCoordinateSystem,
+            new Point(9, 50));
+
+        assertEquals("Transverse Mercator", proj.getParams().projName);
+        assertEquals(500000.0, projected.x, 1e-4);
+        assertEquals(5538630.7029, projected.y, 1e-4);
+        assertDoesNotThrow(proj::toProjString);
+        assertDoesNotThrow(proj::toWkt2);
+        assertDoesNotThrow(() -> proj.toProjJson());
+        assertArrayEquals(
+            new String[]{"EPSG", "32632"}, proj.toAuthority());
+    }
+
+    @Test
     @DisplayName("toEpsgCode: No id field with unknown datum returns null (not 4326)")
     void testToEpsgCodeNoIdGrs80() {
         String noId = "{\"type\":\"GeographicCRS\",\"name\":\"Unknown CRS\","

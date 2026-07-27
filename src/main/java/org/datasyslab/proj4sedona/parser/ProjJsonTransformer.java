@@ -44,19 +44,7 @@ public final class ProjJsonTransformer {
             return new ProjectionDef();
         }
 
-        if ("ProjectedCRS".equals(projjson.get("type"))
-                && (projjson.containsKey("id") || projjson.containsKey("ids"))) {
-            Object coordinateSystem = projjson.get("coordinate_system");
-            if (!(coordinateSystem instanceof Map)) {
-                throw new IllegalArgumentException(
-                    "Identified ProjectedCRS requires a coordinate_system");
-            }
-            validateIdentifiedProjectedCoordinateSystem(
-                (Map<String, Object>) coordinateSystem);
-        }
-
         ProjectionDef def = new ProjectionDef();
-        
         // Handle BoundCRS specially - recurse into source_crs
         if ("BoundCRS".equals(projjson.get("type"))) {
             Object sourceCrs = projjson.get("source_crs");
@@ -98,31 +86,6 @@ public final class ProjJsonTransformer {
         WktUtils.applyProjectionDefaults(def);
 
         return def;
-    }
-
-    private static void validateIdentifiedProjectedCoordinateSystem(
-            Map<String, Object> coordinateSystem) {
-        Object subtype = coordinateSystem.get("subtype");
-        if (subtype == null || subtype.toString().trim().isEmpty()) {
-            throw new IllegalArgumentException(
-                "Identified ProjectedCRS coordinate_system requires a subtype");
-        }
-        Object axisValue = coordinateSystem.get("axis");
-        if (!(axisValue instanceof List)) {
-            throw new IllegalArgumentException(
-                "Identified ProjectedCRS coordinate_system requires an axis array");
-        }
-        List<?> axes = (List<?>) axisValue;
-        if (axes.size() < 2 || axes.size() > 3) {
-            throw new IllegalArgumentException(
-                "Identified ProjectedCRS requires two or three coordinate axes");
-        }
-        for (Object axis : axes) {
-            if (!(axis instanceof Map)) {
-                throw new IllegalArgumentException(
-                    "Identified ProjectedCRS coordinate axes must be objects");
-            }
-        }
     }
 
     /**

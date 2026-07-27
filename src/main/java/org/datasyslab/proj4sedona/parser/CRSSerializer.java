@@ -1846,7 +1846,7 @@ public final class CRSSerializer {
             return null;
         }
         String axis = effectiveAxis(params);
-        if (requiresMeridianAxisValidation(params)
+        if (requiresMeridianAxisAuthorityValidation(params)
                 && meridianAxisValidationError(params, axis) != null) {
             return null;
         }
@@ -3405,7 +3405,12 @@ public final class CRSSerializer {
         String axis = effectiveAxis(params);
         return hasMeridianAxisMetadata(params)
             || "nnu".equals(axis)
-            || "ssu".equals(axis)
+            || "ssu".equals(axis);
+    }
+
+    private static boolean requiresMeridianAxisAuthorityValidation(
+            ProjectionParams params) {
+        return requiresMeridianAxisValidation(params)
             || (hasRetainedPolarCoordinateSystem(params)
                 && parseAuthorityCode(params.srsCode) != null);
     }
@@ -3437,13 +3442,14 @@ public final class CRSSerializer {
         String axis = effectiveAxis(params);
         if (requiresMeridianAxisValidation(params)) {
             String error = meridianAxisValidationError(params, axis);
-            if (format != StandardFormat.WKT1 && error == null) {
+            if (error != null) {
+                throw new UnsupportedOperationException(error);
+            }
+            if (format != StandardFormat.WKT1) {
                 return;
             }
-            if (error == null) {
-                error = "Meridian-qualified polar axes cannot be represented by WKT1";
-            }
-            throw unsupportedStandardParameter(error);
+            throw unsupportedStandardParameter(
+                "Meridian-qualified polar axes cannot be represented by WKT1");
         }
         if ("krovak".equals(proj)) {
             if ("enu".equals(axis) || "swu".equals(axis)) {
