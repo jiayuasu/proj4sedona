@@ -45,6 +45,8 @@ public final class CRSSerializer {
     private static final double DEG_TO_RAD = Math.PI / 180.0;
     private static final double ARC_SECOND_TO_RAD = DEG_TO_RAD / 3600.0;
     private static final double PARTS_PER_MILLION_TO_SCALE = 1e-6;
+    private static final double POLE_SERIALIZATION_TOLERANCE =
+        4.0 * Math.ulp(Values.HALF_PI);
     private static final String DEG_TO_RAD_STR = Double.toString(DEG_TO_RAD);
     private static final String TOWGS84_TRANSFORMATION_NAME = "Transformation to WGS 84";
 
@@ -261,7 +263,8 @@ public final class CRSSerializer {
         if (isKrovak) {
             sb.append(" +lat_0=").append(formatAngle(krovakLatitudeOfCentre(params) * RAD_TO_DEG));
         } else if (params.lat0 != null && params.lat0 != 0.0) {
-            sb.append(" +lat_0=").append(formatAngle(params.lat0 * RAD_TO_DEG));
+            sb.append(" +lat_0=").append(formatAngle(
+                projLatitudeOfOriginDegrees(params.lat0)));
         }
 
         // Central meridian
@@ -3757,6 +3760,20 @@ public final class CRSSerializer {
             return String.valueOf((int) degrees);
         }
         return String.valueOf(degrees);
+    }
+
+    /**
+     * Convert {@code +lat_0} to degrees while removing only pole-sized conversion
+     * noise. PROJ's rounded degree conversion factor can move a parsed pole by a
+     * few ULPs, and PROJ rejects the resulting value just outside ±90 degrees.
+     */
+    private static double projLatitudeOfOriginDegrees(double radians) {
+        if (Double.isFinite(radians)
+                && Math.abs(Math.abs(radians) - Values.HALF_PI)
+                    <= POLE_SERIALIZATION_TOLERANCE) {
+            return Math.copySign(90.0, radians);
+        }
+        return radians * RAD_TO_DEG;
     }
 
     private static String formatNumber(double value) {
