@@ -28,6 +28,11 @@ def get_test_crs_definitions() -> List[Dict[str, Any]]:
             "name": "nad83_geographic",
             "desc": "NAD83 Geographic"
         },
+        {
+            "input": "+proj=longlat +datum=NAD27 +no_defs",
+            "name": "nad27_geographic",
+            "desc": "NAD27 Geographic with canonical grid-shift datum"
+        },
         # Projected CRS - Mercator
         {
             "input": "EPSG:3857",
@@ -49,6 +54,11 @@ def get_test_crs_definitions() -> List[Dict[str, Any]]:
             "input": "EPSG:32733",
             "name": "utm_33s",
             "desc": "UTM Zone 33S"
+        },
+        {
+            "input": "+proj=utm +zone=11 +datum=NAD27 +units=m +no_defs",
+            "name": "nad27_utm_11n",
+            "desc": "NAD27 UTM Zone 11N with canonical grid-shift datum"
         },
         # Lambert Conformal Conic (from PROJ string)
         {

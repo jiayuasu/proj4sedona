@@ -150,7 +150,7 @@ class CRSSerializerRoundTripSafetyTest {
     }
 
     @Test
-    void datumOperationsAreNeverSilentlyDropped() {
+    void datumOperationsArePreservedOrRecoverableFromTheNamedDatum() {
         Proj helmert = new Proj("+proj=longlat +datum=ch1903 +no_defs");
         String wkt1 = CRSSerializer.toWkt1(helmert);
         assertTrue(wkt1.contains("TOWGS84[674.374,15.056,405.346]"), wkt1);
@@ -166,9 +166,56 @@ class CRSSerializerRoundTripSafetyTest {
                 bound);
         }
 
-        Proj grid = new Proj("+proj=longlat +datum=NAD27 +no_defs");
-        assertTrue(CRSSerializer.toProjString(grid).contains("+datum=NAD27"));
-        assertAllStandardsReject(grid);
+        for (Proj grid : new Proj[]{
+                new Proj("+proj=longlat +datum=NAD27 +no_defs"),
+                new Proj("+proj=utm +zone=11 +datum=NAD27 +units=m +no_defs"),
+                new Proj("+proj=lcc +lat_1=33 +lat_2=45 +lat_0=30 +lon_0=-96 "
+                    + "+datum=NAD27 +units=us-ft +no_defs"),
+                new Proj("+proj=longlat +datum=NAD27 "
+                    + "+nadgrids=@conus,@alaska,@ntv2_0.gsb,@ntv1_can.dat +no_defs")}) {
+            assertTrue(CRSSerializer.toProjString(grid).contains("+datum=NAD27"));
+            for (String serialized : new String[]{
+                    CRSSerializer.toWkt1(grid),
+                    CRSSerializer.toWkt2(grid),
+                    CRSSerializer.toProjJson(grid)}) {
+                assertFalse(serialized.contains("PROJ4_GRIDS"), serialized);
+                assertFalse(serialized.startsWith("BOUNDCRS["), serialized);
+                assertFalse(serialized.contains("\"transformation\""), serialized);
+                Proj reimported = new Proj(serialized);
+                assertTrue(reimported.getParams().datum.isGridShift(), serialized);
+                assertEquals(
+                    grid.getParams().datum.getNadgrids(),
+                    reimported.getParams().datum.getNadgrids(),
+                    serialized);
+            }
+        }
+
+        Proj mixedGridAndHelmert = new Proj(
+            "+proj=longlat +datum=NAD27 +towgs84=1,2,3 "
+                + "+nadgrids=@conus,@alaska,@ntv2_0.gsb,@ntv1_can.dat +no_defs");
+        for (Proj unrecoverable : new Proj[]{
+                new Proj("+proj=longlat +datum=NAD27 +nadgrids=@other.gsb +no_defs"),
+                new Proj("+proj=longlat +ellps=clrk66 "
+                    + "+nadgrids=@conus,@alaska,@ntv2_0.gsb,@ntv1_can.dat +no_defs"),
+                new Proj("+proj=longlat +datum=NAD83 +nadgrids=@other.gsb +no_defs"),
+                new Proj("+proj=longlat +datum=NAD27 "
+                    + "+nadgrids=@alaska,@conus,@ntv2_0.gsb,@ntv1_can.dat +no_defs"),
+                mixedGridAndHelmert,
+                new Proj("+proj=longlat +datum=NAD27 +a=6378206.4 +b=6300000 "
+                    + "+nadgrids=@conus,@alaska,@ntv2_0.gsb,@ntv1_can.dat +no_defs"),
+                new Proj("+proj=longlat +datum=NAD27 +nadgrids=null +no_defs"),
+                new Proj("+proj=longlat +datum=NAD27 +nadgrids= +no_defs")}) {
+            String projString = CRSSerializer.toProjString(unrecoverable);
+            assertDoesNotThrow(() -> new Proj(projString), projString);
+            assertAllStandardsReject(unrecoverable);
+        }
+        String mixedProjString = CRSSerializer.toProjString(mixedGridAndHelmert);
+        assertTrue(mixedProjString.contains("+towgs84=1,2,3"), mixedProjString);
+        assertTrue(
+            mixedProjString.contains(
+                "+nadgrids=@conus,@alaska,@ntv2_0.gsb,@ntv1_can.dat"),
+            mixedProjString);
+        assertNull(CRSSerializer.toAuthority(mixedGridAndHelmert.getParams()));
     }
 
     @Test
