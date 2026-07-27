@@ -235,6 +235,12 @@ String[] auth = proj.toAuthority();   // {"EPSG", "32618"}
 No single export is lossless for every supported definition. `toProjString()`
 preserves PROJ-specific operation parameters that WKT1, WKT2, and PROJJSON cannot
 encode, but legacy PROJ CRS strings cannot preserve all standard CRS metadata.
+For polar origins affected only by angular-unit conversion noise,
+`toProjString()` emits an exact `+lat_0=90` or `+lat_0=-90` because PROJ rejects
+values outside that range. WKT2 and PROJJSON preserve the parsed value instead,
+since those formats have no equivalent restriction; the in-memory latitude is
+not normalized.
+
 For example, WKT2 and PROJJSON can distinguish two polar horizontal axes using
 meridian metadata, while `+axis` cannot represent two axes that both point north
 or south. Proj4Sedona retains each such axis's name, abbreviation, direction,

@@ -3766,6 +3766,11 @@ public final class CRSSerializer {
      * Convert {@code +lat_0} to degrees while removing only pole-sized conversion
      * noise. PROJ's rounded degree conversion factor can move a parsed pole by a
      * few ULPs, and PROJ rejects the resulting value just outside ±90 degrees.
+     *
+     * <p>This is deliberately an output-only normalization. Snapping during
+     * parsing would mutate user-supplied data and change the value exposed by
+     * {@code getParams().lat0}; WKT2 and PROJJSON can preserve that parsed value
+     * without producing an invalid definition.</p>
      */
     private static double projLatitudeOfOriginDegrees(double radians) {
         if (Double.isFinite(radians)
