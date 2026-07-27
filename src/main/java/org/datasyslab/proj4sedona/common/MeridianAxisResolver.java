@@ -31,8 +31,7 @@ public final class MeridianAxisResolver {
      */
     public static boolean requiresResolution(ProjectionParams params) {
         String axis = effectiveAxis(params);
-        return hasMeridianMetadata(params)
-            || "nnu".equals(axis)
+        return "nnu".equals(axis)
             || "ssu".equals(axis);
     }
 

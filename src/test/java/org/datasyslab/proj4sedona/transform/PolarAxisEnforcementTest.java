@@ -161,6 +161,33 @@ class PolarAxisEnforcementTest {
     }
 
     @Test
+    void ordinaryAxisPermutationWithMeridiansUsesOrdinaryEnforcementPath() {
+        Proj projected = new Proj(polarCrs(
+            3031,
+            "Polar Stereographic (variant B)",
+            polarVariantBParameters(-71.0, 0.0),
+            axis("Easting", "E", "east", 90.0),
+            axis("Northing", "N", "north", 0.0)));
+        assertEquals("enu", projected.getParams().axis);
+
+        Point nativeOrder = new Converter(
+            new Proj("EPSG:4326"), projected)
+            .forward(new Point(30.0, -80.0), true);
+
+        assertNotNull(nativeOrder);
+        assertEquals(544589.7278130918, nativeOrder.x, PROJECTED_TOLERANCE);
+        assertEquals(943257.0778523809, nativeOrder.y, PROJECTED_TOLERANCE);
+
+        Point geographic = new Converter(
+            projected, new Proj("EPSG:4326"))
+            .forward(nativeOrder, true);
+
+        assertNotNull(geographic);
+        assertEquals(30.0, geographic.x, GEOGRAPHIC_TOLERANCE);
+        assertEquals(-80.0, geographic.y, GEOGRAPHIC_TOLERANCE);
+    }
+
+    @Test
     void ordinaryProjAxisPermutationsRemainUnchanged() {
         Point transformed = Transform.transform(
             new Proj("+proj=longlat +datum=WGS84 +axis=neu"),

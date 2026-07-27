@@ -3382,7 +3382,8 @@ public final class CRSSerializer {
 
     private static boolean requiresMeridianAxisValidation(
             ProjectionParams params) {
-        return MeridianAxisResolver.requiresResolution(params);
+        return hasMeridianAxisMetadata(params)
+            || MeridianAxisResolver.requiresResolution(params);
     }
 
     private static boolean requiresMeridianAxisAuthorityValidation(
