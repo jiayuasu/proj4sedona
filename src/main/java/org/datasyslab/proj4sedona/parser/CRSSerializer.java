@@ -2,6 +2,8 @@ package org.datasyslab.proj4sedona.parser;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import org.datasyslab.proj4sedona.common.MeridianAxisResolver;
+import org.datasyslab.proj4sedona.common.MeridianAxisResolver.Role;
 import org.datasyslab.proj4sedona.common.ProjMath;
 import org.datasyslab.proj4sedona.constants.Datum;
 import org.datasyslab.proj4sedona.constants.Ellipsoid;
@@ -767,22 +769,7 @@ public final class CRSSerializer {
      * else metres.
      */
     private static double linearUnitToMeter(ProjectionParams params) {
-        double toMeter;
-        if (params.units != null) {
-            Double tm = Units.getToMeter(params.units);
-            if (tm != null) {
-                toMeter = tm;
-            } else {
-                toMeter = params.toMeter != null ? params.toMeter : 1.0;
-            }
-        } else {
-            toMeter = params.toMeter != null ? params.toMeter : 1.0;
-        }
-        if (!Double.isFinite(toMeter) || toMeter <= 0) {
-            throw new IllegalArgumentException(
-                "Linear unit conversion factor must be finite and greater than zero: " + toMeter);
-        }
-        return toMeter;
+        return MeridianAxisResolver.projectedUnitToMeter(params);
     }
 
     private static String linearUnitName(ProjectionParams params) {
@@ -1738,15 +1725,15 @@ public final class CRSSerializer {
 
     private static Map<String, Object> buildProjJsonCoordinateAxis(
             ProjectionParams params, CoordinateAxis axis) {
-        MeridianAxisRole role = meridianAxisRole(params, axis);
+        Role role = meridianAxisRole(params, axis);
         Map<String, Object> result = new LinkedHashMap<>();
         String name = axis.getName();
         if (name == null || name.trim().isEmpty()) {
-            name = role == MeridianAxisRole.EASTING ? "Easting" : "Northing";
+            name = role == Role.EASTING ? "Easting" : "Northing";
         }
         String abbreviation = axis.getAbbreviation();
         if (abbreviation == null || abbreviation.trim().isEmpty()) {
-            abbreviation = role == MeridianAxisRole.EASTING ? "E" : "N";
+            abbreviation = role == Role.EASTING ? "E" : "N";
         }
         result.put("name", name);
         result.put("abbreviation", abbreviation);
@@ -2404,13 +2391,13 @@ public final class CRSSerializer {
             return false;
         }
         for (int i = 0; i < 2; i++) {
-            MeridianAxisRole role =
+            Role role =
                 meridianAxisRole(params, params.coordinateAxes.get(i));
             char referenceDirection = referenceAxis.charAt(i);
-            if ((role == MeridianAxisRole.EASTING && referenceDirection != 'e')
-                    || (role == MeridianAxisRole.NORTHING
+            if ((role == Role.EASTING && referenceDirection != 'e')
+                    || (role == Role.NORTHING
                         && referenceDirection != 'n')
-                    || role == MeridianAxisRole.UNKNOWN) {
+                    || role == Role.UNKNOWN) {
                 return false;
             }
         }
@@ -3378,15 +3365,7 @@ public final class CRSSerializer {
     }
 
     private static boolean hasMeridianAxisMetadata(ProjectionParams params) {
-        if (params.coordinateAxes == null) {
-            return false;
-        }
-        for (CoordinateAxis axis : params.coordinateAxes) {
-            if (axis != null && axis.getMeridian() != null) {
-                return true;
-            }
-        }
-        return false;
+        return MeridianAxisResolver.hasMeridianMetadata(params);
     }
 
     private static boolean hasRetainedPolarCoordinateSystem(
@@ -3398,17 +3377,12 @@ public final class CRSSerializer {
     }
 
     private static boolean isPolarLatitude(Double latitude) {
-        return latitude != null
-            && Double.isFinite(latitude)
-            && Math.abs(Math.abs(latitude) - Values.HALF_PI) <= Values.EPSLN;
+        return MeridianAxisResolver.isPolarLatitude(latitude);
     }
 
     private static boolean requiresMeridianAxisValidation(
             ProjectionParams params) {
-        String axis = effectiveAxis(params);
-        return hasMeridianAxisMetadata(params)
-            || "nnu".equals(axis)
-            || "ssu".equals(axis);
+        return MeridianAxisResolver.requiresResolution(params);
     }
 
     private static boolean requiresMeridianAxisAuthorityValidation(
@@ -3485,169 +3459,12 @@ public final class CRSSerializer {
 
     private static String meridianAxisValidationError(
             ProjectionParams params, String axisOrder) {
-        if (!"nnu".equals(axisOrder) && !"ssu".equals(axisOrder)) {
-            return "Meridian-qualified axes require two matching north or south directions";
-        }
-        if (params.coordinateAxes == null || params.coordinateAxes.size() != 2) {
-            return "Axis " + axisOrder
-                + " requires two retained meridian-qualified horizontal axes";
-        }
-        if (params.coordinateSystemType == null
-                || !"Cartesian".equalsIgnoreCase(params.coordinateSystemType)) {
-            return "Meridian-qualified projected axes require a Cartesian coordinate system";
-        }
-        if (!isPolarLatitude(params.lat0)) {
-            return "Meridian-qualified horizontal axes require a polar latitude of origin";
-        }
-
-        boolean northPole = params.lat0 > 0.0;
-        String expectedDirection = northPole ? "south" : "north";
-        boolean anyOrder = false;
-        boolean allOrder = true;
-        MeridianAxisRole firstRole = null;
-        MeridianAxisRole secondRole = null;
-        double expectedLinearFactor = linearUnitToMeter(params);
-
-        for (int i = 0; i < params.coordinateAxes.size(); i++) {
-            CoordinateAxis coordinateAxis = params.coordinateAxes.get(i);
-            if (coordinateAxis == null || coordinateAxis.getDirection() == null
-                    || !expectedDirection.equalsIgnoreCase(
-                        coordinateAxis.getDirection())) {
-                return "Polar axis directions must both be " + expectedDirection
-                    + " at the " + (northPole ? "north" : "south") + " pole";
-            }
-
-            char parsedDirection = mapStandardAxisDirection(
-                coordinateAxis.getDirection());
-            if (parsedDirection != axisOrder.charAt(i)) {
-                return "Retained coordinate-axis order does not match axis "
-                    + axisOrder;
-            }
-
-            Integer order = coordinateAxis.getOrder();
-            anyOrder |= order != null;
-            allOrder &= order != null;
-            if (order != null && order != i + 1) {
-                return "WKT axis ORDER must match its position in the coordinate system";
-            }
-
-            CoordinateAxis.Unit linearUnit = coordinateAxis.getUnit();
-            String linearUnitError = validateCoordinateAxisUnit(
-                linearUnit, "LinearUnit", "horizontal axis");
-            if (linearUnitError != null) {
-                return linearUnitError;
-            }
-            double linearFactor = linearUnit.getConversionFactor();
-            if (!sameUnitFactor(linearFactor, expectedLinearFactor)) {
-                return "Horizontal-axis units must match the projected CRS unit";
-            }
-
-            CoordinateAxis.Meridian meridian = coordinateAxis.getMeridian();
-            if (meridian == null || !Double.isFinite(meridian.getLongitude())) {
-                return "Each duplicate polar axis requires a finite meridian";
-            }
-            String angularUnitError = validateCoordinateAxisUnit(
-                meridian.getUnit(), "AngularUnit", "axis meridian");
-            if (angularUnitError != null) {
-                return angularUnitError;
-            }
-
-            MeridianAxisRole role = meridianAxisRole(params, coordinateAxis);
-            if (role == MeridianAxisRole.UNKNOWN) {
-                return "Axis meridians must identify one easting and one northing axis";
-            }
-            if (i == 0) {
-                firstRole = role;
-            } else {
-                secondRole = role;
-            }
-
-        }
-
-        if (anyOrder != allOrder) {
-            return "WKT axis ORDER must be present on every axis or none";
-        }
-        if (firstRole == secondRole) {
-            return "Polar axes must identify one easting and one northing axis";
-        }
-        return null;
+        return MeridianAxisResolver.resolve(params, axisOrder).getError();
     }
 
-    private static String validateCoordinateAxisUnit(
-            CoordinateAxis.Unit unit, String expectedType, String label) {
-        if (unit == null || unit.getConversionFactor() == null
-                || !Double.isFinite(unit.getConversionFactor())
-                || unit.getConversionFactor() <= 0.0) {
-            return "The " + label + " requires a positive finite unit factor";
-        }
-        if (unit.getType() != null
-                && !expectedType.equalsIgnoreCase(unit.getType())) {
-            return "The " + label + " must use a " + expectedType;
-        }
-        if (unit.getName() == null || unit.getName().trim().isEmpty()) {
-            return "The " + label + " requires a unit name";
-        }
-        return null;
-    }
-
-    private static boolean sameUnitFactor(double left, double right) {
-        return Math.abs(left - right)
-            <= 1e-12 * Math.max(Math.max(Math.abs(left), Math.abs(right)), 1.0);
-    }
-
-    private static boolean sameLongitude(double left, double right) {
-        return Math.abs(Math.IEEEremainder(left - right, 2.0 * Math.PI))
-            <= Values.EPSLN;
-    }
-
-    private static char mapStandardAxisDirection(String direction) {
-        if ("north".equalsIgnoreCase(direction)) {
-            return 'n';
-        }
-        if ("south".equalsIgnoreCase(direction)) {
-            return 's';
-        }
-        if ("east".equalsIgnoreCase(direction)) {
-            return 'e';
-        }
-        if ("west".equalsIgnoreCase(direction)) {
-            return 'w';
-        }
-        return '\0';
-    }
-
-    private static MeridianAxisRole meridianAxisRole(
+    private static Role meridianAxisRole(
             ProjectionParams params, CoordinateAxis axis) {
-        if (axis == null || axis.getMeridian() == null
-                || axis.getMeridian().getUnit() == null
-                || axis.getMeridian().getUnit().getConversionFactor() == null
-                || !isPolarLatitude(params.lat0)) {
-            return MeridianAxisRole.UNKNOWN;
-        }
-        CoordinateAxis.Meridian meridian = axis.getMeridian();
-        double actual = meridian.getLongitude()
-            * meridian.getUnit().getConversionFactor();
-        if (!Double.isFinite(actual)) {
-            return MeridianAxisRole.UNKNOWN;
-        }
-        double central = params.long0 != null ? params.long0 : 0.0;
-        double easting = central + Values.HALF_PI;
-        double northing = central + (params.lat0 > 0.0 ? Math.PI : 0.0);
-        boolean matchesEasting = sameLongitude(actual, easting);
-        boolean matchesNorthing = sameLongitude(actual, northing);
-        if (matchesEasting && !matchesNorthing) {
-            return MeridianAxisRole.EASTING;
-        }
-        if (matchesNorthing && !matchesEasting) {
-            return MeridianAxisRole.NORTHING;
-        }
-        return MeridianAxisRole.UNKNOWN;
-    }
-
-    private enum MeridianAxisRole {
-        EASTING,
-        NORTHING,
-        UNKNOWN
+        return MeridianAxisResolver.role(params, axis);
     }
 
     private static boolean isEastWest(char direction) {

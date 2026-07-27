@@ -184,6 +184,14 @@ Point result1 = conv.forward(new Point(-77.0, 38.9));
 Point result2 = conv.forward(new Point(38.9, -77.0), true);
 ```
 
+Polar CRSs can declare both horizontal axes with the same `north` or `south`
+direction and qualify each one by a meridian. When such metadata is retained
+from WKT2 or PROJJSON, `enforceAxis=true` uses the meridians to distinguish
+easting from northing, including northing-first UPS definitions. The default
+`enforceAxis=false` behavior remains traditional easting/northing order.
+Malformed or incomplete duplicate-direction metadata cannot be enforced and
+causes the transformation to fail instead of silently dropping a coordinate.
+
 ## Choosing the Right Method
 
 | Method | Best for | Notes |
