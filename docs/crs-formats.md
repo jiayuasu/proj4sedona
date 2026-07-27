@@ -237,12 +237,19 @@ preserves PROJ-specific operation parameters that WKT1, WKT2, and PROJJSON canno
 encode, but legacy PROJ CRS strings cannot preserve all standard CRS metadata.
 For example, WKT2 and PROJJSON can distinguish two polar horizontal axes using
 meridian metadata, while `+axis` cannot represent two axes that both point north
-or south. When a non-PROJ definition at a polar origin parses to `nnu` or `ssu`,
-`toProjString()` therefore omits `+axis`. The same duplicate permutations supplied
-in raw PROJ input, and all other invalid axis permutations, are rejected with
+or south. Proj4Sedona retains each such axis's name, abbreviation, direction,
+order, linear unit, and meridian when parsing WKT2 or PROJJSON, and reproduces
+that metadata in either standard format. `toProjString()` omits `+axis` only after
+the retained pair has been validated against the polar origin; WKT1 rejects the
+same input because it has no equivalent representation. Duplicate permutations
+supplied in raw PROJ input, incomplete or inconsistent meridian metadata, and all
+other invalid axis permutations are rejected with
 `UnsupportedOperationException`.
-Callers that need exact axis metadata or authority identifiers should retain the
-original WKT2 or PROJJSON definition.
+
+The retained meridians are CRS serialization metadata. Coordinate transforms keep
+proj4js-compatible axis behavior and do not interpret meridians; callers should
+leave axis enforcement disabled for `nnu` and `ssu`. Ordinary valid PROJ axis
+permutations such as `enu` and `neu` are unchanged.
 
 When a standard export would silently change coordinates, Proj4Sedona throws
 `UnsupportedOperationException` and, where the definition is representable in a

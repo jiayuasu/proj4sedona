@@ -1,5 +1,8 @@
 package org.datasyslab.proj4sedona.projection;
 
+import java.util.Collections;
+import java.util.List;
+import org.datasyslab.proj4sedona.core.CoordinateAxis;
 import org.datasyslab.proj4sedona.core.DatumParams;
 
 /**
@@ -123,6 +126,12 @@ public class ProjectionParams {
     
     /** Axis order string (+axis), defaults to "enu" (east-north-up) */
     public String axis = "enu";
+
+    /** Coordinate-system subtype retained from WKT2/PROJJSON (for example Cartesian). */
+    public String coordinateSystemType;
+
+    /** Detailed WKT2/PROJJSON coordinate-axis metadata, when available. */
+    public List<CoordinateAxis> coordinateAxes = Collections.emptyList();
 
     // ==================== UTM Specific ====================
     

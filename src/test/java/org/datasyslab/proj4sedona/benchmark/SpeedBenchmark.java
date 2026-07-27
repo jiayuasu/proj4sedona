@@ -289,6 +289,9 @@ public class SpeedBenchmark {
         runParitySuite("grid", this::runGridParity);
         runParitySuite("parser", this::runParserParity);
         runParitySuite("serializer", this::runSerializerParity);
+        runParitySuite(
+            MeridianAxisParityTest.SUITE,
+            () -> MeridianAxisParityTest.run(parity));
 
         parity.auditDeclaredUses(
             "transform", "skip", TRANSFORM_SKIPS.keySet(), usedTransformSkips);

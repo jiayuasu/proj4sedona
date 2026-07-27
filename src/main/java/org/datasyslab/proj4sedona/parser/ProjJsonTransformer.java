@@ -2,8 +2,10 @@ package org.datasyslab.proj4sedona.parser;
 
 import org.datasyslab.proj4sedona.constants.Datum;
 import org.datasyslab.proj4sedona.constants.Values;
+import org.datasyslab.proj4sedona.core.CoordinateAxis;
 import org.datasyslab.proj4sedona.core.ProjectionDef;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -43,7 +45,6 @@ public final class ProjJsonTransformer {
         }
 
         ProjectionDef def = new ProjectionDef();
-        
         // Handle BoundCRS specially - recurse into source_crs
         if ("BoundCRS".equals(projjson.get("type"))) {
             Object sourceCrs = projjson.get("source_crs");
@@ -165,14 +166,18 @@ public final class ProjJsonTransformer {
 
             case "id":
                 if (value instanceof Map) {
-                    Map<String, Object> id = (Map<String, Object>) value;
-                    Object authority = id.get("authority");
-                    Object code = id.get("code");
-                    if (authority != null && code != null) {
-                        String authorityCode = authority.toString() + ":" + toIntString(code);
-                        def.setTitle(authorityCode);
-                        // Store authority:code in srsCode for toEpsgCode()/toAuthority() lookup
-                        def.setSrsCode(authorityCode);
+                    processAuthorityId((Map<String, Object>) value, def);
+                }
+                break;
+
+            case "ids":
+                if (value instanceof List) {
+                    for (Object id : (List<?>) value) {
+                        if (id instanceof Map
+                                && processAuthorityId(
+                                    (Map<String, Object>) id, def)) {
+                            break;
+                        }
                     }
                 }
                 break;
@@ -257,6 +262,21 @@ public final class ProjJsonTransformer {
         }
     }
 
+    private static boolean processAuthorityId(
+            Map<String, Object> id, ProjectionDef def) {
+        Object authority = id.get("authority");
+        Object code = id.get("code");
+        if (authority == null || code == null) {
+            return false;
+        }
+        String authorityCode =
+            authority.toString() + ":" + toIntString(code);
+        def.setTitle(authorityCode);
+        // Store authority:code for toEpsgCode()/toAuthority() lookup.
+        def.setSrsCode(authorityCode);
+        return true;
+    }
+
     /**
      * Process datum/datum_ensemble node.
      */
@@ -319,11 +339,10 @@ public final class ProjJsonTransformer {
     /**
      * Calculate ellipsoid parameters.
      */
-    @SuppressWarnings("unchecked")
     private static void calculateEllipsoid(Map<String, Object> ellipsoid, ProjectionDef def) {
         Object radius = ellipsoid.get("radius");
         if (radius != null) {
-            double r = toDouble(radius);
+            double r = lengthInMetres(radius);
             def.setA(r);
             def.setRf(0.0);
             return;
@@ -331,22 +350,7 @@ public final class ProjJsonTransformer {
 
         Object sma = ellipsoid.get("semi_major_axis");
         if (sma != null) {
-            double a;
-            if (sma instanceof Map) {
-                // Handle { value: x, unit: { conversion_factor: y } }
-                Map<String, Object> smaMap = (Map<String, Object>) sma;
-                double value = toDouble(smaMap.get("value"));
-                Object unit = smaMap.get("unit");
-                if (unit instanceof Map) {
-                    Object cf = ((Map<String, Object>) unit).get("conversion_factor");
-                    if (cf != null) {
-                        value *= toDouble(cf);
-                    }
-                }
-                a = value;
-            } else {
-                a = toDouble(sma);
-            }
+            double a = lengthInMetres(sma);
             def.setA(a);
 
             Object invFlat = ellipsoid.get("inverse_flattening");
@@ -355,11 +359,32 @@ public final class ProjJsonTransformer {
             } else {
                 Object smb = ellipsoid.get("semi_minor_axis");
                 if (smb != null) {
-                    double b = toDouble(smb);
-                    def.setRf(a / (a - b));
+                    double b = lengthInMetres(smb);
+                    def.setRf(a == b ? 0.0 : a / (a - b));
                 }
             }
         }
+    }
+
+    /**
+     * Decode a PROJJSON value_in_metre_or_value_and_unit value.
+     */
+    @SuppressWarnings("unchecked")
+    private static double lengthInMetres(Object length) {
+        if (!(length instanceof Map)) {
+            return toDouble(length);
+        }
+        Map<String, Object> valueAndUnit = (Map<String, Object>) length;
+        double value = toDouble(valueAndUnit.get("value"));
+        Object unit = valueAndUnit.get("unit");
+        if (unit instanceof Map) {
+            Object conversionFactor =
+                ((Map<String, Object>) unit).get("conversion_factor");
+            if (conversionFactor != null) {
+                value *= toDouble(conversionFactor);
+            }
+        }
+        return value;
     }
 
     /**
@@ -367,9 +392,24 @@ public final class ProjJsonTransformer {
      */
     @SuppressWarnings("unchecked")
     private static void processCoordinateSystem(Map<String, Object> coordSys, ProjectionDef def) {
+        Object subtypeValue = coordSys.get("subtype");
+        String subtype = subtypeValue == null ? null : subtypeValue.toString();
+        def.setCoordinateSystemType(subtype);
+
         Object axisList = coordSys.get("axis");
         if (axisList instanceof List) {
-            List<Map<String, Object>> axes = (List<Map<String, Object>>) axisList;
+            List<?> axisValues = (List<?>) axisList;
+            List<Map<String, Object>> axes = new ArrayList<>();
+            List<CoordinateAxis> coordinateAxes = new ArrayList<>();
+            Object sharedUnit = coordSys.get("unit");
+            for (Object axisValue : axisValues) {
+                if (axisValue instanceof Map) {
+                    Map<String, Object> axis = (Map<String, Object>) axisValue;
+                    axes.add(axis);
+                    coordinateAxes.add(parseCoordinateAxis(axis, sharedUnit, subtype));
+                }
+            }
+            def.setCoordinateAxes(coordinateAxes);
 
             // Mirrors wkt-parser's transformPROJJSON direction map: the axis string is
             // set only when every direction maps (all-or-nothing), preserving the
@@ -395,9 +435,8 @@ public final class ProjJsonTransformer {
             }
 
             // Process units from coordinate system
-            Object unit = coordSys.get("unit");
-            if (unit != null) {
-                processUnit(unit, def);
+            if (sharedUnit != null) {
+                processUnit(sharedUnit, def);
             } else if (!axes.isEmpty()) {
                 // Try to get unit from first axis
                 Object axisUnit = axes.get(0).get("unit");
@@ -405,6 +444,204 @@ public final class ProjJsonTransformer {
                     processUnit(axisUnit, def);
                 }
             }
+        }
+    }
+
+    private static CoordinateAxis parseCoordinateAxis(
+            Map<String, Object> axis, Object sharedUnit, String subtype) {
+        Object nameValue = axis.get("name");
+        String name = nameValue == null ? "Unknown" : nameValue.toString();
+        Object abbreviationValue = axis.get("abbreviation");
+        String abbreviation =
+            abbreviationValue == null ? null : abbreviationValue.toString();
+        Object directionValue = axis.get("direction");
+        String direction =
+            directionValue == null ? "unknown" : directionValue.toString();
+        Integer order = axis.containsKey("order")
+            ? parseRequiredAxisOrder(axis.get("order")) : null;
+        Object unitValue = axis.containsKey("unit") ? axis.get("unit") : sharedUnit;
+        CoordinateAxis.Unit unit = parseAxisUnit(unitValue, subtype);
+        CoordinateAxis.Meridian meridian = axis.containsKey("meridian")
+            ? parseAxisMeridian(axis.get("meridian")) : null;
+        return new CoordinateAxis(
+            name, abbreviation, direction, order, unit, meridian);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static CoordinateAxis.Unit parseAxisUnit(Object unitValue, String subtype) {
+        if (unitValue == null) {
+            return null;
+        }
+
+        String type = null;
+        String name;
+        Double conversionFactor = null;
+        if (unitValue instanceof Map) {
+            Map<String, Object> unit = (Map<String, Object>) unitValue;
+            Object nameValue = unit.get("name");
+            if (nameValue == null) {
+                return null;
+            }
+            name = nameValue.toString();
+            Object typeValue = unit.get("type");
+            if (typeValue != null) {
+                type = canonicalUnitType(typeValue.toString());
+            }
+            if (unit.containsKey("conversion_factor")) {
+                conversionFactor =
+                    parseOptionalDouble(unit.get("conversion_factor"));
+                if (conversionFactor == null) {
+                    throw new IllegalArgumentException(
+                        "Axis unit conversion factor must be numeric");
+                }
+            }
+        } else {
+            name = unitValue.toString();
+        }
+
+        if (type == null || "Unit".equals(type)) {
+            type = inferAxisUnitType(subtype, name);
+        }
+        if (conversionFactor == null) {
+            conversionFactor = knownUnitFactor(name);
+        }
+        return new CoordinateAxis.Unit(type, name, conversionFactor);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static CoordinateAxis.Meridian parseAxisMeridian(Object meridianValue) {
+        if (!(meridianValue instanceof Map)) {
+            throw new IllegalArgumentException(
+                "Axis meridian must be an object");
+        }
+        Map<String, Object> meridian = (Map<String, Object>) meridianValue;
+        if (!meridian.containsKey("longitude")) {
+            throw new IllegalArgumentException(
+                "Axis meridian requires longitude");
+        }
+        Object longitudeValue = meridian.get("longitude");
+        Object unitValue = meridian.get("unit");
+        boolean unitSpecified = meridian.containsKey("unit");
+        if (longitudeValue instanceof Map) {
+            Map<String, Object> valueAndUnit = (Map<String, Object>) longitudeValue;
+            if (!valueAndUnit.containsKey("value")
+                    || !valueAndUnit.containsKey("unit")) {
+                throw new IllegalArgumentException(
+                    "Axis meridian longitude object requires value and unit");
+            }
+            longitudeValue = valueAndUnit.get("value");
+            unitValue = valueAndUnit.get("unit");
+            unitSpecified = true;
+        }
+
+        Double longitude = parseOptionalDouble(longitudeValue);
+        if (longitude == null || !Double.isFinite(longitude)) {
+            throw new IllegalArgumentException(
+                "Axis meridian longitude must be a finite number");
+        }
+        CoordinateAxis.Unit unit;
+        if (!unitSpecified) {
+            unit = new CoordinateAxis.Unit("AngularUnit", "degree", Values.D2R);
+        } else {
+            unit = parseAxisUnit(unitValue, "ellipsoidal");
+        }
+        if (unit == null
+                || !"AngularUnit".equals(unit.getType())
+                || unit.getConversionFactor() == null
+                || !Double.isFinite(unit.getConversionFactor())
+                || unit.getConversionFactor() <= 0) {
+            throw new IllegalArgumentException(
+                "Axis meridian requires a positive finite angular unit");
+        }
+        return new CoordinateAxis.Meridian(longitude, unit);
+    }
+
+    private static String canonicalUnitType(String type) {
+        if ("linearunit".equalsIgnoreCase(type)) {
+            return "LinearUnit";
+        }
+        if ("angularunit".equalsIgnoreCase(type)) {
+            return "AngularUnit";
+        }
+        if ("scaleunit".equalsIgnoreCase(type)) {
+            return "ScaleUnit";
+        }
+        if ("unit".equalsIgnoreCase(type)) {
+            return "Unit";
+        }
+        return type;
+    }
+
+    private static String inferAxisUnitType(String subtype, String name) {
+        if (isNamedUnit(name, "degree", "grad", "gon", "radian")) {
+            return "AngularUnit";
+        }
+        if (isNamedUnit(name, "metre", "meter", "m")) {
+            return "LinearUnit";
+        }
+        if (isNamedUnit(name, "unity")) {
+            return "ScaleUnit";
+        }
+        if (subtype != null
+                && ("ellipsoidal".equalsIgnoreCase(subtype)
+                    || "spherical".equalsIgnoreCase(subtype))) {
+            return "AngularUnit";
+        }
+        if (subtype != null
+                && ("cartesian".equalsIgnoreCase(subtype)
+                    || "vertical".equalsIgnoreCase(subtype))) {
+            return "LinearUnit";
+        }
+        return "Unit";
+    }
+
+    private static Double knownUnitFactor(String name) {
+        if (isNamedUnit(name, "degree")) {
+            return Values.D2R;
+        }
+        if (isNamedUnit(name, "grad", "gon")) {
+            return Math.PI / 200.0;
+        }
+        if (isNamedUnit(name, "radian")) {
+            return 1.0;
+        }
+        if (isNamedUnit(name, "metre", "meter", "m", "unity")) {
+            return 1.0;
+        }
+        return null;
+    }
+
+    private static boolean isNamedUnit(String actual, String... names) {
+        for (String name : names) {
+            if (name.equalsIgnoreCase(actual)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Integer parseRequiredAxisOrder(Object value) {
+        Double numeric = parseOptionalDouble(value);
+        if (numeric == null || !Double.isFinite(numeric)
+                || numeric != Math.rint(numeric)
+                || numeric < Integer.MIN_VALUE || numeric > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+                "Axis order must be an integer: " + value);
+        }
+        return numeric.intValue();
+    }
+
+    private static Double parseOptionalDouble(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        try {
+            return Double.parseDouble(value.toString());
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 

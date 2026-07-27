@@ -5,7 +5,10 @@ import org.datasyslab.proj4sedona.constants.Values;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Converts WKT2 AST (List structure) to PROJJSON-like Map structure.
@@ -18,6 +21,9 @@ import java.util.Map;
  * into ProjectionDef objects.
  */
 public final class ProjJsonBuilder {
+
+    private static final Pattern AXIS_NAME_WITH_ABBREVIATION =
+        Pattern.compile("^(.*?)\\s*\\(([^()]*)\\)$");
 
     private ProjJsonBuilder() {
         // Utility class
@@ -161,6 +167,8 @@ public final class ProjJsonBuilder {
                 coordSystem.put("unit", unit);
             }
         }
+
+        applySimplifiedConversionUnits(result);
 
         // Find ID
         Map<String, Object> id = getId(node);
@@ -431,6 +439,76 @@ public final class ProjJsonBuilder {
     }
 
     /**
+     * WKT2 SIMPLIFIED omits each conversion parameter's local unit. Angular
+     * parameters inherit the base geographic CRS unit, linear parameters inherit
+     * the projected coordinate-system unit, and scale parameters use unity.
+     */
+    @SuppressWarnings("unchecked")
+    private static void applySimplifiedConversionUnits(Map<String, Object> projectedCrs) {
+        Object conversionValue = projectedCrs.get("conversion");
+        if (!(conversionValue instanceof Map)) {
+            return;
+        }
+        Object parametersValue =
+            ((Map<String, Object>) conversionValue).get("parameters");
+        if (!(parametersValue instanceof List)) {
+            return;
+        }
+
+        Object angularUnit = coordinateSystemUnit(projectedCrs.get("base_crs"));
+        Object linearUnit = coordinateSystemUnit(projectedCrs);
+        for (Object parameterValue : (List<?>) parametersValue) {
+            if (!(parameterValue instanceof Map)) {
+                continue;
+            }
+            Map<String, Object> parameter = (Map<String, Object>) parameterValue;
+            if (parameter.containsKey("unit") || parameter.get("name") == null) {
+                continue;
+            }
+            String name =
+                parameter.get("name").toString().toLowerCase(Locale.ROOT);
+            if (isAngularConversionParameter(name) && angularUnit != null) {
+                parameter.put("unit", angularUnit);
+            } else if (isLinearConversionParameter(name) && linearUnit != null) {
+                parameter.put("unit", linearUnit);
+            } else if (name.contains("scale factor")) {
+                Map<String, Object> scaleUnit = new HashMap<>();
+                scaleUnit.put("type", "ScaleUnit");
+                scaleUnit.put("name", "unity");
+                scaleUnit.put("conversion_factor", 1.0);
+                parameter.put("unit", scaleUnit);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object coordinateSystemUnit(Object crsValue) {
+        if (!(crsValue instanceof Map)) {
+            return null;
+        }
+        Object coordinateSystem =
+            ((Map<String, Object>) crsValue).get("coordinate_system");
+        if (!(coordinateSystem instanceof Map)) {
+            return null;
+        }
+        return ((Map<String, Object>) coordinateSystem).get("unit");
+    }
+
+    private static boolean isAngularConversionParameter(String name) {
+        return name.contains("latitude")
+            || name.contains("longitude")
+            || name.contains("azimuth")
+            || name.contains("angle")
+            || name.contains("co-latitude");
+    }
+
+    private static boolean isLinearConversionParameter(String name) {
+        return name.contains("easting")
+            || name.contains("northing")
+            || name.contains("height");
+    }
+
+    /**
      * Convert BOUNDCRS node.
      */
     @SuppressWarnings("unchecked")
@@ -695,8 +773,8 @@ public final class ProjJsonBuilder {
         if (unitNode == null || unitNode.size() < 3) {
             return null;
         }
-        double factor = parseDouble(unitNode.get(2));
-        return factor > 0 ? factor : null;
+        Double factor = parseDouble(unitNode.get(2));
+        return factor != null && Double.isFinite(factor) && factor > 0 ? factor : null;
     }
 
     /**
@@ -705,55 +783,38 @@ public final class ProjJsonBuilder {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> convertAxisNode(List<Object> node) {
         Map<String, Object> axis = new HashMap<>();
-        
-        String name = node.size() > 1 ? node.get(1).toString() : "Unknown";
+
+        String rawName = node.size() > 1 ? node.get(1).toString() : "Unknown";
+        String name = rawName;
+        String abbreviation = null;
+        Matcher nameMatcher = AXIS_NAME_WITH_ABBREVIATION.matcher(rawName);
+        if (nameMatcher.matches()) {
+            name = nameMatcher.group(1).trim();
+            abbreviation = nameMatcher.group(2);
+        }
         axis.put("name", name);
+        if (abbreviation != null) {
+            axis.put("abbreviation", abbreviation);
+        }
 
         // Determine direction
         String direction;
-        // Check for abbreviation pattern like "(E)" or "(N)"
-        if (name.matches("^\\([A-Za-z]\\)$")) {
-            String abbrev = name.substring(1, 2).toUpperCase();
-            switch (abbrev) {
-                case "E": direction = "east"; break;
-                case "N": direction = "north"; break;
-                case "U": direction = "up"; break;
-                case "W": direction = "west"; break;
-                case "S": direction = "south"; break;
-                default:
-                    // Not a well-known abbreviation (e.g. "(X)" on geocentric axes):
-                    // fall back to the explicit direction token, as wkt-parser does.
-                    if (node.size() > 2) {
-                        direction = node.get(2).toString();
-                    } else {
-                        throw new IllegalArgumentException("Unknown axis abbreviation: " + abbrev);
-                    }
-                    break;
-            }
-        } else if (node.size() > 2) {
+        if (node.size() > 2 && !(node.get(2) instanceof List)) {
             // Preserve the token's case (wkt-parser 1.5.5): the PROJJSON direction
             // enum is camelCase for geocentricX/Y/Z, so lowercasing produced
-            // schema-invalid values in the exposed intermediate PROJJSON. The
-            // transformer lowercases at lookup, so parsing tolerance is unchanged.
+            // schema-invalid values in the exposed intermediate PROJJSON. It is
+            // also authoritative over the abbreviation: a polar "(E)" axis may
+            // legitimately point south and be qualified by a meridian.
             direction = node.get(2).toString();
         } else {
-            direction = "unknown";
+            direction = inferAxisDirection(abbreviation);
         }
         axis.put("direction", direction);
 
         // Find ORDER
         List<Object> orderNode = findNode(node, "ORDER");
         if (orderNode != null && orderNode.size() > 1) {
-            Object orderVal = orderNode.get(1);
-            if (orderVal instanceof Number) {
-                axis.put("order", ((Number) orderVal).intValue());
-            } else {
-                try {
-                    axis.put("order", Integer.parseInt(orderVal.toString()));
-                } catch (NumberFormatException e) {
-                    // Ignore
-                }
-            }
+            axis.put("order", parseAxisOrder(orderNode.get(1)));
         }
 
         // Find unit
@@ -762,7 +823,65 @@ public final class ProjJsonBuilder {
             axis.put("unit", convertUnit(unitNode));
         }
 
+        // A polar north/south direction is qualified by a meridian. PROJJSON
+        // represents a non-default angular unit inside longitude's value-and-unit
+        // object rather than as a sibling of longitude.
+        List<Object> meridianNode = findNode(node, "MERIDIAN");
+        if (meridianNode != null) {
+            if (meridianNode.size() <= 1) {
+                throw new IllegalArgumentException(
+                    "Axis MERIDIAN requires a longitude");
+            }
+            Double longitude = parseDouble(meridianNode.get(1));
+            if (longitude == null || !Double.isFinite(longitude)) {
+                throw new IllegalArgumentException(
+                    "Axis MERIDIAN longitude must be a finite number");
+            }
+            List<Object> meridianUnitNode =
+                findNodeAny(meridianNode, "ANGLEUNIT", "UNIT");
+            if (meridianUnitNode == null) {
+                throw new IllegalArgumentException(
+                    "Axis MERIDIAN requires ANGLEUNIT or UNIT");
+            }
+            Double meridianUnitFactor = angularUnitFactor(meridianUnitNode);
+            if (meridianUnitFactor == null || !Double.isFinite(meridianUnitFactor)) {
+                throw new IllegalArgumentException(
+                    "Axis MERIDIAN unit requires a positive finite conversion factor");
+            }
+            Map<String, Object> valueAndUnit = new HashMap<>();
+            valueAndUnit.put("value", longitude);
+            valueAndUnit.put("unit", convertUnit(meridianUnitNode));
+            Map<String, Object> meridian = new HashMap<>();
+            meridian.put("longitude", valueAndUnit);
+            axis.put("meridian", meridian);
+        }
+
         return axis;
+    }
+
+    private static String inferAxisDirection(String abbreviation) {
+        if (abbreviation == null || abbreviation.length() != 1) {
+            return "unknown";
+        }
+        switch (Character.toUpperCase(abbreviation.charAt(0))) {
+            case 'E': return "east";
+            case 'N': return "north";
+            case 'U': return "up";
+            case 'W': return "west";
+            case 'S': return "south";
+            default: return "unknown";
+        }
+    }
+
+    private static int parseAxisOrder(Object value) {
+        Double numeric = parseDouble(value);
+        if (numeric == null || !Double.isFinite(numeric)
+                || numeric != Math.rint(numeric)
+                || numeric < Integer.MIN_VALUE || numeric > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+                "Axis ORDER must be an integer: " + value);
+        }
+        return numeric.intValue();
     }
 
     /**
@@ -779,14 +898,9 @@ public final class ProjJsonBuilder {
                 }
             }
         }
-        // Sort by order if present
-        axes.sort((a, b) -> {
-            Integer orderA = (Integer) a.get("order");
-            Integer orderB = (Integer) b.get("order");
-            if (orderA == null) orderA = 0;
-            if (orderB == null) orderB = 0;
-            return orderA.compareTo(orderB);
-        });
+        // Array position is coordinate order. Retain ORDER as metadata but do not
+        // normalize malformed WKT by sorting it: WKT2 requires ORDER to agree with
+        // lexical position, and the serializer can then reject a mismatch.
         return axes;
     }
 
