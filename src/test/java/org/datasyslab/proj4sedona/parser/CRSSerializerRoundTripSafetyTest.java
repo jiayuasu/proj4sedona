@@ -212,6 +212,50 @@ class CRSSerializerRoundTripSafetyTest {
     }
 
     @Test
+    void standardPolarRoundTripsEmitAnExactProjLatitudeOfOrigin() {
+        for (int pole : new int[]{-90, 90}) {
+            Proj original = new Proj(
+                "+proj=stere +lat_0=" + pole
+                    + " +lon_0=0 +k=0.994 +x_0=2000000 +y_0=2000000 "
+                    + "+datum=WGS84 +units=m +no_defs");
+            // PROJ 9.x writes this rounded degree conversion factor in both
+            // standards, producing a few ULPs of drift when the pole is parsed.
+            String projDegreeFactor = "0.0174532925199433";
+            String sourceWkt2 = CRSSerializer.toWkt2(original).replace(
+                Double.toString(Math.PI / 180.0), projDegreeFactor);
+            String sourceProjJson = CRSSerializer.toProjJson(original, false)
+                .replace(
+                    Double.toString(Math.PI / 180.0), projDegreeFactor);
+            assertTrue(sourceWkt2.contains(projDegreeFactor), sourceWkt2);
+            assertTrue(sourceProjJson.contains(projDegreeFactor), sourceProjJson);
+
+            String fromWkt2 = new Proj(sourceWkt2).toProjString();
+            String fromProjJson = new Proj(sourceProjJson).toProjString();
+
+            assertEquals(Integer.toString(pole),
+                projParameter(fromWkt2, "lat_0"), fromWkt2);
+            assertEquals(Integer.toString(pole),
+                projParameter(fromProjJson, "lat_0"), fromProjJson);
+        }
+    }
+
+    @Test
+    void genuineNearPoleLatitudeIsNotSnappedDuringProjSerialization() {
+        Proj projected = new Proj(
+            "+proj=stere +lat_0=90 +datum=WGS84 +units=m +no_defs");
+        double latitude = Math.PI / 2.0 - 1e-12;
+        projected.getParams().lat0 = latitude;
+
+        String serialized = CRSSerializer.toProjString(projected);
+        double serializedDegrees = Double.parseDouble(
+            projParameter(serialized, "lat_0"));
+
+        assertEquals(latitude * 180.0 / Math.PI, serializedDegrees, 0.0,
+            serialized);
+        assertTrue(serializedDegrees < 90.0, serialized);
+    }
+
+    @Test
     void geographicProjectionAliasesUseGeographicStandardRoots() {
         for (String alias : new String[]{"identity", "LongLat"}) {
             Proj original = new Proj(
@@ -369,6 +413,17 @@ class CRSSerializerRoundTripSafetyTest {
         assertThrows(UnsupportedOperationException.class, () -> CRSSerializer.toWkt1(proj));
         assertThrows(UnsupportedOperationException.class, () -> CRSSerializer.toWkt2(proj));
         assertThrows(UnsupportedOperationException.class, () -> CRSSerializer.toProjJson(proj));
+    }
+
+    private static String projParameter(String projString, String name) {
+        String prefix = "+" + name + "=";
+        for (String token : projString.split("\\s+")) {
+            if (token.startsWith(prefix)) {
+                return token.substring(prefix.length());
+            }
+        }
+        fail("Missing " + prefix + " in " + projString);
+        return null;
     }
 
 }
