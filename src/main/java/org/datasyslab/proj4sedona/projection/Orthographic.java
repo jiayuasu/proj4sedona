@@ -47,8 +47,8 @@ public class Orthographic implements Projection {
         double g = sinP14 * sinphi + cosP14 * cosphi * coslon;
 
         if (g > 0 || Math.abs(g) <= Values.EPSLN) {
-            // proj4js omits x0 here (asymmetric with the inverse); apply it so the
-            // projection round-trips and matches PROJ / the codebase convention.
+            // Current proj4js applies false easting here as well as subtracting it
+            // in the inverse (4572f6a), matching PROJ and this port's original behavior.
             double x = x0 + a * cosphi * Math.sin(dlon);
             double y = y0 + a * (cosP14 * sinphi - sinP14 * cosphi * coslon);
             return new Point(x, y, p.z);

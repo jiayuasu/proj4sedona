@@ -38,7 +38,7 @@ class DatumRegistryParityTest {
     private static final String RESOURCE =
             "/org/datasyslab/proj4sedona/constants/proj4js-datums.tsv";
     private static final String UPSTREAM_COMMIT =
-            "888ce3a8a5b27e03f08c062c80121225333de8f8";
+            "955bfd6bda76982bba87d683990b3ae3393a7e0b";
     private static final String UPSTREAM_SOURCE =
             "https://github.com/proj4js/proj4js/blob/" + UPSTREAM_COMMIT
                     + "/lib/constants/Datum.js";

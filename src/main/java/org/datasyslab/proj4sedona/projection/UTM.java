@@ -29,7 +29,7 @@ import org.datasyslab.proj4sedona.core.Point;
  * <p>This implementation delegates to {@link ExtendedTransverseMercator} for the
  * actual projection math, after setting up the UTM-specific parameters. With
  * {@code +approx}, this port intentionally keeps the traditional TM path selected by
- * that delegate. Current proj4js (commit 888ce3a) overwrites the approximate functions
+ * that delegate. Current proj4js (commit 955bfd6) overwrites the approximate functions
  * after initialization and effectively ignores the flag for UTM. Honoring it matches
  * proj4js's own {@code +proj=tmerc +approx} expansion and PROJ more closely.</p>
  */

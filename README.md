@@ -273,11 +273,11 @@ known to be wrong; each is noted in the relevant Javadoc and pinned by a test):
 
 | Upstream | Ported through | Date |
 |---|---|---|
-| [proj4js](https://github.com/proj4js/proj4js) | commit `888ce3a` | 2026-07-19 |
+| [proj4js](https://github.com/proj4js/proj4js) | commit `955bfd6` | 2026-07-28 |
 | [wkt-parser](https://github.com/proj4js/wkt-parser) | v1.5.6 | 2026-07-23 |
 | [mgrs](https://github.com/proj4js/mgrs) | v2.2.0 | 2026-07-21 |
 
-Some covered behavior is newer than the published `proj4@2.20.9` npm package and may
+Some covered behavior is newer than the published `proj4@2.21.0` npm package and may
 differ until the next upstream release.
 
 The datum registry is synchronized as a complete snapshot of proj4js's generated
@@ -295,7 +295,7 @@ To find upstream changes that may need porting since the last sync:
 
 ```bash
 # In a proj4js checkout:
-git log 888ce3a..origin/main -- lib/
+git log 955bfd6..origin/main -- lib/
 
 # For wkt-parser, diff the published packages:
 npm pack wkt-parser@1.5.6 && npm pack wkt-parser@latest
