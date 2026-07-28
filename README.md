@@ -35,11 +35,13 @@ Full documentation is available in the [docs/](docs/) folder:
 `UnsupportedOperationException` instead of returning lossy output for definitions they
 cannot represent. WKT2 and PROJJSON preserve supported three- and seven-parameter
 `+towgs84` operations as a `BoundCRS` (geocentric sources are supported in PROJJSON
-only), while WKT1 uses `TOWGS84`. All standard exporters reject grid shifts, `+over`,
-`+R_A`, and two-point `omerc`. WKT2 and PROJJSON also reject `+approx`; WKT1 preserves
-approximate Transverse Mercator with the executable `Fast_Transverse_Mercator` method.
-Use `toProjString()` for remaining unsupported operation semantics. The complete list is
-in the [CRS export fidelity guide](docs/crs-formats.md#export-fidelity).
+only), while WKT1 uses `TOWGS84`. Canonical named grid-shift datums such as NAD27
+export through their standard datum identity; custom grid operations remain rejected.
+All standard exporters reject `+over`, `+R_A`, and two-point `omerc`. WKT2 and
+PROJJSON also reject `+approx`; WKT1 preserves approximate Transverse Mercator with
+the executable `Fast_Transverse_Mercator` method. Use `toProjString()` for remaining
+unsupported operation semantics. The complete list is in the
+[CRS export fidelity guide](docs/crs-formats.md#export-fidelity).
 
 ## Quick Start
 

@@ -2039,6 +2039,22 @@ public final class CRSSerializer {
         return value == null || value == 0.0;
     }
 
+    /**
+     * Whether a standard CRS document can omit the active grid operation and have
+     * this parser restore it from the emitted datum identity. A simultaneous
+     * {@code +towgs84} array is rejected even though the grid is operationally
+     * authoritative: WKT1 would expose the Helmert values and WKT2/PROJJSON could
+     * wrap them in a BoundCRS, changing the operation seen by outside consumers.
+     */
+    private static boolean gridShiftReconstructsFromDeclaredDatum(
+            ProjectionParams params) {
+        DatumParams actual = params.datum;
+        return actual != null
+            && actual.isGridShift()
+            && actual.getDatumParams() == null
+            && resolveProjDatumToken(params) != null;
+    }
+
     private static boolean declaredDatumOperationIsCanonical(ProjectionParams params) {
         DatumParams actual = params.datum;
         Datum declared = Datum.get(params.datumCode);
@@ -2050,6 +2066,7 @@ public final class CRSSerializer {
         String expectedGrid = declared.getNadgrids();
         if (expectedGrid != null) {
             return actual != null && actual.isGridShift()
+                && actual.getDatumParams() == null
                 && Objects.equals(expectedGrid, actual.getNadgrids());
         }
         if (actual != null && actual.isGridShift()) {
@@ -2547,6 +2564,7 @@ public final class CRSSerializer {
         DatumParams datum = params.datum;
         if (canon.nadgrids != null) {
             return datum != null && datum.isGridShift()
+                && datum.getDatumParams() == null
                 && canon.nadgrids.equals(datum.getNadgrids()) ? canon.token : null;
         }
         if (datum == null || datum.isGridShift() || datum.getDatumParams() == null) {
@@ -3052,7 +3070,19 @@ public final class CRSSerializer {
         }
 
         DatumParams datum = params.datum;
-        if (datum != null && datum.isGridShift()) {
+        // A canonical named grid shift belongs to the coordinate operation selected
+        // for that datum, not to the CRS document itself. Standard serializers such
+        // as PROJ therefore emit only the datum name and ellipsoid for NAD27. Our
+        // parsers resolve that name through the same datum registry and restore the
+        // identical grid list. An explicit/custom override has no such standard
+        // representation and must still fail instead of being silently replaced by
+        // the named datum's grids.
+        Datum declaredDatum = Datum.get(params.datumCode);
+        boolean declaresGridShift =
+            declaredDatum != null && declaredDatum.getNadgrids() != null;
+        boolean hasGridShift = datum != null && datum.isGridShift();
+        if ((declaresGridShift || hasGridShift)
+                && !gridShiftReconstructsFromDeclaredDatum(params)) {
             throw unsupportedStandardParameter(
                 "Grid-shift datum operations cannot be represented losslessly");
         }

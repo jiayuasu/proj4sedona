@@ -271,8 +271,8 @@ PROJ string.
 
 This applies to PROJ-only longitude handling (`+over`, `+lon_wrap`), authalic-radius
 mode (`+R_A`), `ob_tran`, Tilted Perspective, unsupported Oblique Mercator variants
-(`+no_rot` and the two-point form), and grid-shift operations. Approximate Transverse
-Mercator is format-dependent: WKT2 and PROJJSON reject it, while WKT1 emits
+(`+no_rot` and the two-point form), and custom grid-shift operations. Approximate
+Transverse Mercator is format-dependent: WKT2 and PROJJSON reject it, while WKT1 emits
 the executable `Fast_Transverse_Mercator` method. Other uses of `+approx` are rejected
 by all standard exporters. WKT2 and
 PROJJSON preserve coordinate-affecting three- and seven-parameter `+towgs84`
@@ -283,9 +283,16 @@ Geographic and projected sources target EPSG:4326 with EPSG methods 9603 and 960
 geocentric PROJJSON targets EPSG:4978 with methods 1031 and 1033. Helmert BoundCRS
 import is limited to those target/method combinations so an arbitrary target or
 coordinate-frame rotation cannot be silently rewritten as `+towgs84`. WKT1 preserves
-the same operation with `TOWGS84`. Grid-shift operations remain importable but are not
-yet exportable. Geocentric CRS export is supported as a PROJ string or PROJJSON, but
-not yet as WKT.
+the same operation with `TOWGS84`.
+
+Canonical named grid-shift datums such as NAD27 are exportable in WKT1, WKT2, and
+PROJJSON. As in PROJ's standard exports, the document describes the datum and
+ellipsoid without embedding grid filenames: the grid belongs to the coordinate
+operation selected for that datum. Re-import resolves the emitted datum name through
+the bundled registry and restores the identical grid list. A custom or overridden
+`+nadgrids` list, a conflicting ellipsoid, or a simultaneous `+towgs84` operation is
+still rejected because a plain standard CRS document cannot preserve that definition.
+Geocentric CRS export is supported as a PROJ string or PROJJSON, but not yet as WKT.
 
 For supported definitions, standard exports preserve projection parameters,
 linear-unit factors, horizontal axis order and direction, and non-Greenwich prime
