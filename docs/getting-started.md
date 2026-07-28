@@ -12,14 +12,14 @@ Add the following dependency to your `pom.xml`:
 <dependency>
     <groupId>org.datasyslab</groupId>
     <artifactId>proj4sedona</artifactId>
-    <version>0.1.4</version>
+    <version>0.1.5</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```groovy
-implementation 'org.datasyslab:proj4sedona:0.1.4'
+implementation 'org.datasyslab:proj4sedona:0.1.5'
 ```
 
 ### Building from Source
