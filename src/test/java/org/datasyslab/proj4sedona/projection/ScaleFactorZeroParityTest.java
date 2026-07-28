@@ -177,7 +177,7 @@ class ScaleFactorZeroParityTest {
             "+proj=tmerc +approx +R_A +lat_0=0 +lon_0=3 "
                 + "+ellps=WGS84 +units=m +no_defs");
         Point projected = project(projection, 10, 50);
-        // Current proj4js 888ce3a takes the spherical traditional-TM path.
+        // Current proj4js 955bfd6 takes the spherical traditional-TM path.
         assertEquals(500664.2004314585, projected.x, 1e-8);
         assertEquals(5589456.452970307, projected.y, 1e-8);
     }
@@ -200,7 +200,7 @@ class ScaleFactorZeroParityTest {
         Proj projection = new Proj(
             "+proj=Fast-Transverse-Mercator +R=6371000 +lon_0=3 +no_defs");
         Point projected = project(projection, 4, 50);
-        // Current proj4js 888ce3a normalizes hyphens before alias lookup.
+        // Current proj4js 955bfd6 normalizes hyphens before alias lookup.
         assertEquals(71474.09080788007, projected.x, 1e-8);
         assertEquals(5560224.158597246, projected.y, 1e-8);
     }
@@ -208,7 +208,7 @@ class ScaleFactorZeroParityTest {
     @Test
     @DisplayName("Approximate UTM intentionally honors +approx and expands to traditional TM")
     void testApproximateUtmNormalization() {
-        // Current proj4js 888ce3a overwrites UTM's approximate functions after init,
+        // Current proj4js 955bfd6 overwrites UTM's approximate functions after init,
         // ignoring +approx. This intentional divergence preserves the flag and matches
         // proj4js's own tmerc +approx expansion (and PROJ) below.
         Proj approximate = new Proj(
@@ -267,7 +267,7 @@ class ScaleFactorZeroParityTest {
         Proj projection = new Proj(
             "+proj=merc +R_A +lat_ts=30 +ellps=WGS84 +units=m +no_defs");
         Point projected = project(projection, 10, 50);
-        // Current proj4js 888ce3a: merc.init recomputes eccentricity from a/b.
+        // Current proj4js 955bfd6: merc.init recomputes eccentricity from a/b.
         assertEquals(964862.8025089651, projected.x, 1e-8);
         assertEquals(5558928.87201279, projected.y, 1e-8);
     }

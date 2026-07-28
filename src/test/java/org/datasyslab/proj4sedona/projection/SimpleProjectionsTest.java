@@ -12,9 +12,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for the Miller Cylindrical (mill), Gnomonic (gnom) and Orthographic (ortho)
- * projections. Reference eastings/northings are from proj4js 2.20.9 (WGS84 &rarr; CRS);
- * definitions keep the same datum on both sides, so the numbers exercise the projection
- * math. Tolerance 0.01 m / 1e-7&deg;.
+ * projections. Reference eastings/northings are from proj4js fixtures through commit
+ * 955bfd6 (WGS84 &rarr; CRS); definitions keep the same datum on both sides, so the
+ * numbers exercise the projection math. Tolerance 0.01 m / 1e-7&deg;.
  */
 class SimpleProjectionsTest {
 
@@ -93,15 +93,21 @@ class SimpleProjectionsTest {
     }
 
     @Test
-    void testOrthographicOffsetRoundTrip() {
-        // proj4js's ortho omits +x_0 in the forward path (asymmetric); this port applies
-        // it, so an offset ortho CRS round-trips. Verify forward->inverse identity.
+    void testOrthographicFalseEastingMatchesUpstream() {
+        // Exact fixture added by proj4js 4572f6a / b7bb55f.
         Converter conv = Proj4.proj4(WGS84,
-            "+proj=ortho +lat_0=45 +lon_0=0 +x_0=100000 +y_0=100000 +a=6378137 +b=6378137 +units=m +no_defs");
-        Point xy = conv.forward(new Point(5, 50));
+            "+proj=ortho +lat_0=10 +lon_0=20 +x_0=500000 +y_0=200000 "
+                + "+R=6378137 +units=m +no_defs");
+        Point center = conv.forward(new Point(20, 10));
+        assertEquals(500000, center.x, 1e-6);
+        assertEquals(200000, center.y, 1e-6);
+
+        Point xy = conv.forward(new Point(24, 13));
+        assertEquals(933513.16904843, xy.x, 1e-6);
+        assertEquals(536434.69158115, xy.y, 1e-6);
         Point ll = conv.inverse(new Point(xy.x, xy.y));
-        assertEquals(5, ll.x, LL_EPSLN);
-        assertEquals(50, ll.y, LL_EPSLN);
+        assertEquals(24, ll.x, 1e-9);
+        assertEquals(13, ll.y, 1e-9);
     }
 
     @Test
