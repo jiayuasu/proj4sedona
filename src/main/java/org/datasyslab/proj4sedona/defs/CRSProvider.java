@@ -13,8 +13,8 @@ package org.datasyslab.proj4sedona.defs;
  *   <li>Return a {@link CRSResult} when the provider can resolve the code.</li>
  *   <li>Return {@code null} when the provider does not know the code, so the next
  *       provider in the chain can try.</li>
- *   <li>Throw {@link CRSFetchException} only on hard errors (network failure,
- *       invalid response) that should abort the chain.</li>
+ *   <li>Throw {@link CRSFetchException} only on hard errors (HTTP or network
+ *       failure, open circuit, invalid response) that should abort the chain.</li>
  * </ul>
  *
  * <h3>Example — custom URL provider</h3>

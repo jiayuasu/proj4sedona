@@ -27,7 +27,8 @@ import org.datasyslab.proj4sedona.util.CRSUtils;
  * <p>By default, {@link #globals()} registers two providers:</p>
  * <ul>
  *   <li>{@link BuiltInCRSProvider} at priority <b>100</b> — instant map lookup, no network</li>
- *   <li>{@link UrlCRSProvider#spatialReference()} at priority <b>101</b> — fetches from spatialreference.org</li>
+ *   <li>{@link UrlCRSProvider#spatialReference()} at priority <b>101</b> — fetches
+ *       from an immutable OSGeo spatialreference.org snapshot</li>
  * </ul>
  *
  * <p>Users can register custom providers at a lower priority to override defaults,
@@ -256,7 +257,8 @@ public final class Defs {
      *
      * @param name The name/code to look up (e.g., "EPSG:4326", "WGS84", "ESRI:102001")
      * @return The ProjectionDef, or null if no provider can resolve the code
-     * @throws CRSFetchException if a provider encounters a hard error (network failure, etc.)
+     * @throws CRSFetchException if a provider encounters an HTTP or network failure,
+     *         open circuit, or invalid response
      */
     public static ProjectionDef get(String name) {
         // Auto-initialize globals if not yet done
@@ -299,7 +301,8 @@ public final class Defs {
      * @return The ProjectionDef (never null)
      * @throws CRSFetchException with {@link CRSFetchException.Reason#NOT_FOUND} if no
      *         provider can resolve the code
-     * @throws CRSFetchException if a provider encounters a hard error (network failure, etc.)
+     * @throws CRSFetchException if a provider encounters an HTTP or network failure,
+     *         open circuit, or invalid response
      */
     public static ProjectionDef getOrThrow(String name) {
         ProjectionDef def = get(name);
@@ -415,7 +418,8 @@ public final class Defs {
      * after the first call. It registers:</p>
      * <ul>
      *   <li>{@link BuiltInCRSProvider} at priority 100</li>
-     *   <li>{@link UrlCRSProvider#spatialReference()} at priority 101</li>
+     *   <li>{@link UrlCRSProvider#spatialReference()} at priority 101, backed by
+     *       an immutable OSGeo snapshot</li>
      * </ul>
      *
      * <p>It also pre-populates the cache with common aliases that are not in

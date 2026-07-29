@@ -2,18 +2,29 @@ package org.datasyslab.proj4sedona.defs;
 
 import java.io.IOException;
 import java.net.ConnectException;
+import java.net.NoRouteToHostException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Flow;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * HTTP fetch engine for retrieving CRS definition files (PROJJSON, WKT, PROJ.4)
@@ -22,8 +33,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>This class is used by {@link UrlCRSProvider} and handles:</p>
  * <ul>
  *   <li>URL construction from a configurable base URL and path template</li>
- *   <li>Retry with exponential backoff for transient failures</li>
+ *   <li>Bounded retry with exponential backoff for transient failures</li>
  *   <li>Negative cache to skip known 404s</li>
+ *   <li>Single-flight request coalescing for concurrent lookups of the same CRS</li>
+ *   <li>A host-level circuit breaker to avoid repeatedly calling an unhealthy endpoint</li>
  *   <li>Custom HTTP headers (e.g., for private GitHub repos or pre-signed S3)</li>
  * </ul>
  *
@@ -54,6 +67,104 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class UrlCRSFetcher {
 
+    private enum CircuitState {
+        CLOSED,
+        OPEN,
+        HALF_OPEN
+    }
+
+    private static final class CircuitPermit {
+        private final long generation;
+        private final boolean halfOpenProbe;
+
+        private CircuitPermit(long generation, boolean halfOpenProbe) {
+            this.generation = generation;
+            this.halfOpenProbe = halfOpenProbe;
+        }
+    }
+
+    private static final class CancellableBodyHandler<T>
+            implements HttpResponse.BodyHandler<T> {
+        private final HttpResponse.BodyHandler<T> delegate;
+        private volatile CancellableBodySubscriber<T> subscriber;
+        private volatile boolean cancelled;
+
+        private CancellableBodyHandler(HttpResponse.BodyHandler<T> delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public HttpResponse.BodySubscriber<T> apply(
+                HttpResponse.ResponseInfo responseInfo) {
+            CancellableBodySubscriber<T> wrapped =
+                    new CancellableBodySubscriber<>(delegate.apply(responseInfo));
+            subscriber = wrapped;
+            if (cancelled) {
+                wrapped.cancel();
+            }
+            return wrapped;
+        }
+
+        private void cancel() {
+            cancelled = true;
+            CancellableBodySubscriber<T> current = subscriber;
+            if (current != null) {
+                current.cancel();
+            }
+        }
+    }
+
+    private static final class CancellableBodySubscriber<T>
+            implements HttpResponse.BodySubscriber<T> {
+        private final HttpResponse.BodySubscriber<T> delegate;
+        private volatile Flow.Subscription subscription;
+        private volatile boolean cancelled;
+
+        private CancellableBodySubscriber(HttpResponse.BodySubscriber<T> delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public CompletionStage<T> getBody() {
+            return delegate.getBody();
+        }
+
+        @Override
+        public void onSubscribe(Flow.Subscription newSubscription) {
+            subscription = newSubscription;
+            if (cancelled) {
+                newSubscription.cancel();
+            }
+            delegate.onSubscribe(newSubscription);
+            if (cancelled) {
+                newSubscription.cancel();
+            }
+        }
+
+        @Override
+        public void onNext(List<ByteBuffer> item) {
+            delegate.onNext(item);
+        }
+
+        @Override
+        public void onError(Throwable throwable) {
+            delegate.onError(throwable);
+        }
+
+        @Override
+        public void onComplete() {
+            delegate.onComplete();
+        }
+
+        private void cancel() {
+            cancelled = true;
+            Flow.Subscription current = subscription;
+            if (current != null) {
+                current.cancel();
+            }
+        }
+    }
+
     // ==================== FetchResult ====================
 
     /**
@@ -69,34 +180,58 @@ public final class UrlCRSFetcher {
             /** The CRS code was not found (HTTP 404) */
             NOT_FOUND,
             /** A network error occurred after exhausting retries */
-            NETWORK_ERROR
+            NETWORK_ERROR,
+            /** The server returned an HTTP error other than 404 */
+            HTTP_ERROR,
+            /** The request was skipped because the endpoint circuit breaker is open */
+            CIRCUIT_OPEN
         }
 
         private final Status status;
         private final String body;
         private final Exception lastException;
         private final int attemptCount;
+        private final int httpStatusCode;
 
-        private FetchResult(Status status, String body, Exception lastException, int attemptCount) {
+        private FetchResult(
+                Status status,
+                String body,
+                Exception lastException,
+                int attemptCount,
+                int httpStatusCode) {
             this.status = status;
             this.body = body;
             this.lastException = lastException;
             this.attemptCount = attemptCount;
+            this.httpStatusCode = httpStatusCode;
         }
 
         /** Create a successful result. */
         public static FetchResult success(String body, int attemptCount) {
-            return new FetchResult(Status.SUCCESS, body, null, attemptCount);
+            return new FetchResult(Status.SUCCESS, body, null, attemptCount, 200);
         }
 
         /** Create a not-found result. */
         public static FetchResult notFound(int attemptCount) {
-            return new FetchResult(Status.NOT_FOUND, null, null, attemptCount);
+            return new FetchResult(Status.NOT_FOUND, null, null, attemptCount, 404);
+        }
+
+        /** Create an HTTP error result. */
+        public static FetchResult httpError(
+                int statusCode, Exception lastException, int attemptCount) {
+            return new FetchResult(
+                    Status.HTTP_ERROR, null, lastException, attemptCount, statusCode);
         }
 
         /** Create a network error result. */
         public static FetchResult networkError(Exception lastException, int attemptCount) {
-            return new FetchResult(Status.NETWORK_ERROR, null, lastException, attemptCount);
+            return new FetchResult(
+                    Status.NETWORK_ERROR, null, lastException, attemptCount, -1);
+        }
+
+        /** Create a circuit-open result. */
+        public static FetchResult circuitOpen(Exception lastException) {
+            return new FetchResult(Status.CIRCUIT_OPEN, null, lastException, 0, -1);
         }
 
         /** Get the status of this result. */
@@ -111,14 +246,23 @@ public final class UrlCRSFetcher {
         /** Check if a network error occurred. */
         public boolean isNetworkError() { return status == Status.NETWORK_ERROR; }
 
+        /** Check if the server returned a non-404 HTTP error. */
+        public boolean isHttpError() { return status == Status.HTTP_ERROR; }
+
+        /** Check if the request was rejected by the circuit breaker. */
+        public boolean isCircuitOpen() { return status == Status.CIRCUIT_OPEN; }
+
         /** Get the response body (only valid if status is SUCCESS). */
         public String getBody() { return body; }
 
-        /** Get the last exception (only valid if status is NETWORK_ERROR). */
+        /** Get the underlying exception for HTTP, network, or circuit-open failures. */
         public Exception getLastException() { return lastException; }
 
         /** Get the number of attempts made. */
         public int getAttemptCount() { return attemptCount; }
+
+        /** Get the HTTP status code, or -1 when no response was received. */
+        public int getHttpStatusCode() { return httpStatusCode; }
     }
 
     // ==================== Defaults ====================
@@ -132,14 +276,24 @@ public final class UrlCRSFetcher {
     /** Default read timeout in seconds. */
     public static final int DEFAULT_READ_TIMEOUT_SECONDS = 30;
 
-    /** Default maximum number of retry attempts. */
+    /** Default maximum number of total attempts, including the initial request. */
     public static final int DEFAULT_MAX_RETRIES = 3;
 
     /** Default initial backoff delay in milliseconds. */
     public static final long DEFAULT_INITIAL_BACKOFF_MS = 500;
 
+    /** Default overall deadline; zero preserves the per-attempt timeouts without a total limit. */
+    public static final int DEFAULT_TOTAL_TIMEOUT_SECONDS = 0;
+
+    /** Default circuit-breaker threshold; zero leaves the breaker disabled. */
+    public static final int DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD = 0;
+
+    /** Default delay before allowing a probe request through an open circuit. */
+    public static final Duration DEFAULT_CIRCUIT_BREAKER_RESET_TIMEOUT = Duration.ofSeconds(30);
+
     private static final double BACKOFF_MULTIPLIER = 2.0;
     private static final long MAX_BACKOFF_MS = 5000;
+    private static final int MAX_REDIRECTS = 5;
 
     // ==================== Instance Fields ====================
 
@@ -149,11 +303,32 @@ public final class UrlCRSFetcher {
     private final int readTimeoutSeconds;
     private final int maxRetries;
     private final long initialBackoffMs;
+    private final int totalTimeoutSeconds;
+    private final int circuitBreakerFailureThreshold;
+    private final long circuitBreakerResetTimeoutNanos;
     private final Map<String, String> headers;
     private final HttpClient httpClient;
 
     /** Negative cache: track codes that are known 404s. */
     private final Set<String> notFoundCache = ConcurrentHashMap.newKeySet();
+
+    /** Concurrent requests for the same authority/code share one HTTP operation. */
+    private final Map<String, CompletableFuture<FetchResult>> inFlight = new ConcurrentHashMap<>();
+
+    /** Guards all circuit-breaker state and generation transitions. */
+    private final Object circuitLock = new Object();
+
+    /** Circuit state for the configured endpoint. Guarded by {@link #circuitLock}. */
+    private CircuitState circuitState = CircuitState.CLOSED;
+
+    /** Consecutive logical lookup failures. Guarded by {@link #circuitLock}. */
+    private int consecutiveFailures;
+
+    /** Monotonic timestamp when the circuit opened. Guarded by {@link #circuitLock}. */
+    private long circuitOpenedAtNanos;
+
+    /** Invalidates results from requests admitted under an older circuit state. */
+    private long circuitGeneration;
 
     // ==================== Constructor (via Builder) ====================
 
@@ -164,10 +339,14 @@ public final class UrlCRSFetcher {
         this.readTimeoutSeconds = builder.readTimeoutSeconds;
         this.maxRetries = builder.maxRetries;
         this.initialBackoffMs = builder.initialBackoffMs;
+        this.totalTimeoutSeconds = builder.totalTimeoutSeconds;
+        this.circuitBreakerFailureThreshold = builder.circuitBreakerFailureThreshold;
+        this.circuitBreakerResetTimeoutNanos =
+                builder.circuitBreakerResetTimeout.toNanos();
         this.headers = Collections.unmodifiableMap(new LinkedHashMap<>(builder.headers));
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(connectTimeoutSeconds))
-                .followRedirects(HttpClient.Redirect.NORMAL)
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
     }
 
@@ -196,25 +375,76 @@ public final class UrlCRSFetcher {
             return FetchResult.notFound(0);
         }
 
+        CompletableFuture<FetchResult> request = new CompletableFuture<>();
+        CompletableFuture<FetchResult> existing = inFlight.putIfAbsent(cacheKey, request);
+        if (existing != null) {
+            return awaitInFlight(existing);
+        }
+
+        CircuitPermit circuitPermit = null;
+        try {
+            circuitPermit = acquireCircuitPermit();
+            if (circuitPermit == null) {
+                FetchResult circuitRejection = circuitOpenResult();
+                request.complete(circuitRejection);
+                return circuitRejection;
+            }
+
+            FetchResult result = fetchWithRetries(authority, code, cacheKey);
+            if (isNeutralEndpointResult(result)) {
+                releaseCircuitPermit(circuitPermit);
+            } else {
+                recordEndpointResult(circuitPermit, isEndpointFailure(result));
+            }
+            request.complete(result);
+            return result;
+        } catch (RuntimeException | Error e) {
+            releaseCircuitPermit(circuitPermit);
+            request.completeExceptionally(e);
+            throw e;
+        } finally {
+            inFlight.remove(cacheKey, request);
+        }
+    }
+
+    private FetchResult fetchWithRetries(String authority, String code, String cacheKey) {
         String url = buildUrl(authority, code);
         Exception lastException = null;
+        int lastHttpStatusCode = -1;
         int attemptCount = 0;
+        long deadlineNanos = totalTimeoutSeconds == 0
+                ? 0
+                : System.nanoTime() + Duration.ofSeconds(totalTimeoutSeconds).toNanos();
 
         for (int attempt = 0; attempt < maxRetries; attempt++) {
-            attemptCount = attempt + 1;
-
             if (attempt > 0) {
                 long backoffMs = calculateBackoff(attempt);
+                long remainingNanos = remainingNanos(deadlineNanos);
+                if (remainingNanos <= 0) {
+                    lastException = overallTimeout(url);
+                    lastHttpStatusCode = -1;
+                    break;
+                }
+                long remainingMs = Math.max(1, Duration.ofNanos(remainingNanos).toMillis());
+                long boundedBackoffMs = Math.min(backoffMs, remainingMs);
                 try {
-                    Thread.sleep(backoffMs);
+                    Thread.sleep(boundedBackoffMs);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     return FetchResult.networkError(e, attemptCount);
                 }
             }
 
+            long remainingNanos = remainingNanos(deadlineNanos);
+            if (remainingNanos <= 0) {
+                lastException = overallTimeout(url);
+                lastHttpStatusCode = -1;
+                break;
+            }
+
+            attemptCount = attempt + 1;
             try {
-                HttpResponse<String> response = executeRequest(url);
+                HttpResponse<String> response = executeRequest(url, remainingNanos);
                 int statusCode = response.statusCode();
 
                 if (statusCode == 200) {
@@ -223,17 +453,20 @@ public final class UrlCRSFetcher {
                     notFoundCache.add(cacheKey);
                     return FetchResult.notFound(attemptCount);
                 } else if (isRetryableStatusCode(statusCode)) {
+                    lastHttpStatusCode = statusCode;
                     lastException = new IOException("HTTP " + statusCode + " from " + url);
                     continue;
                 } else {
-                    // Other 4xx — treat as not found
-                    return FetchResult.notFound(attemptCount);
+                    IOException error = new IOException("HTTP " + statusCode + " from " + url);
+                    return FetchResult.httpError(statusCode, error, attemptCount);
                 }
             } catch (ConnectException | SocketTimeoutException e) {
                 lastException = e;
+                lastHttpStatusCode = -1;
             } catch (IOException e) {
                 if (isRetryableException(e)) {
                     lastException = e;
+                    lastHttpStatusCode = -1;
                 } else {
                     return FetchResult.networkError(e, attemptCount);
                 }
@@ -243,7 +476,145 @@ public final class UrlCRSFetcher {
             }
         }
 
+        if (lastHttpStatusCode >= 0) {
+            return FetchResult.httpError(
+                    lastHttpStatusCode, lastException, attemptCount);
+        }
+        if (lastException == null) {
+            lastException = overallTimeout(url);
+        }
         return FetchResult.networkError(lastException, attemptCount);
+    }
+
+    private FetchResult awaitInFlight(CompletableFuture<FetchResult> request) {
+        try {
+            return request.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return FetchResult.networkError(e, 0);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException) {
+                throw (RuntimeException) cause;
+            }
+            if (cause instanceof Error) {
+                throw (Error) cause;
+            }
+            Exception wrapped = cause instanceof Exception
+                    ? (Exception) cause
+                    : new IOException("Concurrent CRS fetch failed", cause);
+            return FetchResult.networkError(wrapped, 0);
+        }
+    }
+
+    private FetchResult circuitOpenResult() {
+        IOException error = new IOException(
+                "Circuit breaker is open for CRS endpoint " + baseUrl);
+        return FetchResult.circuitOpen(error);
+    }
+
+    private CircuitPermit acquireCircuitPermit() {
+        synchronized (circuitLock) {
+            if (circuitState == CircuitState.CLOSED) {
+                return new CircuitPermit(circuitGeneration, false);
+            }
+            if (circuitState == CircuitState.OPEN
+                    && System.nanoTime() - circuitOpenedAtNanos
+                            >= circuitBreakerResetTimeoutNanos) {
+                circuitState = CircuitState.HALF_OPEN;
+                return new CircuitPermit(circuitGeneration, true);
+            }
+            return null;
+        }
+    }
+
+    private void recordEndpointResult(CircuitPermit permit, boolean failed) {
+        if (circuitBreakerFailureThreshold == 0) {
+            return;
+        }
+        synchronized (circuitLock) {
+            if (permit.generation != circuitGeneration) {
+                return;
+            }
+
+            if (permit.halfOpenProbe) {
+                if (circuitState != CircuitState.HALF_OPEN) {
+                    return;
+                }
+                circuitGeneration++;
+                if (failed) {
+                    circuitState = CircuitState.OPEN;
+                    circuitOpenedAtNanos = System.nanoTime();
+                    consecutiveFailures = circuitBreakerFailureThreshold;
+                } else {
+                    closeCircuit();
+                }
+                return;
+            }
+
+            if (circuitState != CircuitState.CLOSED) {
+                return;
+            }
+            if (!failed) {
+                consecutiveFailures = 0;
+                return;
+            }
+
+            consecutiveFailures++;
+            if (consecutiveFailures >= circuitBreakerFailureThreshold) {
+                circuitGeneration++;
+                circuitState = CircuitState.OPEN;
+                circuitOpenedAtNanos = System.nanoTime();
+            }
+        }
+    }
+
+    private void releaseCircuitPermit(CircuitPermit permit) {
+        if (permit == null || !permit.halfOpenProbe) {
+            return;
+        }
+        synchronized (circuitLock) {
+            if (permit.generation == circuitGeneration
+                    && circuitState == CircuitState.HALF_OPEN) {
+                circuitGeneration++;
+                circuitState = CircuitState.OPEN;
+            }
+        }
+    }
+
+    private void closeCircuit() {
+        circuitState = CircuitState.CLOSED;
+        consecutiveFailures = 0;
+        circuitOpenedAtNanos = 0;
+    }
+
+    private static SocketTimeoutException overallTimeout(String url) {
+        return new SocketTimeoutException(
+                "Overall timeout while fetching CRS definition from " + url);
+    }
+
+    private static long remainingNanos(long deadlineNanos) {
+        return deadlineNanos == 0 ? Long.MAX_VALUE : deadlineNanos - System.nanoTime();
+    }
+
+    private static boolean isEndpointFailure(FetchResult result) {
+        if (result.isNetworkError()) {
+            return true;
+        }
+        if (!result.isHttpError()) {
+            return false;
+        }
+        int statusCode = result.getHttpStatusCode();
+        return statusCode >= 500
+                || statusCode == 401
+                || statusCode == 403
+                || statusCode == 408
+                || statusCode == 429;
+    }
+
+    private static boolean isNeutralEndpointResult(FetchResult result) {
+        return result.isNetworkError()
+                && result.getLastException() instanceof InterruptedException;
     }
 
     // ==================== URL Building ====================
@@ -269,10 +640,55 @@ public final class UrlCRSFetcher {
 
     // ==================== HTTP Execution ====================
 
-    private HttpResponse<String> executeRequest(String url) throws IOException, InterruptedException {
+    private HttpResponse<String> executeRequest(String url, long remainingNanos)
+            throws IOException, InterruptedException {
+        long readTimeoutNanos = Duration.ofSeconds(readTimeoutSeconds).toNanos();
+        long requestTimeoutNanos =
+                Math.max(1, Math.min(readTimeoutNanos, remainingNanos));
+        long requestDeadlineNanos = System.nanoTime() + requestTimeoutNanos;
+        URI currentUri = URI.create(url);
+
+        for (int redirects = 0; ; redirects++) {
+            long currentRequestTimeoutNanos =
+                    requestDeadlineNanos - System.nanoTime();
+            if (currentRequestTimeoutNanos <= 0) {
+                throw overallTimeout(url);
+            }
+
+            HttpResponse<String> response =
+                    executeSingleRequest(currentUri, currentRequestTimeoutNanos);
+            if (!isRedirectStatusCode(response.statusCode())) {
+                return response;
+            }
+
+            String location = response.headers().firstValue("location").orElse(null);
+            if (location == null) {
+                return response;
+            }
+            if (redirects >= MAX_REDIRECTS) {
+                throw new IOException("Too many redirects while fetching " + url);
+            }
+
+            URI redirectUri;
+            try {
+                redirectUri = currentUri.resolve(location);
+            } catch (IllegalArgumentException e) {
+                throw new IOException("Invalid redirect from " + currentUri, e);
+            }
+            if (!isAllowedRedirect(currentUri, redirectUri)) {
+                return response;
+            }
+            currentUri = redirectUri;
+        }
+    }
+
+    private HttpResponse<String> executeSingleRequest(
+            URI uri, long requestTimeoutNanos)
+            throws IOException, InterruptedException {
+        Duration requestTimeout = Duration.ofNanos(requestTimeoutNanos);
         HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(readTimeoutSeconds))
+                .uri(uri)
+                .timeout(requestTimeout)
                 .GET();
 
         // Apply custom headers
@@ -280,7 +696,54 @@ public final class UrlCRSFetcher {
             reqBuilder.header(h.getKey(), h.getValue());
         }
 
-        return httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
+        CancellableBodyHandler<String> bodyHandler =
+                new CancellableBodyHandler<>(HttpResponse.BodyHandlers.ofString());
+        CompletableFuture<HttpResponse<String>> responseFuture =
+                httpClient.sendAsync(reqBuilder.build(), bodyHandler);
+        try {
+            return responseFuture.get(requestTimeoutNanos, TimeUnit.NANOSECONDS);
+        } catch (TimeoutException e) {
+            bodyHandler.cancel();
+            responseFuture.cancel(true);
+            SocketTimeoutException timeout = new SocketTimeoutException(
+                    "Timed out while fetching CRS response body from " + uri);
+            timeout.initCause(e);
+            throw timeout;
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof IOException) {
+                throw (IOException) cause;
+            }
+            if (cause instanceof RuntimeException) {
+                throw (RuntimeException) cause;
+            }
+            if (cause instanceof Error) {
+                throw (Error) cause;
+            }
+            throw new IOException("Failed to fetch CRS definition from " + uri, cause);
+        } catch (InterruptedException e) {
+            bodyHandler.cancel();
+            responseFuture.cancel(true);
+            throw e;
+        }
+    }
+
+    private static boolean isRedirectStatusCode(int statusCode) {
+        return statusCode == 301
+                || statusCode == 302
+                || statusCode == 303
+                || statusCode == 307
+                || statusCode == 308;
+    }
+
+    private static boolean isAllowedRedirect(URI source, URI target) {
+        String targetScheme = target.getScheme();
+        if (!"http".equalsIgnoreCase(targetScheme)
+                && !"https".equalsIgnoreCase(targetScheme)) {
+            return false;
+        }
+        return !"https".equalsIgnoreCase(source.getScheme())
+                || "https".equalsIgnoreCase(targetScheme);
     }
 
     // ==================== Retry Helpers ====================
@@ -297,7 +760,11 @@ public final class UrlCRSFetcher {
     }
 
     private static boolean isRetryableException(Exception e) {
-        if (e instanceof ConnectException || e instanceof SocketTimeoutException) {
+        if (e instanceof ConnectException
+                || e instanceof NoRouteToHostException
+                || e instanceof SocketTimeoutException
+                || e instanceof UnknownHostException
+                || e instanceof HttpTimeoutException) {
             return true;
         }
         String message = e.getMessage();
@@ -318,7 +785,7 @@ public final class UrlCRSFetcher {
     /** Get the configured path template. */
     public String getPathTemplate() { return pathTemplate; }
 
-    /** Get the max retries. */
+    /** Get the maximum number of total attempts. */
     public int getMaxRetries() { return maxRetries; }
 
     /** Get the connect timeout in seconds. */
@@ -329,6 +796,44 @@ public final class UrlCRSFetcher {
 
     /** Get the initial backoff in milliseconds. */
     public long getInitialBackoffMs() { return initialBackoffMs; }
+
+    /** Get the overall lookup timeout in seconds. */
+    public int getTotalTimeoutSeconds() { return totalTimeoutSeconds; }
+
+    /** Get the number of failed lookups that opens the circuit. */
+    public int getCircuitBreakerFailureThreshold() {
+        return circuitBreakerFailureThreshold;
+    }
+
+    /** Get the circuit breaker reset timeout. */
+    public Duration getCircuitBreakerResetTimeout() {
+        return Duration.ofNanos(circuitBreakerResetTimeoutNanos);
+    }
+
+    /** Get the number of consecutive endpoint failures. */
+    public int getConsecutiveFailureCount() {
+        synchronized (circuitLock) {
+            return consecutiveFailures;
+        }
+    }
+
+    /** Check whether the endpoint circuit has been opened. */
+    public boolean isCircuitOpen() {
+        synchronized (circuitLock) {
+            return circuitState != CircuitState.CLOSED;
+        }
+    }
+
+    /** Close the circuit and clear its failure count. */
+    public void resetCircuitBreaker() {
+        synchronized (circuitLock) {
+            circuitGeneration++;
+            closeCircuit();
+        }
+    }
+
+    /** Get the number of currently active logical fetches. */
+    int getInFlightCount() { return inFlight.size(); }
 
     /** Get the unmodifiable map of custom headers. */
     public Map<String, String> getHeaders() { return headers; }
@@ -358,6 +863,11 @@ public final class UrlCRSFetcher {
         private int readTimeoutSeconds = DEFAULT_READ_TIMEOUT_SECONDS;
         private int maxRetries = DEFAULT_MAX_RETRIES;
         private long initialBackoffMs = DEFAULT_INITIAL_BACKOFF_MS;
+        private int totalTimeoutSeconds = DEFAULT_TOTAL_TIMEOUT_SECONDS;
+        private int circuitBreakerFailureThreshold =
+                DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD;
+        private Duration circuitBreakerResetTimeout =
+                DEFAULT_CIRCUIT_BREAKER_RESET_TIMEOUT;
         private final Map<String, String> headers = new LinkedHashMap<>();
 
         private Builder() {}
@@ -448,9 +958,10 @@ public final class UrlCRSFetcher {
         }
 
         /**
-         * Set the maximum number of retry attempts. Default: 3.
+         * Set the maximum number of total attempts, including the initial request.
+         * Default: 3.
          *
-         * @param maxRetries maximum retries (minimum 1)
+         * @param maxRetries maximum total attempts (minimum 1)
          * @return this builder
          */
         public Builder maxRetries(int maxRetries) {
@@ -466,6 +977,46 @@ public final class UrlCRSFetcher {
          */
         public Builder initialBackoffMs(long ms) {
             this.initialBackoffMs = Math.max(0, ms);
+            return this;
+        }
+
+        /**
+         * Set the overall deadline for a logical lookup, including retries and backoff.
+         * Set to zero to rely only on the per-attempt timeouts. Default: 0.
+         *
+         * @param seconds overall timeout in seconds, or zero to disable it
+         * @return this builder
+         */
+        public Builder totalTimeout(int seconds) {
+            this.totalTimeoutSeconds = Math.max(0, seconds);
+            return this;
+        }
+
+        /**
+         * Set the number of consecutive failed lookups that opens the endpoint circuit.
+         * Set to zero to disable circuit breaking. Default: 0.
+         *
+         * @param failures failure threshold, or zero to disable circuit breaking
+         * @return this builder
+         */
+        public Builder circuitBreakerFailureThreshold(int failures) {
+            this.circuitBreakerFailureThreshold = Math.max(0, failures);
+            return this;
+        }
+
+        /**
+         * Set how long an open circuit waits before permitting one probe request.
+         * Default: 30 seconds.
+         *
+         * @param timeout positive reset timeout
+         * @return this builder
+         */
+        public Builder circuitBreakerResetTimeout(Duration timeout) {
+            if (timeout == null || timeout.isZero() || timeout.isNegative()) {
+                throw new IllegalArgumentException(
+                        "circuit breaker reset timeout must be positive");
+            }
+            this.circuitBreakerResetTimeout = timeout;
             return this;
         }
 

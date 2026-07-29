@@ -8,7 +8,7 @@ When you create a `Proj` from an authority code (e.g., `new Proj("EPSG:4326")`),
 
 ```
 EPSG:4326  -->  BuiltInCRSProvider (priority 100)
-           -->  UrlCRSProvider / spatialreference.org (priority 101)
+           -->  UrlCRSProvider / pinned OSGeo snapshot (priority 101)
            -->  Custom providers (user-defined priority)
 ```
 
@@ -75,14 +75,22 @@ The `BuiltInCRSProvider` (priority 100) supplies PROJ strings for common EPSG co
 
 ## URL-Based Provider
 
-The `UrlCRSProvider` fetches CRS definitions from HTTP endpoints. A built-in factory creates a provider for spatialreference.org:
+The `UrlCRSProvider` fetches CRS definitions from HTTP endpoints. The default
+remote provider reads a commit-addressed snapshot of the spatialreference.org
+data through jsDelivr's GitHub CDN. The snapshot was generated from PROJ 9.8.1
+and EPSG v12.029 at OSGeo commit
+`c43e4e72634af65fcf684def42ddc2dcfd834938`, so its contents do not move during
+a proj4sedona release.
+
+The CRS catalog remains an external runtime dependency; it is not bundled in
+the proj4sedona JAR.
 
 ```java
 import org.datasyslab.proj4sedona.defs.UrlCRSProvider;
 
-// The default spatialreference.org provider is registered automatically.
+// The default pinned OSGeo snapshot provider is registered automatically.
 // It resolves codes like EPSG:2154, ESRI:102001, etc.
-Proj p = new Proj("EPSG:2154");  // fetched from spatialreference.org if not built-in
+Proj p = new Proj("EPSG:2154");  // fetched from the snapshot if not built-in
 ```
 
 ### Custom URL Provider
@@ -92,17 +100,32 @@ Build a provider for your own CRS service:
 ```java
 import org.datasyslab.proj4sedona.defs.UrlCRSProvider;
 import org.datasyslab.proj4sedona.defs.CRSResult;
+import java.time.Duration;
 
 UrlCRSProvider myProvider = UrlCRSProvider.builder("my-crs-service")
     .baseUrl("https://crs.example.com/api")
     .pathTemplate("/{authority}/{code}.proj4")
     .authorities("EPSG", "ESRI")
     .format(CRSResult.Format.PROJ4)
-    .connectTimeout(5)   // seconds
-    .readTimeout(5)      // seconds
-    .maxRetries(2)
+    .connectTimeout(3)             // per connection
+    .readTimeout(5)                // per request
+    .totalTimeout(8)               // entire lookup, including retries
+    .maxRetries(2)                 // two total attempts
+    .circuitBreakerFailureThreshold(3)
+    .circuitBreakerResetTimeout(Duration.ofSeconds(30))
     .build();
 ```
+
+The built-in remote provider uses those same reliability settings. Concurrent
+lookups of the same authority and code share one in-flight HTTP request. After
+three consecutive endpoint failures—network failures, HTTP 401/403/408/429, or
+HTTP 5xx—its circuit breaker rejects requests locally for 30 seconds before
+allowing one probe request.
+
+These stricter limits apply to the built-in remote fallback. Custom
+`UrlCRSProvider` instances retain the earlier generic defaults (10-second
+connect timeout, 30-second request timeout, three total attempts, no overall
+deadline, and no circuit breaker) unless configured explicitly.
 
 ### Registering and Managing Providers
 
@@ -181,9 +204,22 @@ Providers are queried in ascending priority order. Lower numbers are checked fir
 |----------|----------|-------------|
 | 50 | (custom) | Your high-priority providers |
 | 100 | BuiltInCRSProvider | Built-in PROJ strings for common EPSG codes |
-| 101 | UrlCRSProvider | spatialreference.org (network access) |
+| 101 | UrlCRSProvider | Immutable OSGeo spatialreference.org snapshot (network access) |
 
 Manual `Defs.set()` definitions always take precedence over providers.
+
+## Caching
+
+Successful provider results are parsed and cached in memory by normalized
+authority code. Repeated lookups such as `EPSG:2154` therefore do not repeat the
+HTTP request within the same JVM. HTTP 404 responses are negatively cached as
+well.
+
+The cache is process-local and is not persisted to disk. In a Spark deployment,
+each executor JVM may fetch a previously unseen CRS once; an executor restart
+starts with an empty cache. HTTP errors and network failures are deliberately
+not cached as missing definitions. The circuit breaker bounds repeated failures
+without confusing them with 404 responses.
 
 ## Error Handling
 
@@ -199,8 +235,14 @@ try {
         case NOT_FOUND:
             System.out.println("CRS not found");
             break;
+        case HTTP_ERROR:
+            System.out.println("CRS endpoint rejected the request: " + e.getMessage());
+            break;
         case NETWORK_ERROR:
             System.out.println("Network error: " + e.getMessage());
+            break;
+        case CIRCUIT_OPEN:
+            System.out.println("CRS endpoint temporarily unavailable: " + e.getMessage());
             break;
         case INVALID_RESPONSE:
             System.out.println("Invalid response from provider");

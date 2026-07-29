@@ -1,6 +1,6 @@
 package org.datasyslab.proj4sedona.defs;
 
-import java.util.Arrays;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Locale;
@@ -61,34 +61,81 @@ public final class UrlCRSProvider implements CRSProvider {
 
     // ==================== spatialreference.org constants ====================
 
-    /** Default spatialreference.org base URL. */
+    /**
+     * Legacy spatialreference.org origin URL.
+     *
+     * @deprecated the default provider uses {@link #SPATIAL_REFERENCE_CDN_BASE_URL}
+     */
+    @Deprecated
     public static final String SPATIAL_REFERENCE_BASE_URL = "https://spatialreference.org";
+
+    /** Generated spatialreference.org data commit based on PROJ 9.8.1. */
+    public static final String SPATIAL_REFERENCE_SNAPSHOT_COMMIT =
+            "c43e4e72634af65fcf684def42ddc2dcfd834938";
+
+    /** Default CDN URL for the immutable OSGeo spatialreference.org data snapshot. */
+    public static final String SPATIAL_REFERENCE_CDN_BASE_URL =
+            "https://cdn.jsdelivr.net/gh/OSGeo/spatialreference.org@"
+                    + SPATIAL_REFERENCE_SNAPSHOT_COMMIT;
 
     /** Provider name used for the spatialreference.org instance. */
     public static final String SPATIAL_REFERENCE_NAME = "spatialreference.org";
 
-    /** Path template for spatialreference.org. */
+    /** Connection timeout used by the default remote provider. */
+    public static final int SPATIAL_REFERENCE_CONNECT_TIMEOUT_SECONDS = 3;
+
+    /** Per-request timeout used by the default remote provider. */
+    public static final int SPATIAL_REFERENCE_READ_TIMEOUT_SECONDS = 5;
+
+    /** Total attempts used by the default remote provider. */
+    public static final int SPATIAL_REFERENCE_MAX_ATTEMPTS = 2;
+
+    /** Initial retry backoff used by the default remote provider. */
+    public static final long SPATIAL_REFERENCE_INITIAL_BACKOFF_MS = 250;
+
+    /** Overall deadline used by the default remote provider. */
+    public static final int SPATIAL_REFERENCE_TOTAL_TIMEOUT_SECONDS = 8;
+
+    /** Endpoint failures that open the default provider's circuit. */
+    public static final int SPATIAL_REFERENCE_CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3;
+
+    /** Delay before the default provider permits a probe through an open circuit. */
+    public static final Duration SPATIAL_REFERENCE_CIRCUIT_BREAKER_RESET_TIMEOUT =
+            Duration.ofSeconds(30);
+
+    /** Path template within the spatialreference.org snapshot. */
     static final String SPATIAL_REFERENCE_PATH = "/ref/{authority}/{code}/projjson.json";
 
     // ==================== spatialreference.org factories ====================
 
     /**
      * Create a {@link UrlCRSProvider} pre-configured for
-     * <a href="https://spatialreference.org">spatialreference.org</a>.
+     * the immutable OSGeo
+     * <a href="https://github.com/OSGeo/spatialreference.org">spatialreference.org</a>
+     * data snapshot.
      *
      * <p>This is the default remote CRS provider registered by
-     * {@link Defs#globals()} at priority 101. For a custom spatialreference.org
-     * mirror or different timeouts, use {@link #builder(String)} with
+     * {@link Defs#globals()} at priority 101. For a custom mirror or different
+     * reliability settings, use {@link #builder(String)} with
      * {@link #SPATIAL_REFERENCE_NAME} as the name and
      * {@code /ref/{authority}/{code}/projjson.json} as the path template.</p>
      *
-     * @return a provider that fetches PROJJSON from spatialreference.org
+     * @return a provider that fetches PROJJSON from a pinned OSGeo snapshot
      */
     public static UrlCRSProvider spatialReference() {
         return builder(SPATIAL_REFERENCE_NAME)
-                .baseUrl(SPATIAL_REFERENCE_BASE_URL)
+                .baseUrl(SPATIAL_REFERENCE_CDN_BASE_URL)
                 .pathTemplate(SPATIAL_REFERENCE_PATH)
                 .format(CRSResult.Format.PROJJSON)
+                .connectTimeout(SPATIAL_REFERENCE_CONNECT_TIMEOUT_SECONDS)
+                .readTimeout(SPATIAL_REFERENCE_READ_TIMEOUT_SECONDS)
+                .maxRetries(SPATIAL_REFERENCE_MAX_ATTEMPTS)
+                .initialBackoffMs(SPATIAL_REFERENCE_INITIAL_BACKOFF_MS)
+                .totalTimeout(SPATIAL_REFERENCE_TOTAL_TIMEOUT_SECONDS)
+                .circuitBreakerFailureThreshold(
+                        SPATIAL_REFERENCE_CIRCUIT_BREAKER_FAILURE_THRESHOLD)
+                .circuitBreakerResetTimeout(
+                        SPATIAL_REFERENCE_CIRCUIT_BREAKER_RESET_TIMEOUT)
                 .header("Accept", "application/json")
                 .build();
     }
@@ -125,7 +172,7 @@ public final class UrlCRSProvider implements CRSProvider {
      * @param code      the CRS code (e.g., {@code "4326"})
      * @return a {@link CRSResult} on success, {@code null} if the code is not found
      *         or the authority is not handled by this provider
-     * @throws CRSFetchException on network errors after exhausting retries
+     * @throws CRSFetchException on HTTP errors, network errors, or an open circuit breaker
      */
     @Override
     public CRSResult resolve(String authority, String code) {
@@ -145,10 +192,26 @@ public final class UrlCRSProvider implements CRSProvider {
             case NOT_FOUND:
                 return null;
 
+            case HTTP_ERROR:
+                throw new CRSFetchException(fullCode, CRSFetchException.Reason.HTTP_ERROR,
+                        "CRS endpoint " + name + " (" + fetcher.getBaseUrl()
+                                + ") returned HTTP "
+                                + result.getHttpStatusCode() + " for " + fullCode
+                                + " after " + result.getAttemptCount() + " attempts",
+                        result.getLastException());
+
             case NETWORK_ERROR:
                 throw new CRSFetchException(fullCode, CRSFetchException.Reason.NETWORK_ERROR,
                         "Failed to fetch CRS definition for " + fullCode +
-                                " from " + name + " after " + result.getAttemptCount() + " attempts",
+                                " from " + name + " (" + fetcher.getBaseUrl() + ") after "
+                                + result.getAttemptCount() + " attempts",
+                        result.getLastException());
+
+            case CIRCUIT_OPEN:
+                throw new CRSFetchException(fullCode, CRSFetchException.Reason.CIRCUIT_OPEN,
+                        "CRS endpoint " + name + " (" + fetcher.getBaseUrl()
+                                + ") is temporarily unavailable; "
+                                + "circuit breaker is open for " + fullCode,
                         result.getLastException());
 
             default:
@@ -308,9 +371,10 @@ public final class UrlCRSProvider implements CRSProvider {
         }
 
         /**
-         * Set the maximum number of retry attempts. Default: 3.
+         * Set the maximum number of total attempts, including the initial request.
+         * Default: 3.
          *
-         * @param maxRetries maximum retries
+         * @param maxRetries maximum total attempts
          * @return this builder
          */
         public Builder maxRetries(int maxRetries) {
@@ -326,6 +390,41 @@ public final class UrlCRSProvider implements CRSProvider {
          */
         public Builder initialBackoffMs(long ms) {
             fetcherBuilder.initialBackoffMs(ms);
+            return this;
+        }
+
+        /**
+         * Set the overall deadline for a logical lookup, including retries and backoff.
+         * Set to zero to rely only on per-attempt timeouts. Default: 0.
+         *
+         * @param seconds overall timeout in seconds, or zero to disable it
+         * @return this builder
+         */
+        public Builder totalTimeout(int seconds) {
+            fetcherBuilder.totalTimeout(seconds);
+            return this;
+        }
+
+        /**
+         * Set the number of consecutive failed lookups that opens the endpoint circuit.
+         * Set to zero to disable circuit breaking. Default: 0.
+         *
+         * @param failures failure threshold, or zero to disable circuit breaking
+         * @return this builder
+         */
+        public Builder circuitBreakerFailureThreshold(int failures) {
+            fetcherBuilder.circuitBreakerFailureThreshold(failures);
+            return this;
+        }
+
+        /**
+         * Set how long an open circuit waits before permitting one probe request.
+         *
+         * @param timeout positive reset timeout
+         * @return this builder
+         */
+        public Builder circuitBreakerResetTimeout(Duration timeout) {
+            fetcherBuilder.circuitBreakerResetTimeout(timeout);
             return this;
         }
 

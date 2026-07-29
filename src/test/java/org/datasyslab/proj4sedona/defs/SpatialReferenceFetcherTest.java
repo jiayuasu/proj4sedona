@@ -14,15 +14,15 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for the spatialreference.org provider stack and Defs remote lookup.
+ * Tests for the pinned spatialreference.org snapshot provider stack and Defs remote lookup.
  *
  * <p>The spatialreference.org provider is now a pre-configured
  * {@link UrlCRSProvider} (created via {@link UrlCRSProvider#spatialReference()}),
  * so these tests exercise both the provider and the underlying
  * {@link UrlCRSFetcher} directly for retry / negative-cache behaviour.</p>
  *
- * <p>Some tests require network access to spatialreference.org and may be
- * slow due to network latency.</p>
+ * <p>Some tests require network access to the commit-addressed OSGeo CDN
+ * snapshot and may be slow due to network latency.</p>
  */
 class SpatialReferenceFetcherTest {
 
@@ -32,11 +32,7 @@ class SpatialReferenceFetcherTest {
     @BeforeEach
     void setUp() {
         Defs.reset();
-        defaultFetcher = UrlCRSFetcher.builder()
-                .baseUrl(UrlCRSProvider.SPATIAL_REFERENCE_BASE_URL)
-                .pathTemplate(UrlCRSProvider.SPATIAL_REFERENCE_PATH)
-                .header("Accept", "application/json")
-                .build();
+        defaultFetcher = UrlCRSProvider.spatialReference().getFetcher();
     }
 
     @AfterEach
@@ -44,7 +40,7 @@ class SpatialReferenceFetcherTest {
         Defs.reset();
     }
 
-    // ==================== Direct UrlCRSFetcher Tests (spatialreference.org) ====================
+    // ==================== Direct UrlCRSFetcher Tests (pinned OSGeo snapshot) ====================
 
     @Test
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
@@ -102,12 +98,22 @@ class SpatialReferenceFetcherTest {
 
     @Test
     void testFetcherDefaults() {
-        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_BASE_URL, defaultFetcher.getBaseUrl());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_CDN_BASE_URL, defaultFetcher.getBaseUrl());
         assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_PATH, defaultFetcher.getPathTemplate());
-        assertEquals(UrlCRSFetcher.DEFAULT_CONNECT_TIMEOUT_SECONDS, defaultFetcher.getConnectTimeoutSeconds());
-        assertEquals(UrlCRSFetcher.DEFAULT_READ_TIMEOUT_SECONDS, defaultFetcher.getReadTimeoutSeconds());
-        assertEquals(UrlCRSFetcher.DEFAULT_MAX_RETRIES, defaultFetcher.getMaxRetries());
-        assertEquals(UrlCRSFetcher.DEFAULT_INITIAL_BACKOFF_MS, defaultFetcher.getInitialBackoffMs());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_CONNECT_TIMEOUT_SECONDS,
+                defaultFetcher.getConnectTimeoutSeconds());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_READ_TIMEOUT_SECONDS,
+                defaultFetcher.getReadTimeoutSeconds());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_MAX_ATTEMPTS,
+                defaultFetcher.getMaxRetries());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_INITIAL_BACKOFF_MS,
+                defaultFetcher.getInitialBackoffMs());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_TOTAL_TIMEOUT_SECONDS,
+                defaultFetcher.getTotalTimeoutSeconds());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+                defaultFetcher.getCircuitBreakerFailureThreshold());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_CIRCUIT_BREAKER_RESET_TIMEOUT,
+                defaultFetcher.getCircuitBreakerResetTimeout());
     }
 
     // ==================== Network Failure Tests ====================
@@ -181,7 +187,7 @@ class SpatialReferenceFetcherTest {
         // EPSG:2154 is not in the default globals, should be fetched remotely
         ProjectionDef def = Defs.get("EPSG:2154");
 
-        assertNotNull(def, "Should fetch EPSG:2154 from spatialreference.org");
+        assertNotNull(def, "Should fetch EPSG:2154 from the pinned OSGeo snapshot");
         assertEquals("EPSG:2154", def.getSrsCode());
     }
 
