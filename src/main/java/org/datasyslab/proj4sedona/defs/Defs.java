@@ -28,7 +28,7 @@ import org.datasyslab.proj4sedona.util.CRSUtils;
  * <ul>
  *   <li>{@link BuiltInCRSProvider} at priority <b>100</b> — instant map lookup, no network</li>
  *   <li>{@link UrlCRSProvider#spatialReference()} at priority <b>101</b> — fetches
- *       from an immutable OSGeo spatialreference.org snapshot</li>
+ *       from the OSGeo spatialreference.org GitHub catalog with a pinned CDN fallback</li>
  * </ul>
  *
  * <p>Users can register custom providers at a lower priority to override defaults,
@@ -419,7 +419,7 @@ public final class Defs {
      * <ul>
      *   <li>{@link BuiltInCRSProvider} at priority 100</li>
      *   <li>{@link UrlCRSProvider#spatialReference()} at priority 101, backed by
-     *       an immutable OSGeo snapshot</li>
+     *       the OSGeo GitHub catalog and a pinned CDN fallback</li>
      * </ul>
      *
      * <p>It also pre-populates the cache with common aliases that are not in

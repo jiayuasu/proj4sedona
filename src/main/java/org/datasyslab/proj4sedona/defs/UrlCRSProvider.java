@@ -1,8 +1,11 @@
 package org.datasyslab.proj4sedona.defs;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -28,6 +31,15 @@ import java.util.Set;
  * UrlCRSProvider privateRepo = UrlCRSProvider.builder("private-crs")
  *     .baseUrl("https://raw.githubusercontent.com/myorg/private-defs/main")
  *     .header("Authorization", "token YOUR_TOKEN_HERE")
+ *     .build();
+ *
+ * // Optional fallback, configured separately so credentials are never copied
+ * UrlCRSFetcher mirror = UrlCRSFetcher.builder()
+ *     .baseUrl("https://mirror.example.com/crs")
+ *     .build();
+ * UrlCRSProvider resilient = UrlCRSProvider.builder("resilient-crs")
+ *     .baseUrl("https://primary.example.com/crs")
+ *     .fallbackFetcher(mirror)
  *     .build();
  *
  * // Register before the defaults (priority &lt; 100)
@@ -64,16 +76,21 @@ public final class UrlCRSProvider implements CRSProvider {
     /**
      * Legacy spatialreference.org origin URL.
      *
-     * @deprecated the default provider uses {@link #SPATIAL_REFERENCE_CDN_BASE_URL}
+     * @deprecated the default provider uses {@link #SPATIAL_REFERENCE_GITHUB_BASE_URL}
+     *             with {@link #SPATIAL_REFERENCE_CDN_BASE_URL} as a fallback
      */
     @Deprecated
     public static final String SPATIAL_REFERENCE_BASE_URL = "https://spatialreference.org";
+
+    /** Primary raw GitHub URL for the rolling OSGeo spatialreference.org catalog. */
+    public static final String SPATIAL_REFERENCE_GITHUB_BASE_URL =
+            "https://raw.githubusercontent.com/OSGeo/spatialreference.org/gh-pages";
 
     /** Generated spatialreference.org data commit based on PROJ 9.8.1. */
     public static final String SPATIAL_REFERENCE_SNAPSHOT_COMMIT =
             "c43e4e72634af65fcf684def42ddc2dcfd834938";
 
-    /** Default CDN URL for the immutable OSGeo spatialreference.org data snapshot. */
+    /** Backup CDN URL for the immutable OSGeo spatialreference.org data snapshot. */
     public static final String SPATIAL_REFERENCE_CDN_BASE_URL =
             "https://cdn.jsdelivr.net/gh/OSGeo/spatialreference.org@"
                     + SPATIAL_REFERENCE_SNAPSHOT_COMMIT;
@@ -103,16 +120,17 @@ public final class UrlCRSProvider implements CRSProvider {
     public static final Duration SPATIAL_REFERENCE_CIRCUIT_BREAKER_RESET_TIMEOUT =
             Duration.ofSeconds(30);
 
-    /** Path template within the spatialreference.org snapshot. */
+    /** Path template within the spatialreference.org catalog. */
     static final String SPATIAL_REFERENCE_PATH = "/ref/{authority}/{code}/projjson.json";
 
     // ==================== spatialreference.org factories ====================
 
     /**
      * Create a {@link UrlCRSProvider} pre-configured for
-     * the immutable OSGeo
+     * the OSGeo
      * <a href="https://github.com/OSGeo/spatialreference.org">spatialreference.org</a>
-     * data snapshot.
+     * catalog. Raw GitHub content is the primary endpoint; a commit-addressed
+     * jsDelivr snapshot is used after endpoint failures.
      *
      * <p>This is the default remote CRS provider registered by
      * {@link Defs#globals()} at priority 101. For a custom mirror or different
@@ -120,13 +138,25 @@ public final class UrlCRSProvider implements CRSProvider {
      * {@link #SPATIAL_REFERENCE_NAME} as the name and
      * {@code /ref/{authority}/{code}/projjson.json} as the path template.</p>
      *
-     * @return a provider that fetches PROJJSON from a pinned OSGeo snapshot
+     * @return a provider that fetches PROJJSON from GitHub with a pinned CDN fallback
      */
     public static UrlCRSProvider spatialReference() {
-        return builder(SPATIAL_REFERENCE_NAME)
-                .baseUrl(SPATIAL_REFERENCE_CDN_BASE_URL)
+        UrlCRSFetcher github = spatialReferenceFetcher(
+                SPATIAL_REFERENCE_GITHUB_BASE_URL, false);
+        UrlCRSFetcher jsDelivr = spatialReferenceFetcher(
+                SPATIAL_REFERENCE_CDN_BASE_URL, true);
+        return new UrlCRSProvider(
+                SPATIAL_REFERENCE_NAME,
+                CRSResult.Format.PROJJSON,
+                null,
+                Arrays.asList(github, jsDelivr));
+    }
+
+    private static UrlCRSFetcher spatialReferenceFetcher(
+            String baseUrl, boolean cacheNotFound) {
+        return UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
                 .pathTemplate(SPATIAL_REFERENCE_PATH)
-                .format(CRSResult.Format.PROJJSON)
                 .connectTimeout(SPATIAL_REFERENCE_CONNECT_TIMEOUT_SECONDS)
                 .readTimeout(SPATIAL_REFERENCE_READ_TIMEOUT_SECONDS)
                 .maxRetries(SPATIAL_REFERENCE_MAX_ATTEMPTS)
@@ -136,6 +166,7 @@ public final class UrlCRSProvider implements CRSProvider {
                         SPATIAL_REFERENCE_CIRCUIT_BREAKER_FAILURE_THRESHOLD)
                 .circuitBreakerResetTimeout(
                         SPATIAL_REFERENCE_CIRCUIT_BREAKER_RESET_TIMEOUT)
+                .cacheNotFound(cacheNotFound)
                 .header("Accept", "application/json")
                 .build();
     }
@@ -144,15 +175,36 @@ public final class UrlCRSProvider implements CRSProvider {
 
     private final String name;
     private final UrlCRSFetcher fetcher;
+    private final List<UrlCRSFetcher> fetchers;
     private final CRSResult.Format format;
     private final Set<String> authorities; // null = accept all
 
     private UrlCRSProvider(Builder builder) {
-        this.name = builder.name;
-        this.format = builder.format;
-        this.authorities = builder.authorities == null ? null
-                : Collections.unmodifiableSet(new LinkedHashSet<>(builder.authorities));
-        this.fetcher = builder.fetcherBuilder.build();
+        this(
+                builder.name,
+                builder.format,
+                builder.authorities,
+                buildFetchers(builder));
+    }
+
+    private UrlCRSProvider(
+            String name,
+            CRSResult.Format format,
+            Set<String> authorities,
+            List<UrlCRSFetcher> fetchers) {
+        this.name = name;
+        this.format = format;
+        this.authorities = authorities == null ? null
+                : Collections.unmodifiableSet(new LinkedHashSet<>(authorities));
+        this.fetchers = Collections.unmodifiableList(new ArrayList<>(fetchers));
+        this.fetcher = this.fetchers.get(0);
+    }
+
+    private static List<UrlCRSFetcher> buildFetchers(Builder builder) {
+        List<UrlCRSFetcher> fetchers = new ArrayList<>();
+        fetchers.add(builder.fetcherBuilder.build());
+        fetchers.addAll(builder.fallbackFetchers);
+        return fetchers;
     }
 
     @Override
@@ -165,8 +217,9 @@ public final class UrlCRSProvider implements CRSProvider {
      *
      * <p>If {@link Builder#authorities(String...) authorities} were configured, this
      * method returns {@code null} immediately for any authority not in that set.
-     * Otherwise, a URL is constructed from the base URL and path template, and an
-     * HTTP GET is issued.</p>
+     * Otherwise, the configured fetchers are queried in order. Endpoint failures
+     * advance to the next fetcher, while a primary HTTP 404 returns {@code null}
+     * without consulting older fallbacks.</p>
      *
      * @param authority the authority name, lower-cased (e.g., {@code "epsg"})
      * @param code      the CRS code (e.g., {@code "4326"})
@@ -183,41 +236,129 @@ public final class UrlCRSProvider implements CRSProvider {
 
         String fullCode = authority.toUpperCase(Locale.ROOT) + ":" + code;
 
-        UrlCRSFetcher.FetchResult result = fetcher.fetch(authority, code);
+        List<CRSFetchException> endpointFailures = new ArrayList<>();
+        List<String> outcomes = new ArrayList<>();
 
+        for (UrlCRSFetcher currentFetcher : fetchers) {
+            UrlCRSFetcher.FetchResult result = currentFetcher.fetch(authority, code);
+
+            switch (result.getStatus()) {
+                case SUCCESS:
+                    return wrapResult(result.getBody());
+
+                case NOT_FOUND:
+                    if (endpointFailures.isEmpty()) {
+                        return null;
+                    }
+                    outcomes.add(currentFetcher.getBaseUrl() + ": HTTP 404");
+                    break;
+
+                case HTTP_ERROR:
+                case NETWORK_ERROR:
+                case CIRCUIT_OPEN:
+                    CRSFetchException failure =
+                            endpointFailure(fullCode, currentFetcher, result);
+                    if (isInterrupted(result)) {
+                        throw failure;
+                    }
+                    endpointFailures.add(failure);
+                    outcomes.add(currentFetcher.getBaseUrl() + ": "
+                            + outcomeDescription(result));
+                    break;
+
+                default:
+                    throw new IllegalStateException(
+                            "Unknown fetch status " + result.getStatus()
+                                    + " for " + fullCode);
+            }
+        }
+
+        throw combinedFailure(fullCode, endpointFailures, outcomes);
+    }
+
+    private CRSFetchException endpointFailure(
+            String fullCode,
+            UrlCRSFetcher currentFetcher,
+            UrlCRSFetcher.FetchResult result) {
         switch (result.getStatus()) {
-            case SUCCESS:
-                return wrapResult(result.getBody());
-
-            case NOT_FOUND:
-                return null;
-
             case HTTP_ERROR:
-                throw new CRSFetchException(fullCode, CRSFetchException.Reason.HTTP_ERROR,
-                        "CRS endpoint " + name + " (" + fetcher.getBaseUrl()
-                                + ") returned HTTP "
-                                + result.getHttpStatusCode() + " for " + fullCode
-                                + " after " + result.getAttemptCount() + " attempts",
+                return new CRSFetchException(
+                        fullCode,
+                        CRSFetchException.Reason.HTTP_ERROR,
+                        "CRS endpoint " + name + " (" + currentFetcher.getBaseUrl()
+                                + ") returned HTTP " + result.getHttpStatusCode()
+                                + " for " + fullCode + " after "
+                                + result.getAttemptCount() + " attempts",
                         result.getLastException());
 
             case NETWORK_ERROR:
-                throw new CRSFetchException(fullCode, CRSFetchException.Reason.NETWORK_ERROR,
-                        "Failed to fetch CRS definition for " + fullCode +
-                                " from " + name + " (" + fetcher.getBaseUrl() + ") after "
+                return new CRSFetchException(
+                        fullCode,
+                        CRSFetchException.Reason.NETWORK_ERROR,
+                        "Failed to fetch CRS definition for " + fullCode
+                                + " from " + name + " ("
+                                + currentFetcher.getBaseUrl() + ") after "
                                 + result.getAttemptCount() + " attempts",
                         result.getLastException());
 
             case CIRCUIT_OPEN:
-                throw new CRSFetchException(fullCode, CRSFetchException.Reason.CIRCUIT_OPEN,
-                        "CRS endpoint " + name + " (" + fetcher.getBaseUrl()
+                return new CRSFetchException(
+                        fullCode,
+                        CRSFetchException.Reason.CIRCUIT_OPEN,
+                        "CRS endpoint " + name + " (" + currentFetcher.getBaseUrl()
                                 + ") is temporarily unavailable; "
                                 + "circuit breaker is open for " + fullCode,
                         result.getLastException());
 
             default:
-                throw new IllegalStateException(
-                        "Unknown fetch status " + result.getStatus() + " for " + fullCode);
+                throw new IllegalArgumentException(
+                        "Fetch result is not an endpoint failure: " + result.getStatus());
         }
+    }
+
+    private static boolean isInterrupted(UrlCRSFetcher.FetchResult result) {
+        return Thread.currentThread().isInterrupted()
+                && result.isNetworkError()
+                && result.getLastException() instanceof InterruptedException;
+    }
+
+    private static String outcomeDescription(UrlCRSFetcher.FetchResult result) {
+        switch (result.getStatus()) {
+            case HTTP_ERROR:
+                return "HTTP " + result.getHttpStatusCode();
+            case NETWORK_ERROR:
+                return "network error";
+            case CIRCUIT_OPEN:
+                return "circuit open";
+            default:
+                return result.getStatus().name();
+        }
+    }
+
+    private static CRSFetchException combinedFailure(
+            String fullCode,
+            List<CRSFetchException> failures,
+            List<String> outcomes) {
+        if (failures.size() == 1 && outcomes.size() == 1) {
+            return failures.get(0);
+        }
+        if (failures.isEmpty()) {
+            throw new IllegalStateException(
+                    "No endpoint failure recorded for " + fullCode);
+        }
+
+        CRSFetchException primaryFailure = failures.get(0);
+        CRSFetchException combined = new CRSFetchException(
+                fullCode,
+                primaryFailure.getReason(),
+                "Failed to resolve " + fullCode
+                        + " from all configured CRS endpoints: "
+                        + String.join("; ", outcomes),
+                primaryFailure);
+        for (int i = 1; i < failures.size(); i++) {
+            combined.addSuppressed(failures.get(i));
+        }
+        return combined;
     }
 
     /**
@@ -235,8 +376,16 @@ public final class UrlCRSProvider implements CRSProvider {
 
     // ==================== Accessors ====================
 
-    /** Get the underlying fetcher (useful for clearing the negative cache, etc.). */
+    /** Get the primary fetcher. */
     public UrlCRSFetcher getFetcher() { return fetcher; }
+
+    /**
+     * Get all fetchers in resolution order. The first entry is the primary and
+     * subsequent entries are fallbacks.
+     *
+     * @return an unmodifiable list containing the primary and all fallbacks
+     */
+    public List<UrlCRSFetcher> getFetchers() { return fetchers; }
 
     /** Get the expected response format. */
     public CRSResult.Format getFormat() { return format; }
@@ -261,10 +410,15 @@ public final class UrlCRSProvider implements CRSProvider {
      * Fluent builder for {@link UrlCRSProvider}.
      *
      * <p>Required: {@link #baseUrl(String)}. Everything else has sensible defaults.</p>
+     *
+     * <p>Except for {@link #fallbackFetcher(UrlCRSFetcher)}, these methods configure
+     * the primary fetcher only. Each fallback carries its own URL, headers,
+     * reliability settings, cache, and circuit breaker.</p>
      */
     public static final class Builder {
         private final String name;
         private final UrlCRSFetcher.Builder fetcherBuilder = UrlCRSFetcher.builder();
+        private final List<UrlCRSFetcher> fallbackFetchers = new ArrayList<>();
         private CRSResult.Format format = CRSResult.Format.PROJJSON;
         private Set<String> authorities; // null = all
 
@@ -394,8 +548,9 @@ public final class UrlCRSProvider implements CRSProvider {
         }
 
         /**
-         * Set the overall deadline for a logical lookup, including retries and backoff.
-         * Set to zero to rely only on per-attempt timeouts. Default: 0.
+         * Set the primary fetcher's overall deadline, including retries and backoff.
+         * Each fallback has its own deadline. Set to zero to rely only on
+         * per-attempt timeouts. Default: 0.
          *
          * @param seconds overall timeout in seconds, or zero to disable it
          * @return this builder
@@ -425,6 +580,39 @@ public final class UrlCRSProvider implements CRSProvider {
          */
         public Builder circuitBreakerResetTimeout(Duration timeout) {
             fetcherBuilder.circuitBreakerResetTimeout(timeout);
+            return this;
+        }
+
+        /**
+         * Set whether the primary fetcher caches HTTP 404 responses. Default:
+         * {@code true}.
+         *
+         * @param enabled whether to cache HTTP 404 responses
+         * @return this builder
+         */
+        public Builder cacheNotFound(boolean enabled) {
+            fetcherBuilder.cacheNotFound(enabled);
+            return this;
+        }
+
+        /**
+         * Add an independently configured fallback fetcher. Fallbacks are tried
+         * in insertion order after HTTP errors, network errors, or an open primary
+         * circuit. A primary HTTP 404 remains definitive.
+         *
+         * <p>Configure each fallback separately so endpoint-specific headers,
+         * timeouts, caches, and circuit breakers remain isolated. Every fallback
+         * must serve the response format configured on this provider.</p>
+         *
+         * @param fallbackFetcher independently configured fallback fetcher
+         * @return this builder
+         */
+        public Builder fallbackFetcher(UrlCRSFetcher fallbackFetcher) {
+            if (fallbackFetcher == null) {
+                throw new IllegalArgumentException(
+                        "fallbackFetcher must not be null");
+            }
+            fallbackFetchers.add(fallbackFetcher);
             return this;
         }
 

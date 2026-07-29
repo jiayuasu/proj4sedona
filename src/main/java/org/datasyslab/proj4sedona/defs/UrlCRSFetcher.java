@@ -288,6 +288,9 @@ public final class UrlCRSFetcher {
     /** Default circuit-breaker threshold; zero leaves the breaker disabled. */
     public static final int DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD = 0;
 
+    /** Default behavior for caching HTTP 404 responses. */
+    public static final boolean DEFAULT_CACHE_NOT_FOUND = true;
+
     /** Default delay before allowing a probe request through an open circuit. */
     public static final Duration DEFAULT_CIRCUIT_BREAKER_RESET_TIMEOUT = Duration.ofSeconds(30);
 
@@ -306,6 +309,7 @@ public final class UrlCRSFetcher {
     private final int totalTimeoutSeconds;
     private final int circuitBreakerFailureThreshold;
     private final long circuitBreakerResetTimeoutNanos;
+    private final boolean cacheNotFound;
     private final Map<String, String> headers;
     private final HttpClient httpClient;
 
@@ -343,6 +347,7 @@ public final class UrlCRSFetcher {
         this.circuitBreakerFailureThreshold = builder.circuitBreakerFailureThreshold;
         this.circuitBreakerResetTimeoutNanos =
                 builder.circuitBreakerResetTimeout.toNanos();
+        this.cacheNotFound = builder.cacheNotFound;
         this.headers = Collections.unmodifiableMap(new LinkedHashMap<>(builder.headers));
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(connectTimeoutSeconds))
@@ -371,7 +376,7 @@ public final class UrlCRSFetcher {
     public FetchResult fetch(String authority, String code) {
         String cacheKey = authority.toLowerCase(Locale.ROOT) + ":" + code;
 
-        if (notFoundCache.contains(cacheKey)) {
+        if (cacheNotFound && notFoundCache.contains(cacheKey)) {
             return FetchResult.notFound(0);
         }
 
@@ -450,7 +455,9 @@ public final class UrlCRSFetcher {
                 if (statusCode == 200) {
                     return FetchResult.success(response.body(), attemptCount);
                 } else if (statusCode == 404) {
-                    notFoundCache.add(cacheKey);
+                    if (cacheNotFound) {
+                        notFoundCache.add(cacheKey);
+                    }
                     return FetchResult.notFound(attemptCount);
                 } else if (isRetryableStatusCode(statusCode)) {
                     lastHttpStatusCode = statusCode;
@@ -488,7 +495,15 @@ public final class UrlCRSFetcher {
 
     private FetchResult awaitInFlight(CompletableFuture<FetchResult> request) {
         try {
-            return request.get();
+            FetchResult sharedResult = request.get();
+            if (isInterruptedNetworkError(sharedResult)) {
+                return FetchResult.networkError(
+                        new IOException(
+                                "The owner of the shared CRS fetch was interrupted",
+                                sharedResult.getLastException()),
+                        sharedResult.getAttemptCount());
+            }
+            return sharedResult;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return FetchResult.networkError(e, 0);
@@ -613,6 +628,10 @@ public final class UrlCRSFetcher {
     }
 
     private static boolean isNeutralEndpointResult(FetchResult result) {
+        return isInterruptedNetworkError(result);
+    }
+
+    private static boolean isInterruptedNetworkError(FetchResult result) {
         return result.isNetworkError()
                 && result.getLastException() instanceof InterruptedException;
     }
@@ -742,8 +761,21 @@ public final class UrlCRSFetcher {
                 && !"https".equalsIgnoreCase(targetScheme)) {
             return false;
         }
-        return !"https".equalsIgnoreCase(source.getScheme())
-                || "https".equalsIgnoreCase(targetScheme);
+        if (target.getUserInfo() != null
+                || !source.getScheme().equalsIgnoreCase(targetScheme)
+                || source.getHost() == null
+                || target.getHost() == null
+                || !source.getHost().equalsIgnoreCase(target.getHost())) {
+            return false;
+        }
+        return effectivePort(source) == effectivePort(target);
+    }
+
+    private static int effectivePort(URI uri) {
+        if (uri.getPort() >= 0) {
+            return uri.getPort();
+        }
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
     }
 
     // ==================== Retry Helpers ====================
@@ -810,6 +842,9 @@ public final class UrlCRSFetcher {
         return Duration.ofNanos(circuitBreakerResetTimeoutNanos);
     }
 
+    /** Check whether HTTP 404 responses are cached. */
+    public boolean isNotFoundCacheEnabled() { return cacheNotFound; }
+
     /** Get the number of consecutive endpoint failures. */
     public int getConsecutiveFailureCount() {
         synchronized (circuitLock) {
@@ -868,6 +903,7 @@ public final class UrlCRSFetcher {
                 DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD;
         private Duration circuitBreakerResetTimeout =
                 DEFAULT_CIRCUIT_BREAKER_RESET_TIMEOUT;
+        private boolean cacheNotFound = DEFAULT_CACHE_NOT_FOUND;
         private final Map<String, String> headers = new LinkedHashMap<>();
 
         private Builder() {}
@@ -1017,6 +1053,21 @@ public final class UrlCRSFetcher {
                         "circuit breaker reset timeout must be positive");
             }
             this.circuitBreakerResetTimeout = timeout;
+            return this;
+        }
+
+        /**
+         * Set whether HTTP 404 responses are cached for the lifetime of this fetcher.
+         * Default: {@code true}.
+         *
+         * <p>Disable this for a rolling catalog where a previously missing code may
+         * be added while the JVM is still running.</p>
+         *
+         * @param enabled whether to cache HTTP 404 responses
+         * @return this builder
+         */
+        public Builder cacheNotFound(boolean enabled) {
+            this.cacheNotFound = enabled;
             return this;
         }
 

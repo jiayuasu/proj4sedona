@@ -8,7 +8,7 @@ When you create a `Proj` from an authority code (e.g., `new Proj("EPSG:4326")`),
 
 ```
 EPSG:4326  -->  BuiltInCRSProvider (priority 100)
-           -->  UrlCRSProvider / pinned OSGeo snapshot (priority 101)
+           -->  UrlCRSProvider / OSGeo GitHub + CDN fallback (priority 101)
            -->  Custom providers (user-defined priority)
 ```
 
@@ -76,11 +76,11 @@ The `BuiltInCRSProvider` (priority 100) supplies PROJ strings for common EPSG co
 ## URL-Based Provider
 
 The `UrlCRSProvider` fetches CRS definitions from HTTP endpoints. The default
-remote provider reads a commit-addressed snapshot of the spatialreference.org
-data through jsDelivr's GitHub CDN. The snapshot was generated from PROJ 9.8.1
-and EPSG v12.029 at OSGeo commit
-`c43e4e72634af65fcf684def42ddc2dcfd834938`, so its contents do not move during
-a proj4sedona release.
+remote provider reads the rolling spatialreference.org `gh-pages` catalog from
+`raw.githubusercontent.com`. If GitHub has an endpoint failure, it tries a
+commit-addressed copy through jsDelivr. The backup was generated from PROJ
+9.8.1 and EPSG v12.029 at OSGeo commit
+`c43e4e72634af65fcf684def42ddc2dcfd834938`.
 
 The CRS catalog remains an external runtime dependency; it is not bundled in
 the proj4sedona JAR.
@@ -88,9 +88,9 @@ the proj4sedona JAR.
 ```java
 import org.datasyslab.proj4sedona.defs.UrlCRSProvider;
 
-// The default pinned OSGeo snapshot provider is registered automatically.
+// The default OSGeo GitHub provider and pinned CDN fallback are registered automatically.
 // It resolves codes like EPSG:2154, ESRI:102001, etc.
-Proj p = new Proj("EPSG:2154");  // fetched from the snapshot if not built-in
+Proj p = new Proj("EPSG:2154");  // fetched remotely if not built in
 ```
 
 ### Custom URL Provider
@@ -99,8 +99,20 @@ Build a provider for your own CRS service:
 
 ```java
 import org.datasyslab.proj4sedona.defs.UrlCRSProvider;
+import org.datasyslab.proj4sedona.defs.UrlCRSFetcher;
 import org.datasyslab.proj4sedona.defs.CRSResult;
 import java.time.Duration;
+
+UrlCRSFetcher mirror = UrlCRSFetcher.builder()
+    .baseUrl("https://mirror.example.com/api")
+    .pathTemplate("/{authority}/{code}.proj4")
+    .connectTimeout(3)
+    .readTimeout(5)
+    .totalTimeout(8)
+    .maxRetries(2)
+    .circuitBreakerFailureThreshold(3)
+    .circuitBreakerResetTimeout(Duration.ofSeconds(30))
+    .build();
 
 UrlCRSProvider myProvider = UrlCRSProvider.builder("my-crs-service")
     .baseUrl("https://crs.example.com/api")
@@ -109,20 +121,43 @@ UrlCRSProvider myProvider = UrlCRSProvider.builder("my-crs-service")
     .format(CRSResult.Format.PROJ4)
     .connectTimeout(3)             // per connection
     .readTimeout(5)                // per request
-    .totalTimeout(8)               // entire lookup, including retries
+    .totalTimeout(8)               // primary only, including retries
     .maxRetries(2)                 // two total attempts
     .circuitBreakerFailureThreshold(3)
     .circuitBreakerResetTimeout(Duration.ofSeconds(30))
+    .fallbackFetcher(mirror)       // independently configured endpoint
     .build();
 ```
 
-The built-in remote provider uses those same reliability settings. Concurrent
-lookups of the same authority and code share one in-flight HTTP request. After
-three consecutive endpoint failures—network failures, HTTP 401/403/408/429, or
-HTTP 5xx—its circuit breaker rejects requests locally for 30 seconds before
+Fallback fetchers are tried in insertion order after network failures, non-404
+HTTP errors, or an open circuit. A reachable primary that returns HTTP 404 is
+authoritative, so an older fallback cannot resurrect a CRS removed from the
+current catalog. If the primary fails and every fallback either fails or
+returns 404, the endpoint failure is propagated with diagnostics for each
+endpoint. An interrupted lookup stops immediately rather than starting another
+request.
+
+Configure each fallback explicitly. Its headers are not copied from the
+primary, so credentials are scoped to the fetcher on which they were
+configured. Redirects are followed only within the same origin. Every endpoint
+must serve the format configured on the provider.
+
+The built-in GitHub and jsDelivr fetchers each use the reliability settings in
+the example. Concurrent lookups of the same authority and code share one
+in-flight HTTP request per endpoint. After three consecutive endpoint
+failures—network failures, HTTP 401/403/408/429, or HTTP 5xx—an endpoint's
+independent circuit breaker rejects requests locally for 30 seconds before
 allowing one probe request.
 
-These stricter limits apply to the built-in remote fallback. Custom
+The eight-second overall deadline applies separately to each endpoint. A
+lookup can therefore take up to approximately 16 seconds when both default
+endpoints are unhealthy, with at most two attempts per endpoint. An already
+open GitHub circuit moves to jsDelivr immediately.
+
+Failover is based on transport and HTTP status. An HTTP 200 response is returned
+for parsing and does not trigger a fallback if its body is malformed.
+
+These stricter limits apply to both built-in remote endpoints. Custom
 `UrlCRSProvider` instances retain the earlier generic defaults (10-second
 connect timeout, 30-second request timeout, three total attempts, no overall
 deadline, and no circuit breaker) unless configured explicitly.
@@ -204,7 +239,7 @@ Providers are queried in ascending priority order. Lower numbers are checked fir
 |----------|----------|-------------|
 | 50 | (custom) | Your high-priority providers |
 | 100 | BuiltInCRSProvider | Built-in PROJ strings for common EPSG codes |
-| 101 | UrlCRSProvider | Immutable OSGeo spatialreference.org snapshot (network access) |
+| 101 | UrlCRSProvider | Rolling OSGeo GitHub catalog with pinned CDN fallback |
 
 Manual `Defs.set()` definitions always take precedence over providers.
 
@@ -212,8 +247,13 @@ Manual `Defs.set()` definitions always take precedence over providers.
 
 Successful provider results are parsed and cached in memory by normalized
 authority code. Repeated lookups such as `EPSG:2154` therefore do not repeat the
-HTTP request within the same JVM. HTTP 404 responses are negatively cached as
-well.
+HTTP request within the same JVM.
+
+The rolling GitHub primary does not cache HTTP 404 responses permanently,
+because a missing code can be added to the upstream catalog while a JVM is
+running. The immutable jsDelivr fallback does negatively cache 404 responses.
+Custom URL fetchers cache 404 responses by default; use
+`.cacheNotFound(false)` for another rolling catalog.
 
 The cache is process-local and is not persisted to disk. In a Spark deployment,
 each executor JVM may fetch a previously unseen CRS once; an executor restart

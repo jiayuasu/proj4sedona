@@ -365,7 +365,7 @@ class DefsTest {
     }
 
     // ==================== Remote Fetch Tests (Non-EPSG Authorities) ====================
-    // These tests require network access to the pinned OSGeo snapshot
+    // These tests require network access to the OSGeo GitHub catalog or CDN fallback
 
     @Test
     void testRemoteFetch_ESRI_102001_CanadaAlbers() {
@@ -375,7 +375,7 @@ class DefsTest {
         
         ProjectionDef def = Defs.get("ESRI:102001");
         
-        assertNotNull(def, "ESRI:102001 should be fetched from the pinned OSGeo snapshot");
+        assertNotNull(def, "ESRI:102001 should be fetched from the OSGeo remote catalog");
         // PROJJSON returns full name "Albers Equal Area", check it contains expected keywords
         String projName = def.getProjName().toLowerCase();
         assertTrue(projName.contains("aea") || projName.contains("albers"), 
@@ -412,7 +412,7 @@ class DefsTest {
         
         ProjectionDef def = Defs.get("ESRI:102008");
         
-        assertNotNull(def, "ESRI:102008 should be fetched from the pinned OSGeo snapshot");
+        assertNotNull(def, "ESRI:102008 should be fetched from the OSGeo remote catalog");
         // PROJJSON returns full name "Albers Equal Area", check it contains expected keywords
         String projName = def.getProjName().toLowerCase();
         assertTrue(projName.contains("aea") || projName.contains("albers"), 
@@ -426,7 +426,7 @@ class DefsTest {
         
         ProjectionDef def = Defs.get("IAU_2015:49900");
         
-        assertNotNull(def, "IAU_2015:49900 should be fetched from the pinned OSGeo snapshot");
+        assertNotNull(def, "IAU_2015:49900 should be fetched from the OSGeo remote catalog");
         assertEquals("longlat", def.getProjName(), "Mars geographic CRS should be longlat");
     }
 

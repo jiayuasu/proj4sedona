@@ -26,6 +26,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -39,17 +40,22 @@ class UrlCRSProviderTest {
 
     /** Embedded HTTP server serving fake CRS files. */
     private static HttpServer server;
+    private static HttpServer redirectTargetServer;
     private static ExecutorService serverExecutor;
     private static int port;
     private static String baseUrl;
+    private static String redirectTargetBaseUrl;
     private static final ConcurrentMap<String, AtomicInteger> requestCounts =
             new ConcurrentHashMap<>();
+    private static final AtomicReference<String> redirectedAuthorization =
+            new AtomicReference<>();
     private static volatile CountDownLatch oldRequestStarted;
     private static volatile CountDownLatch releaseOldRequest;
     private static volatile CountDownLatch probeRequestStarted;
     private static volatile CountDownLatch releaseProbeRequest;
     private static volatile CountDownLatch slowBodyStopped;
     private static volatile CountDownLatch slowRedirectStopped;
+    private static volatile CountDownLatch interruptRequestStarted;
 
     /** A valid PROJJSON for WGS 84 (EPSG:4326). */
     private static final String WGS84_PROJJSON = "{\n" +
@@ -85,6 +91,15 @@ class UrlCRSProviderTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         port = server.getAddress().getPort();
         baseUrl = "http://127.0.0.1:" + port;
+        redirectTargetServer =
+                HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        redirectTargetBaseUrl = "http://127.0.0.1:"
+                + redirectTargetServer.getAddress().getPort();
+        redirectTargetServer.createContext("/", exchange -> {
+            redirectedAuthorization.set(
+                    exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, WGS84_PROJJSON);
+        });
 
         // Serve PROJJSON files at /{authority}/{code}.json
         server.createContext("/", exchange -> {
@@ -126,6 +141,11 @@ class UrlCRSProviderTest {
             } else if ("/redirect/slow.json".equals(path)) {
                 exchange.getResponseHeaders().set("Location", "/epsg/4326.json");
                 streamResponse(exchange, 302, 5000, slowRedirectStopped);
+            } else if ("/redirect/cross-origin.json".equals(path)) {
+                exchange.getResponseHeaders().set(
+                        "Location", redirectTargetBaseUrl + "/target.json");
+                exchange.sendResponseHeaders(302, -1);
+                exchange.close();
             } else if ("/mixed/failure.json".equals(path)) {
                 if (currentRequestCount == 1) {
                     respond(exchange, 503, "Service Unavailable");
@@ -152,6 +172,36 @@ class UrlCRSProviderTest {
                 String body = "{\"auth\":\"" + (auth != null ? auth : "") +
                         "\",\"custom\":\"" + (custom != null ? custom : "") + "\"}";
                 respond(exchange, 200, body);
+            } else if ("/rolling/epsg/3000.json".equals(path)) {
+                if (currentRequestCount == 1) {
+                    respond(exchange, 404, "Not Found");
+                } else {
+                    respond(exchange, 200, WGS84_PROJJSON);
+                }
+            } else if ("/primary/epsg/4326.json".equals(path)
+                    || "/primary/epsg/2154.json".equals(path)
+                    || "/primary/esri/102001.json".equals(path)) {
+                respond(exchange, 503, "Service Unavailable");
+            } else if ("/fallback/epsg/4326.json".equals(path)
+                    || "/fallback/esri/102001.json".equals(path)) {
+                respond(exchange, 200, WGS84_PROJJSON);
+            } else if ("/primary/epsg/9999.json".equals(path)
+                    || "/fallback/epsg/2154.json".equals(path)) {
+                respond(exchange, 404, "Not Found");
+            } else if ("/fallback/epsg/9999.json".equals(path)) {
+                respond(exchange, 200, WGS84_PROJJSON);
+            } else if ("/second-fallback/epsg/2154.json".equals(path)) {
+                respond(exchange, 200, WGS84_PROJJSON);
+            } else if ("/primary/epsg/500.json".equals(path)) {
+                respond(exchange, 500, "Internal Server Error");
+            } else if ("/fallback/epsg/500.json".equals(path)) {
+                respond(exchange, 429, "Too Many Requests");
+            } else if ("/interrupt-primary/epsg/4326.json".equals(path)) {
+                interruptRequestStarted.countDown();
+                try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
+                respond(exchange, 200, WGS84_PROJJSON);
+            } else if ("/interrupt-fallback/epsg/4326.json".equals(path)) {
+                respond(exchange, 200, WGS84_PROJJSON);
             } else {
                 respond(exchange, 404, "Not Found");
             }
@@ -159,13 +209,18 @@ class UrlCRSProviderTest {
 
         serverExecutor = Executors.newCachedThreadPool();
         server.setExecutor(serverExecutor);
+        redirectTargetServer.setExecutor(serverExecutor);
         server.start();
+        redirectTargetServer.start();
     }
 
     @AfterAll
     static void stopServer() {
         if (server != null) {
             server.stop(0);
+        }
+        if (redirectTargetServer != null) {
+            redirectTargetServer.stop(0);
         }
         if (serverExecutor != null) {
             serverExecutor.shutdownNow();
@@ -176,12 +231,14 @@ class UrlCRSProviderTest {
     void setUp() {
         Defs.reset();
         requestCounts.clear();
+        redirectedAuthorization.set(null);
         oldRequestStarted = new CountDownLatch(1);
         releaseOldRequest = new CountDownLatch(1);
         probeRequestStarted = new CountDownLatch(1);
         releaseProbeRequest = new CountDownLatch(1);
         slowBodyStopped = new CountDownLatch(1);
         slowRedirectStopped = new CountDownLatch(1);
+        interruptRequestStarted = new CountDownLatch(1);
     }
 
     @AfterEach
@@ -292,6 +349,14 @@ class UrlCRSProviderTest {
     }
 
     @Test
+    void testBuilder_NullFallbackFetcherThrows() {
+        assertThrows(IllegalArgumentException.class, () ->
+                UrlCRSProvider.builder("test")
+                        .baseUrl(baseUrl)
+                        .fallbackFetcher(null));
+    }
+
+    @Test
     void testExistingFailureEnumOrdinalsRemainStable() {
         assertEquals(2, UrlCRSFetcher.FetchResult.Status.NETWORK_ERROR.ordinal());
         assertEquals(1, CRSFetchException.Reason.NETWORK_ERROR.ordinal());
@@ -341,6 +406,24 @@ class UrlCRSProviderTest {
         UrlCRSFetcher.FetchResult r2 = fetcher.fetch("epsg", "9999");
         assertTrue(r2.isNotFound());
         assertEquals(0, r2.getAttemptCount());
+    }
+
+    @Test
+    void testFetcher_NegativeCacheCanBeDisabledForRollingCatalog() {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/rolling/{authority}/{code}.json")
+                .cacheNotFound(false)
+                .build();
+
+        UrlCRSFetcher.FetchResult first = fetcher.fetch("epsg", "3000");
+        UrlCRSFetcher.FetchResult second = fetcher.fetch("epsg", "3000");
+
+        assertTrue(first.isNotFound());
+        assertTrue(second.isSuccess());
+        assertFalse(fetcher.isNotFoundCacheEnabled());
+        assertFalse(fetcher.isInNotFoundCache("epsg", "3000"));
+        assertEquals(2, requestCount("/rolling/epsg/3000.json"));
     }
 
     @Test
@@ -567,6 +650,23 @@ class UrlCRSProviderTest {
     }
 
     @Test
+    void testFetcher_DoesNotForwardHeadersAcrossOrigins() {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/redirect/{code}.json")
+                .maxRetries(1)
+                .header("Authorization", "Bearer top-secret")
+                .build();
+
+        UrlCRSFetcher.FetchResult result =
+                fetcher.fetch("epsg", "cross-origin");
+
+        assertTrue(result.isHttpError());
+        assertEquals(302, result.getHttpStatusCode());
+        assertNull(redirectedAuthorization.get());
+    }
+
+    @Test
     void testFetcher_OverallTimeoutCancelsRedirectBody() throws Exception {
         UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
                 .baseUrl(baseUrl)
@@ -711,6 +811,7 @@ class UrlCRSProviderTest {
                 .totalTimeout(20)
                 .circuitBreakerFailureThreshold(4)
                 .circuitBreakerResetTimeout(Duration.ofSeconds(45))
+                .cacheNotFound(false)
                 .header("X-Key", "abc")
                 .build();
 
@@ -723,6 +824,7 @@ class UrlCRSProviderTest {
         assertEquals(20, fetcher.getTotalTimeoutSeconds());
         assertEquals(4, fetcher.getCircuitBreakerFailureThreshold());
         assertEquals(Duration.ofSeconds(45), fetcher.getCircuitBreakerResetTimeout());
+        assertFalse(fetcher.isNotFoundCacheEnabled());
         assertEquals("abc", fetcher.getHeaders().get("X-Key"));
     }
 
@@ -738,6 +840,7 @@ class UrlCRSProviderTest {
         assertEquals(500, fetcher.getInitialBackoffMs());
         assertEquals(0, fetcher.getTotalTimeoutSeconds());
         assertEquals(0, fetcher.getCircuitBreakerFailureThreshold());
+        assertTrue(fetcher.isNotFoundCacheEnabled());
     }
 
     // ==================== UrlCRSProvider ====================
@@ -849,20 +952,245 @@ class UrlCRSProviderTest {
 
     @Test
     @SuppressWarnings("deprecation")
-    void testSpatialReferenceProviderUsesPinnedOsGeoSnapshot() {
+    void testSpatialReferenceProviderUsesGitHubWithPinnedCdnFallback() {
         UrlCRSProvider provider = UrlCRSProvider.spatialReference();
         String commit = "c43e4e72634af65fcf684def42ddc2dcfd834938";
-        String base =
+        String github =
+                "https://raw.githubusercontent.com/OSGeo/spatialreference.org/gh-pages";
+        String jsDelivr =
                 "https://cdn.jsdelivr.net/gh/OSGeo/spatialreference.org@" + commit;
 
         assertEquals(commit, UrlCRSProvider.SPATIAL_REFERENCE_SNAPSHOT_COMMIT);
-        assertEquals(base, UrlCRSProvider.SPATIAL_REFERENCE_CDN_BASE_URL);
-        assertEquals(base, provider.getFetcher().getBaseUrl());
+        assertEquals(github, UrlCRSProvider.SPATIAL_REFERENCE_GITHUB_BASE_URL);
+        assertEquals(jsDelivr, UrlCRSProvider.SPATIAL_REFERENCE_CDN_BASE_URL);
+        assertEquals(2, provider.getFetchers().size());
+        assertEquals(github, provider.getFetcher().getBaseUrl());
+        assertEquals(github, provider.getFetchers().get(0).getBaseUrl());
+        assertEquals(jsDelivr, provider.getFetchers().get(1).getBaseUrl());
         assertEquals(
-                base + "/ref/epsg/2154/projjson.json",
+                github + "/ref/epsg/2154/projjson.json",
                 provider.getFetcher().buildUrl("epsg", "2154"));
+        assertEquals(
+                jsDelivr + "/ref/epsg/2154/projjson.json",
+                provider.getFetchers().get(1).buildUrl("epsg", "2154"));
+        assertFalse(provider.getFetcher().isNotFoundCacheEnabled());
+        assertTrue(provider.getFetchers().get(1).isNotFoundCacheEnabled());
         assertEquals("https://spatialreference.org",
                 UrlCRSProvider.SPATIAL_REFERENCE_BASE_URL);
+    }
+
+    @Test
+    void testProvider_FallsBackAfterPrimaryHttpError() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("with-fallback")
+                .baseUrl(baseUrl + "/primary")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        CRSResult result = provider.resolve("epsg", "4326");
+
+        assertNotNull(result);
+        assertEquals(1, requestCount("/primary/epsg/4326.json"));
+        assertEquals(1, requestCount("/fallback/epsg/4326.json"));
+        assertEquals(2, provider.getFetchers().size());
+    }
+
+    @Test
+    void testProvider_PrimaryNotFoundDoesNotUseOlderFallback() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("with-fallback")
+                .baseUrl(baseUrl + "/primary")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        assertNull(provider.resolve("epsg", "9999"));
+        assertEquals(1, requestCount("/primary/epsg/9999.json"));
+        assertEquals(0, requestCount("/fallback/epsg/9999.json"));
+    }
+
+    @Test
+    void testProvider_FallbackNotFoundDoesNotMaskPrimaryFailure() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("with-fallback")
+                .baseUrl(baseUrl + "/primary")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        CRSFetchException ex = assertThrows(CRSFetchException.class, () ->
+                provider.resolve("epsg", "2154"));
+
+        assertEquals(CRSFetchException.Reason.HTTP_ERROR, ex.getReason());
+        assertTrue(ex.getMessage().contains(baseUrl + "/primary"));
+        assertTrue(ex.getMessage().contains("HTTP 503"));
+        assertTrue(ex.getMessage().contains(baseUrl + "/fallback"));
+        assertTrue(ex.getMessage().contains("HTTP 404"));
+    }
+
+    @Test
+    void testProvider_TriesFallbacksInOrderUntilOneSucceeds() {
+        UrlCRSFetcher missingFallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSFetcher successfulFallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/second-fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("multiple-fallbacks")
+                .baseUrl(baseUrl + "/primary")
+                .maxRetries(1)
+                .fallbackFetcher(missingFallback)
+                .fallbackFetcher(successfulFallback)
+                .build();
+
+        assertNotNull(provider.resolve("epsg", "2154"));
+        assertEquals(1, requestCount("/primary/epsg/2154.json"));
+        assertEquals(1, requestCount("/fallback/epsg/2154.json"));
+        assertEquals(1, requestCount("/second-fallback/epsg/2154.json"));
+        assertEquals(3, provider.getFetchers().size());
+    }
+
+    @Test
+    void testProvider_AllEndpointFailuresKeepDiagnostics() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("with-fallback")
+                .baseUrl(baseUrl + "/primary")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        CRSFetchException ex = assertThrows(CRSFetchException.class, () ->
+                provider.resolve("epsg", "500"));
+
+        assertEquals(CRSFetchException.Reason.HTTP_ERROR, ex.getReason());
+        assertTrue(ex.getMessage().contains(baseUrl + "/primary"));
+        assertTrue(ex.getMessage().contains("HTTP 500"));
+        assertTrue(ex.getMessage().contains(baseUrl + "/fallback"));
+        assertTrue(ex.getMessage().contains("HTTP 429"));
+        assertEquals(1, ex.getSuppressed().length);
+    }
+
+    @Test
+    void testProvider_PrimaryAndFallbackCircuitsAreIndependent() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .circuitBreakerFailureThreshold(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("with-fallback")
+                .baseUrl(baseUrl + "/primary")
+                .maxRetries(1)
+                .circuitBreakerFailureThreshold(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        assertNotNull(provider.resolve("epsg", "4326"));
+        assertTrue(provider.getFetcher().isCircuitOpen());
+        assertFalse(fallback.isCircuitOpen());
+
+        assertNotNull(provider.resolve("esri", "102001"));
+        assertEquals(0, requestCount("/primary/esri/102001.json"));
+        assertEquals(1, requestCount("/fallback/esri/102001.json"));
+    }
+
+    @Test
+    void testProvider_InterruptedPrimaryDoesNotCallFallback() throws Exception {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/interrupt-fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("interruptible")
+                .baseUrl(baseUrl + "/interrupt-primary")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+        AtomicReference<Throwable> thrown = new AtomicReference<>();
+        Thread resolver = new Thread(() -> {
+            try {
+                provider.resolve("epsg", "4326");
+            } catch (Throwable t) {
+                thrown.set(t);
+            }
+        });
+
+        resolver.start();
+        assertTrue(interruptRequestStarted.await(5, TimeUnit.SECONDS));
+        resolver.interrupt();
+        resolver.join(5000);
+
+        assertFalse(resolver.isAlive());
+        assertTrue(thrown.get() instanceof CRSFetchException);
+        CRSFetchException failure = (CRSFetchException) thrown.get();
+        assertEquals(CRSFetchException.Reason.NETWORK_ERROR, failure.getReason());
+        assertEquals(0, requestCount("/interrupt-fallback/epsg/4326.json"));
+    }
+
+    @Test
+    void testProvider_InterruptedSingleFlightOwnerDoesNotPoisonWaiter()
+            throws Exception {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/interrupt-fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("interruptible-shared")
+                .baseUrl(baseUrl + "/interrupt-primary")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+        AtomicReference<Throwable> ownerFailure = new AtomicReference<>();
+        AtomicReference<Throwable> waiterFailure = new AtomicReference<>();
+        AtomicReference<CRSResult> waiterResult = new AtomicReference<>();
+        Thread owner = new Thread(() -> {
+            try {
+                provider.resolve("epsg", "4326");
+            } catch (Throwable t) {
+                ownerFailure.set(t);
+            }
+        });
+        Thread waiter = new Thread(() -> {
+            try {
+                waiterResult.set(provider.resolve("epsg", "4326"));
+            } catch (Throwable t) {
+                waiterFailure.set(t);
+            }
+        });
+
+        owner.start();
+        assertTrue(interruptRequestStarted.await(5, TimeUnit.SECONDS));
+        waiter.start();
+        long waitingDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (waiter.getState() != Thread.State.WAITING
+                && System.nanoTime() < waitingDeadline) {
+            Thread.sleep(5);
+        }
+        assertEquals(Thread.State.WAITING, waiter.getState());
+
+        owner.interrupt();
+        owner.join(5000);
+        waiter.join(5000);
+
+        assertFalse(owner.isAlive());
+        assertFalse(waiter.isAlive());
+        assertTrue(ownerFailure.get() instanceof CRSFetchException);
+        assertNull(waiterFailure.get());
+        assertNotNull(waiterResult.get());
+        assertEquals(1, requestCount("/interrupt-primary/epsg/4326.json"));
+        assertEquals(1, requestCount("/interrupt-fallback/epsg/4326.json"));
     }
 
     // ==================== Authority Filtering ====================
