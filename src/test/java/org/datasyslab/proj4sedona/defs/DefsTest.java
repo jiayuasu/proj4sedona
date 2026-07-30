@@ -365,7 +365,7 @@ class DefsTest {
     }
 
     // ==================== Remote Fetch Tests (Non-EPSG Authorities) ====================
-    // These tests require network access to the OSGeo GitHub catalog or CDN fallback
+    // These tests require network access to jsDelivr or the raw OSGeo GitHub fallback
 
     @Test
     void testRemoteFetch_ESRI_102001_CanadaAlbers() {

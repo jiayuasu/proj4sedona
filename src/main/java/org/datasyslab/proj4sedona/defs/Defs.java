@@ -22,17 +22,19 @@ import org.datasyslab.proj4sedona.util.CRSUtils;
  * <p>This class maintains a cache of parsed {@link ProjectionDef} objects and a
  * priority-ordered chain of {@link CRSProvider} instances that are consulted on cache
  * miss. Providers are tried in ascending priority order (lower value = tried first);
- * the first non-null {@link CRSResult} is parsed and cached.</p>
+ * the first non-null {@link CRSResult} is parsed and cached. A provider exception
+ * stops resolution and is propagated rather than being treated as not-found.</p>
  *
  * <p>By default, {@link #globals()} registers two providers:</p>
  * <ul>
  *   <li>{@link BuiltInCRSProvider} at priority <b>100</b> — instant map lookup, no network</li>
  *   <li>{@link UrlCRSProvider#spatialReference()} at priority <b>101</b> — fetches
- *       from the OSGeo spatialreference.org GitHub catalog with a pinned CDN fallback</li>
+ *       the OSGeo spatialreference.org catalog through jsDelivr with a raw GitHub fallback</li>
  * </ul>
  *
  * <p>Users can register custom providers at a lower priority to override defaults,
- * or at a higher priority to act as fallback:</p>
+ * or at a higher priority to act as fallback when earlier providers return
+ * {@code null}:</p>
  * <pre>
  * Defs.registerProvider(new MyCRSProvider(), 50);  // tried before built-in
  * </pre>
@@ -419,7 +421,7 @@ public final class Defs {
      * <ul>
      *   <li>{@link BuiltInCRSProvider} at priority 100</li>
      *   <li>{@link UrlCRSProvider#spatialReference()} at priority 101, backed by
-     *       the OSGeo GitHub catalog and a pinned CDN fallback</li>
+     *       the OSGeo catalog through jsDelivr and raw GitHub</li>
      * </ul>
      *
      * <p>It also pre-populates the cache with common aliases that are not in

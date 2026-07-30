@@ -17,7 +17,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletionStage;
@@ -25,6 +24,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.LongSupplier;
 
 /**
  * HTTP fetch engine for retrieving CRS definition files (PROJJSON, WKT, PROJ.4)
@@ -36,7 +37,7 @@ import java.util.concurrent.TimeoutException;
  *   <li>Bounded retry with exponential backoff for transient failures</li>
  *   <li>Negative cache to skip known 404s</li>
  *   <li>Single-flight request coalescing for concurrent lookups of the same CRS</li>
- *   <li>A host-level circuit breaker to avoid repeatedly calling an unhealthy endpoint</li>
+ *   <li>A fetcher-local circuit breaker to avoid repeatedly calling an unhealthy endpoint</li>
  *   <li>Custom HTTP headers (e.g., for private GitHub repos or pre-signed S3)</li>
  * </ul>
  *
@@ -83,6 +84,11 @@ public final class UrlCRSFetcher {
         }
     }
 
+    /**
+     * Java 11 does not reliably stop an active response-body subscription when
+     * the sendAsync future is cancelled. These wrappers retain the subscription
+     * so a lookup timeout can cancel body delivery explicitly.
+     */
     private static final class CancellableBodyHandler<T>
             implements HttpResponse.BodyHandler<T> {
         private final HttpResponse.BodyHandler<T> delegate;
@@ -136,6 +142,8 @@ public final class UrlCRSFetcher {
                 newSubscription.cancel();
             }
             delegate.onSubscribe(newSubscription);
+            // Close the race where cancel() runs while the delegate handles
+            // onSubscribe, after the first check but before it returns.
             if (cancelled) {
                 newSubscription.cancel();
             }
@@ -162,6 +170,18 @@ public final class UrlCRSFetcher {
             if (current != null) {
                 current.cancel();
             }
+        }
+    }
+
+    private static final class RefusedRedirectException extends IOException {
+        private final int statusCode;
+
+        private RefusedRedirectException(int statusCode, URI source, URI target) {
+            super("refused unsafe redirect from " + origin(source) + " to "
+                    + origin(target)
+                    + "; redirects must use HTTP(S), omit user info, "
+                    + "and remain within one origin");
+            this.statusCode = statusCode;
         }
     }
 
@@ -291,6 +311,12 @@ public final class UrlCRSFetcher {
     /** Default behavior for caching HTTP 404 responses. */
     public static final boolean DEFAULT_CACHE_NOT_FOUND = true;
 
+    /**
+     * Default negative-cache TTL. Zero means cached 404s do not expire during
+     * the fetcher's lifetime.
+     */
+    public static final Duration DEFAULT_NOT_FOUND_CACHE_TTL = Duration.ZERO;
+
     /** Default delay before allowing a probe request through an open circuit. */
     public static final Duration DEFAULT_CIRCUIT_BREAKER_RESET_TIMEOUT = Duration.ofSeconds(30);
 
@@ -310,11 +336,16 @@ public final class UrlCRSFetcher {
     private final int circuitBreakerFailureThreshold;
     private final long circuitBreakerResetTimeoutNanos;
     private final boolean cacheNotFound;
+    private final long notFoundCacheTtlNanos;
+    private final LongSupplier notFoundCacheTicker;
     private final Map<String, String> headers;
     private final HttpClient httpClient;
 
-    /** Negative cache: track codes that are known 404s. */
-    private final Set<String> notFoundCache = ConcurrentHashMap.newKeySet();
+    /** Negative cache: code to monotonic timestamp when its latest 404 arrived. */
+    private final Map<String, Long> notFoundCache = new ConcurrentHashMap<>();
+
+    /** Triggers occasional lazy cleanup for expired entries with distinct keys. */
+    private final AtomicInteger notFoundCacheWrites = new AtomicInteger();
 
     /** Concurrent requests for the same authority/code share one HTTP operation. */
     private final Map<String, CompletableFuture<FetchResult>> inFlight = new ConcurrentHashMap<>();
@@ -348,6 +379,8 @@ public final class UrlCRSFetcher {
         this.circuitBreakerResetTimeoutNanos =
                 builder.circuitBreakerResetTimeout.toNanos();
         this.cacheNotFound = builder.cacheNotFound;
+        this.notFoundCacheTtlNanos = builder.notFoundCacheTtl.toNanos();
+        this.notFoundCacheTicker = builder.notFoundCacheTicker;
         this.headers = Collections.unmodifiableMap(new LinkedHashMap<>(builder.headers));
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(connectTimeoutSeconds))
@@ -376,7 +409,7 @@ public final class UrlCRSFetcher {
     public FetchResult fetch(String authority, String code) {
         String cacheKey = authority.toLowerCase(Locale.ROOT) + ":" + code;
 
-        if (cacheNotFound && notFoundCache.contains(cacheKey)) {
+        if (isNotFoundCached(cacheKey)) {
             return FetchResult.notFound(0);
         }
 
@@ -388,6 +421,14 @@ public final class UrlCRSFetcher {
 
         CircuitPermit circuitPermit = null;
         try {
+            // A different owner may have cached a 404 after our fast-path check
+            // but before this request won single-flight ownership.
+            if (isNotFoundCached(cacheKey)) {
+                FetchResult cachedResult = FetchResult.notFound(0);
+                request.complete(cachedResult);
+                return cachedResult;
+            }
+
             circuitPermit = acquireCircuitPermit();
             if (circuitPermit == null) {
                 FetchResult circuitRejection = circuitOpenResult();
@@ -456,7 +497,7 @@ public final class UrlCRSFetcher {
                     return FetchResult.success(response.body(), attemptCount);
                 } else if (statusCode == 404) {
                     if (cacheNotFound) {
-                        notFoundCache.add(cacheKey);
+                        recordNotFound(cacheKey);
                     }
                     return FetchResult.notFound(attemptCount);
                 } else if (isRetryableStatusCode(statusCode)) {
@@ -467,6 +508,9 @@ public final class UrlCRSFetcher {
                     IOException error = new IOException("HTTP " + statusCode + " from " + url);
                     return FetchResult.httpError(statusCode, error, attemptCount);
                 }
+            } catch (RefusedRedirectException e) {
+                return FetchResult.httpError(
+                        e.statusCode, e, attemptCount);
             } catch (ConnectException | SocketTimeoutException e) {
                 lastException = e;
                 lastHttpStatusCode = -1;
@@ -593,6 +637,9 @@ public final class UrlCRSFetcher {
                     && circuitState == CircuitState.HALF_OPEN) {
                 circuitGeneration++;
                 circuitState = CircuitState.OPEN;
+                // The probe ended for a caller-local reason (for example,
+                // interruption), not endpoint evidence. The reset interval has
+                // already elapsed, so allow another caller to probe immediately.
             }
         }
     }
@@ -634,6 +681,50 @@ public final class UrlCRSFetcher {
     private static boolean isInterruptedNetworkError(FetchResult result) {
         return result.isNetworkError()
                 && result.getLastException() instanceof InterruptedException;
+    }
+
+    // ==================== Negative Cache ====================
+
+    private boolean isNotFoundCached(String cacheKey) {
+        if (!cacheNotFound) {
+            return false;
+        }
+        Long cachedAtNanos = notFoundCache.get(cacheKey);
+        if (cachedAtNanos == null) {
+            return false;
+        }
+        if (notFoundCacheTtlNanos == 0
+                || isNotFoundEntryFresh(
+                        cachedAtNanos, notFoundCacheTicker.getAsLong())) {
+            return true;
+        }
+        notFoundCache.remove(cacheKey, cachedAtNanos);
+        return false;
+    }
+
+    private boolean isNotFoundEntryFresh(long cachedAtNanos, long nowNanos) {
+        long elapsedNanos = nowNanos - cachedAtNanos;
+        return elapsedNanos < 0 || elapsedNanos < notFoundCacheTtlNanos;
+    }
+
+    private void recordNotFound(String cacheKey) {
+        notFoundCache.put(cacheKey, notFoundCacheTicker.getAsLong());
+        if (notFoundCacheTtlNanos > 0
+                && (notFoundCacheWrites.incrementAndGet() & 0xff) == 0) {
+            removeExpiredNotFoundEntries();
+        }
+    }
+
+    private void removeExpiredNotFoundEntries() {
+        if (notFoundCacheTtlNanos == 0) {
+            return;
+        }
+        long nowNanos = notFoundCacheTicker.getAsLong();
+        for (Map.Entry<String, Long> entry : notFoundCache.entrySet()) {
+            if (!isNotFoundEntryFresh(entry.getValue(), nowNanos)) {
+                notFoundCache.remove(entry.getKey(), entry.getValue());
+            }
+        }
     }
 
     // ==================== URL Building ====================
@@ -695,7 +786,8 @@ public final class UrlCRSFetcher {
                 throw new IOException("Invalid redirect from " + currentUri, e);
             }
             if (!isAllowedRedirect(currentUri, redirectUri)) {
-                return response;
+                throw new RefusedRedirectException(
+                        response.statusCode(), currentUri, redirectUri);
             }
             currentUri = redirectUri;
         }
@@ -778,6 +870,27 @@ public final class UrlCRSFetcher {
         return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
     }
 
+    private static String origin(URI uri) {
+        String scheme = uri.getScheme() == null
+                ? "<missing-scheme>"
+                : uri.getScheme().toLowerCase(Locale.ROOT);
+        String host = uri.getHost() == null
+                ? "<invalid-host>"
+                : uri.getHost().toLowerCase(Locale.ROOT);
+        StringBuilder result = new StringBuilder()
+                .append(scheme)
+                .append("://");
+        if (host.indexOf(':') >= 0) {
+            result.append('[').append(host).append(']');
+        } else {
+            result.append(host);
+        }
+        if (uri.getPort() >= 0) {
+            result.append(':').append(uri.getPort());
+        }
+        return result.toString();
+    }
+
     // ==================== Retry Helpers ====================
 
     private long calculateBackoff(int attempt) {
@@ -845,6 +958,14 @@ public final class UrlCRSFetcher {
     /** Check whether HTTP 404 responses are cached. */
     public boolean isNotFoundCacheEnabled() { return cacheNotFound; }
 
+    /**
+     * Get the negative-cache TTL. Zero means cached 404s remain for the
+     * fetcher's lifetime.
+     */
+    public Duration getNotFoundCacheTtl() {
+        return Duration.ofNanos(notFoundCacheTtlNanos);
+    }
+
     /** Get the number of consecutive endpoint failures. */
     public int getConsecutiveFailureCount() {
         synchronized (circuitLock) {
@@ -867,22 +988,36 @@ public final class UrlCRSFetcher {
         }
     }
 
-    /** Get the number of currently active logical fetches. */
+    /** Get the number of currently active logical fetches. Visible for testing. */
     int getInFlightCount() { return inFlight.size(); }
 
     /** Get the unmodifiable map of custom headers. */
     public Map<String, String> getHeaders() { return headers; }
 
+    static String refusedRedirectDescription(FetchResult result) {
+        Exception exception = result.getLastException();
+        return exception instanceof RefusedRedirectException
+                ? exception.getMessage()
+                : null;
+    }
+
     /** Check if a code is in the negative cache. */
     public boolean isInNotFoundCache(String authority, String code) {
-        return notFoundCache.contains(authority.toLowerCase(Locale.ROOT) + ":" + code);
+        return isNotFoundCached(
+                authority.toLowerCase(Locale.ROOT) + ":" + code);
     }
 
     /** Get the size of the negative cache. */
-    public int getNotFoundCacheSize() { return notFoundCache.size(); }
+    public int getNotFoundCacheSize() {
+        removeExpiredNotFoundEntries();
+        return notFoundCache.size();
+    }
 
     /** Clear the negative cache. */
-    public void clearNotFoundCache() { notFoundCache.clear(); }
+    public void clearNotFoundCache() {
+        notFoundCache.clear();
+        notFoundCacheWrites.set(0);
+    }
 
     // ==================== Builder ====================
 
@@ -904,6 +1039,8 @@ public final class UrlCRSFetcher {
         private Duration circuitBreakerResetTimeout =
                 DEFAULT_CIRCUIT_BREAKER_RESET_TIMEOUT;
         private boolean cacheNotFound = DEFAULT_CACHE_NOT_FOUND;
+        private Duration notFoundCacheTtl = DEFAULT_NOT_FOUND_CACHE_TTL;
+        private LongSupplier notFoundCacheTicker = System::nanoTime;
         private final Map<String, String> headers = new LinkedHashMap<>();
 
         private Builder() {}
@@ -1057,17 +1194,51 @@ public final class UrlCRSFetcher {
         }
 
         /**
-         * Set whether HTTP 404 responses are cached for the lifetime of this fetcher.
-         * Default: {@code true}.
-         *
-         * <p>Disable this for a rolling catalog where a previously missing code may
-         * be added while the JVM is still running.</p>
+         * Set whether HTTP 404 responses are cached. Default: {@code true}.
+         * Use {@link #notFoundCacheTtl(Duration)} to expire cached misses for a
+         * rolling catalog.
          *
          * @param enabled whether to cache HTTP 404 responses
          * @return this builder
          */
         public Builder cacheNotFound(boolean enabled) {
             this.cacheNotFound = enabled;
+            return this;
+        }
+
+        /**
+         * Set how long HTTP 404 responses remain cached. A zero duration keeps
+         * them for the fetcher's lifetime. Default: zero.
+         *
+         * @param ttl zero for no expiration, or a positive cache duration
+         * @return this builder
+         * @throws IllegalArgumentException if {@code ttl} is null, negative,
+         *         or too large to represent in nanoseconds
+         */
+        public Builder notFoundCacheTtl(Duration ttl) {
+            if (ttl == null || ttl.isNegative()) {
+                throw new IllegalArgumentException(
+                        "not-found cache TTL must not be null or negative");
+            }
+            try {
+                ttl.toNanos();
+            } catch (ArithmeticException e) {
+                throw new IllegalArgumentException(
+                        "not-found cache TTL is too large", e);
+            }
+            this.notFoundCacheTtl = ttl;
+            return this;
+        }
+
+        /**
+         * Override the monotonic clock used by the negative cache. Visible for testing.
+         */
+        Builder notFoundCacheTicker(LongSupplier ticker) {
+            if (ticker == null) {
+                throw new IllegalArgumentException(
+                        "not-found cache ticker must not be null");
+            }
+            this.notFoundCacheTicker = ticker;
             return this;
         }
 

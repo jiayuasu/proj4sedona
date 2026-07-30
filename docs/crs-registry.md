@@ -8,9 +8,12 @@ When you create a `Proj` from an authority code (e.g., `new Proj("EPSG:4326")`),
 
 ```
 EPSG:4326  -->  BuiltInCRSProvider (priority 100)
-           -->  UrlCRSProvider / OSGeo GitHub + CDN fallback (priority 101)
+           -->  UrlCRSProvider / OSGeo jsDelivr + GitHub fallback (priority 101)
            -->  Custom providers (user-defined priority)
 ```
+
+A provider returning `null` allows resolution to continue. A provider exception
+stops the chain and is propagated.
 
 ## The Defs Registry
 
@@ -77,10 +80,22 @@ The `BuiltInCRSProvider` (priority 100) supplies PROJ strings for common EPSG co
 
 The `UrlCRSProvider` fetches CRS definitions from HTTP endpoints. The default
 remote provider reads the rolling spatialreference.org `gh-pages` catalog from
-`raw.githubusercontent.com`. If GitHub has an endpoint failure, it tries a
-commit-addressed copy through jsDelivr. The backup was generated from PROJ
-9.8.1 and EPSG v12.029 at OSGeo commit
-`c43e4e72634af65fcf684def42ddc2dcfd834938`.
+jsDelivr:
+
+```
+https://cdn.jsdelivr.net/gh/OSGeo/spatialreference.org@gh-pages
+```
+
+If that endpoint fails, it uses the rolling raw GitHub branch:
+
+```
+https://raw.githubusercontent.com/OSGeo/spatialreference.org/gh-pages
+```
+
+jsDelivr is the normal traffic endpoint, while raw GitHub provides a separate
+delivery path and direct source check. jsDelivr can cache a branch revision for
+up to about 12 hours, so this arrangement favors availability and lower fan-out
+load over immediate visibility of every upstream commit.
 
 The CRS catalog remains an external runtime dependency; it is not bundled in
 the proj4sedona JAR.
@@ -88,7 +103,7 @@ the proj4sedona JAR.
 ```java
 import org.datasyslab.proj4sedona.defs.UrlCRSProvider;
 
-// The default OSGeo GitHub provider and pinned CDN fallback are registered automatically.
+// The default OSGeo jsDelivr provider and GitHub fallback are registered automatically.
 // It resolves codes like EPSG:2154, ESRI:102001, etc.
 Proj p = new Proj("EPSG:2154");  // fetched remotely if not built in
 ```
@@ -130,19 +145,41 @@ UrlCRSProvider myProvider = UrlCRSProvider.builder("my-crs-service")
 ```
 
 Fallback fetchers are tried in insertion order after network failures, non-404
-HTTP errors, or an open circuit. A reachable primary that returns HTTP 404 is
-authoritative, so an older fallback cannot resurrect a CRS removed from the
-current catalog. If the primary fails and every fallback either fails or
-returns 404, the endpoint failure is propagated with diagnostics for each
-endpoint. An interrupted lookup stops immediately rather than starting another
-request.
+HTTP errors, or an open circuit. By default, a reachable primary that returns
+HTTP 404 is authoritative, so an older fallback cannot resurrect a CRS removed
+from the current catalog. The not-found policy can instead advance to the next
+endpoint. If every endpoint is non-authoritative and returns 404, the result is
+not-found; if an earlier endpoint had a hard failure, that failure is propagated
+after the endpoint list is exhausted. An interrupted lookup stops immediately
+rather than starting another request.
+
+For mirrors that may lag their source, configure a non-authoritative primary
+miss explicitly:
+
+```java
+UrlCRSProvider provider = UrlCRSProvider.builder("cdn-first")
+    .baseUrl("https://cdn.example.com/crs")
+    .primaryNotFoundPolicy(UrlCRSProvider.NotFoundPolicy.TRY_NEXT_ENDPOINT)
+    .fallbackFetcher(
+        mirror,
+        UrlCRSProvider.NotFoundPolicy.AUTHORITATIVE)
+    .build();
+```
+
+The built-in provider uses this policy. A jsDelivr 404 advances to raw GitHub
+for confirmation. A GitHub 404 is authoritative, even if jsDelivr had a hard
+failure. If jsDelivr returns 404 but GitHub has a hard failure, the lookup
+propagates that failure instead of incorrectly reporting the code as missing.
 
 Configure each fallback explicitly. Its headers are not copied from the
 primary, so credentials are scoped to the fetcher on which they were
-configured. Redirects are followed only within the same origin. Every endpoint
-must serve the format configured on the provider.
+configured. Same-origin redirects are followed. Unsafe redirects, including
+cross-origin redirects, are refused and reported as an HTTP error with sanitized
+source and target origins; configured endpoint fallback still applies, and
+headers are never sent to the refused target. Every endpoint must serve the
+format configured on the provider.
 
-The built-in GitHub and jsDelivr fetchers each use the reliability settings in
+The built-in jsDelivr and GitHub fetchers each use the reliability settings in
 the example. Concurrent lookups of the same authority and code share one
 in-flight HTTP request per endpoint. After three consecutive endpoint
 failures—network failures, HTTP 401/403/408/429, or HTTP 5xx—an endpoint's
@@ -152,7 +189,7 @@ allowing one probe request.
 The eight-second overall deadline applies separately to each endpoint. A
 lookup can therefore take up to approximately 16 seconds when both default
 endpoints are unhealthy, with at most two attempts per endpoint. An already
-open GitHub circuit moves to jsDelivr immediately.
+open jsDelivr circuit moves to GitHub immediately.
 
 Failover is based on transport and HTTP status. An HTTP 200 response is returned
 for parsing and does not trigger a fallback if its body is malformed.
@@ -239,7 +276,7 @@ Providers are queried in ascending priority order. Lower numbers are checked fir
 |----------|----------|-------------|
 | 50 | (custom) | Your high-priority providers |
 | 100 | BuiltInCRSProvider | Built-in PROJ strings for common EPSG codes |
-| 101 | UrlCRSProvider | Rolling OSGeo GitHub catalog with pinned CDN fallback |
+| 101 | UrlCRSProvider | Rolling OSGeo catalog through jsDelivr, then raw GitHub |
 
 Manual `Defs.set()` definitions always take precedence over providers.
 
@@ -249,27 +286,37 @@ Successful provider results are parsed and cached in memory by normalized
 authority code. Repeated lookups such as `EPSG:2154` therefore do not repeat the
 HTTP request within the same JVM.
 
-The rolling GitHub primary does not cache HTTP 404 responses permanently,
-because a missing code can be added to the upstream catalog while a JVM is
-running. The immutable jsDelivr fallback does negatively cache 404 responses.
-Custom URL fetchers cache 404 responses by default; use
-`.cacheNotFound(false)` for another rolling catalog.
+Both built-in rolling endpoints cache HTTP 404 responses for five minutes. A
+repeated missing-code lookup therefore avoids repeated downloads during that
+window but can discover a newly added upstream code without restarting the JVM.
+Custom URL fetchers cache 404 responses for the fetcher's lifetime by default.
+Use `.notFoundCacheTtl(Duration.ofMinutes(5))` for an expiring negative cache or
+`.cacheNotFound(false)` to disable negative caching.
 
 The cache is process-local and is not persisted to disk. In a Spark deployment,
 each executor JVM may fetch a previously unseen CRS once; an executor restart
-starts with an empty cache. HTTP errors and network failures are deliberately
-not cached as missing definitions. The circuit breaker bounds repeated failures
-without confusing them with 404 responses.
+starts with an empty cache. Successful definitions remain cached in `Defs` for
+the JVM lifetime, so repeated transforms using the same CRS do not download the
+PROJJSON again. Concurrent first lookups share one in-flight request per
+endpoint. HTTP errors and network failures are deliberately not cached as
+missing definitions. The circuit breaker bounds repeated failures without
+confusing them with 404 responses.
 
 ## Error Handling
 
-When a CRS cannot be resolved, a `CRSFetchException` is thrown with a `Reason`:
+Only a provider's `null`/not-found result advances to the next registered
+provider. After a URL provider exhausts its configured endpoint fallbacks,
+non-404 HTTP responses and network failures abort the provider chain.
+
+Use `Defs.getOrThrow` when an unresolved code should produce a
+`CRSFetchException` with a `Reason`:
 
 ```java
 import org.datasyslab.proj4sedona.defs.CRSFetchException;
+import org.datasyslab.proj4sedona.defs.Defs;
 
 try {
-    Proj p = new Proj("EPSG:999999");
+    Defs.getOrThrow("EPSG:999999");
 } catch (CRSFetchException e) {
     switch (e.getReason()) {
         case NOT_FOUND:
@@ -290,6 +337,11 @@ try {
     }
 }
 ```
+
+`Defs.get` returns `null` for an unresolved code. Constructors such as
+`new Proj("EPSG:999999")` convert that missing definition to an
+`IllegalArgumentException`; endpoint failures still propagate as
+`CRSFetchException`.
 
 ## Registry Management
 

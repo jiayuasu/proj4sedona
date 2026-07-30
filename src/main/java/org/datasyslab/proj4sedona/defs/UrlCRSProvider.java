@@ -71,29 +71,50 @@ import java.util.Set;
  */
 public final class UrlCRSProvider implements CRSProvider {
 
+    /**
+     * Controls whether an endpoint's HTTP 404 response is definitive.
+     */
+    public enum NotFoundPolicy {
+        /** Return not-found immediately without consulting later endpoints. */
+        AUTHORITATIVE,
+        /**
+         * Consult the next endpoint, if any, to confirm the missing code. If
+         * the endpoint list is exhausted, return not-found unless a hard
+         * endpoint failure was recorded, in which case propagate that failure.
+         */
+        TRY_NEXT_ENDPOINT
+    }
+
+    private static final class Endpoint {
+        private final UrlCRSFetcher fetcher;
+        private final NotFoundPolicy notFoundPolicy;
+
+        private Endpoint(
+                UrlCRSFetcher fetcher,
+                NotFoundPolicy notFoundPolicy) {
+            this.fetcher = fetcher;
+            this.notFoundPolicy = notFoundPolicy;
+        }
+    }
+
     // ==================== spatialreference.org constants ====================
 
     /**
      * Legacy spatialreference.org origin URL.
      *
-     * @deprecated the default provider uses {@link #SPATIAL_REFERENCE_GITHUB_BASE_URL}
-     *             with {@link #SPATIAL_REFERENCE_CDN_BASE_URL} as a fallback
+     * @deprecated the default provider uses {@link #SPATIAL_REFERENCE_CDN_BASE_URL}
+     *             with {@link #SPATIAL_REFERENCE_GITHUB_BASE_URL} as a fallback
      */
     @Deprecated
     public static final String SPATIAL_REFERENCE_BASE_URL = "https://spatialreference.org";
 
-    /** Primary raw GitHub URL for the rolling OSGeo spatialreference.org catalog. */
+    /** Raw GitHub fallback for the rolling OSGeo spatialreference.org catalog. */
     public static final String SPATIAL_REFERENCE_GITHUB_BASE_URL =
             "https://raw.githubusercontent.com/OSGeo/spatialreference.org/gh-pages";
 
-    /** Generated spatialreference.org data commit based on PROJ 9.8.1. */
-    public static final String SPATIAL_REFERENCE_SNAPSHOT_COMMIT =
-            "c43e4e72634af65fcf684def42ddc2dcfd834938";
-
-    /** Backup CDN URL for the immutable OSGeo spatialreference.org data snapshot. */
+    /** Primary jsDelivr URL for the rolling OSGeo spatialreference.org catalog. */
     public static final String SPATIAL_REFERENCE_CDN_BASE_URL =
-            "https://cdn.jsdelivr.net/gh/OSGeo/spatialreference.org@"
-                    + SPATIAL_REFERENCE_SNAPSHOT_COMMIT;
+            "https://cdn.jsdelivr.net/gh/OSGeo/spatialreference.org@gh-pages";
 
     /** Provider name used for the spatialreference.org instance. */
     public static final String SPATIAL_REFERENCE_NAME = "spatialreference.org";
@@ -120,6 +141,10 @@ public final class UrlCRSProvider implements CRSProvider {
     public static final Duration SPATIAL_REFERENCE_CIRCUIT_BREAKER_RESET_TIMEOUT =
             Duration.ofSeconds(30);
 
+    /** How long the default rolling endpoints cache an HTTP 404 locally. */
+    public static final Duration SPATIAL_REFERENCE_NOT_FOUND_CACHE_TTL =
+            Duration.ofMinutes(5);
+
     /** Path template within the spatialreference.org catalog. */
     static final String SPATIAL_REFERENCE_PATH = "/ref/{authority}/{code}/projjson.json";
 
@@ -129,8 +154,10 @@ public final class UrlCRSProvider implements CRSProvider {
      * Create a {@link UrlCRSProvider} pre-configured for
      * the OSGeo
      * <a href="https://github.com/OSGeo/spatialreference.org">spatialreference.org</a>
-     * catalog. Raw GitHub content is the primary endpoint; a commit-addressed
-     * jsDelivr snapshot is used after endpoint failures.
+     * catalog. The rolling jsDelivr mirror carries normal traffic, with raw
+     * GitHub as an independent fallback. Because branch-backed CDN content can
+     * lag the source, a jsDelivr 404 is confirmed against GitHub; a GitHub 404
+     * is authoritative.
      *
      * <p>This is the default remote CRS provider registered by
      * {@link Defs#globals()} at priority 101. For a custom mirror or different
@@ -138,22 +165,23 @@ public final class UrlCRSProvider implements CRSProvider {
      * {@link #SPATIAL_REFERENCE_NAME} as the name and
      * {@code /ref/{authority}/{code}/projjson.json} as the path template.</p>
      *
-     * @return a provider that fetches PROJJSON from GitHub with a pinned CDN fallback
+     * @return a provider that fetches PROJJSON from jsDelivr with a GitHub fallback
      */
     public static UrlCRSProvider spatialReference() {
-        UrlCRSFetcher github = spatialReferenceFetcher(
-                SPATIAL_REFERENCE_GITHUB_BASE_URL, false);
         UrlCRSFetcher jsDelivr = spatialReferenceFetcher(
-                SPATIAL_REFERENCE_CDN_BASE_URL, true);
+                SPATIAL_REFERENCE_CDN_BASE_URL);
+        UrlCRSFetcher github = spatialReferenceFetcher(
+                SPATIAL_REFERENCE_GITHUB_BASE_URL);
         return new UrlCRSProvider(
                 SPATIAL_REFERENCE_NAME,
                 CRSResult.Format.PROJJSON,
                 null,
-                Arrays.asList(github, jsDelivr));
+                Arrays.asList(
+                        new Endpoint(jsDelivr, NotFoundPolicy.TRY_NEXT_ENDPOINT),
+                        new Endpoint(github, NotFoundPolicy.AUTHORITATIVE)));
     }
 
-    private static UrlCRSFetcher spatialReferenceFetcher(
-            String baseUrl, boolean cacheNotFound) {
+    private static UrlCRSFetcher spatialReferenceFetcher(String baseUrl) {
         return UrlCRSFetcher.builder()
                 .baseUrl(baseUrl)
                 .pathTemplate(SPATIAL_REFERENCE_PATH)
@@ -166,7 +194,8 @@ public final class UrlCRSProvider implements CRSProvider {
                         SPATIAL_REFERENCE_CIRCUIT_BREAKER_FAILURE_THRESHOLD)
                 .circuitBreakerResetTimeout(
                         SPATIAL_REFERENCE_CIRCUIT_BREAKER_RESET_TIMEOUT)
-                .cacheNotFound(cacheNotFound)
+                .cacheNotFound(true)
+                .notFoundCacheTtl(SPATIAL_REFERENCE_NOT_FOUND_CACHE_TTL)
                 .header("Accept", "application/json")
                 .build();
     }
@@ -176,6 +205,8 @@ public final class UrlCRSProvider implements CRSProvider {
     private final String name;
     private final UrlCRSFetcher fetcher;
     private final List<UrlCRSFetcher> fetchers;
+    private final List<Endpoint> endpoints;
+    private final List<NotFoundPolicy> notFoundPolicies;
     private final CRSResult.Format format;
     private final Set<String> authorities; // null = accept all
 
@@ -184,27 +215,38 @@ public final class UrlCRSProvider implements CRSProvider {
                 builder.name,
                 builder.format,
                 builder.authorities,
-                buildFetchers(builder));
+                buildEndpoints(builder));
     }
 
     private UrlCRSProvider(
             String name,
             CRSResult.Format format,
             Set<String> authorities,
-            List<UrlCRSFetcher> fetchers) {
+            List<Endpoint> endpoints) {
         this.name = name;
         this.format = format;
         this.authorities = authorities == null ? null
                 : Collections.unmodifiableSet(new LinkedHashSet<>(authorities));
-        this.fetchers = Collections.unmodifiableList(new ArrayList<>(fetchers));
+        this.endpoints = Collections.unmodifiableList(new ArrayList<>(endpoints));
+        List<UrlCRSFetcher> configuredFetchers = new ArrayList<>();
+        List<NotFoundPolicy> configuredNotFoundPolicies = new ArrayList<>();
+        for (Endpoint endpoint : endpoints) {
+            configuredFetchers.add(endpoint.fetcher);
+            configuredNotFoundPolicies.add(endpoint.notFoundPolicy);
+        }
+        this.fetchers = Collections.unmodifiableList(configuredFetchers);
+        this.notFoundPolicies =
+                Collections.unmodifiableList(configuredNotFoundPolicies);
         this.fetcher = this.fetchers.get(0);
     }
 
-    private static List<UrlCRSFetcher> buildFetchers(Builder builder) {
-        List<UrlCRSFetcher> fetchers = new ArrayList<>();
-        fetchers.add(builder.fetcherBuilder.build());
-        fetchers.addAll(builder.fallbackFetchers);
-        return fetchers;
+    private static List<Endpoint> buildEndpoints(Builder builder) {
+        List<Endpoint> endpoints = new ArrayList<>();
+        endpoints.add(new Endpoint(
+                builder.fetcherBuilder.build(),
+                builder.primaryNotFoundPolicy));
+        endpoints.addAll(builder.fallbackEndpoints);
+        return endpoints;
     }
 
     @Override
@@ -218,8 +260,10 @@ public final class UrlCRSProvider implements CRSProvider {
      * <p>If {@link Builder#authorities(String...) authorities} were configured, this
      * method returns {@code null} immediately for any authority not in that set.
      * Otherwise, the configured fetchers are queried in order. Endpoint failures
-     * advance to the next fetcher, while a primary HTTP 404 returns {@code null}
-     * without consulting older fallbacks.</p>
+     * advance to the next fetcher. A 404 from an endpoint configured with
+     * {@link NotFoundPolicy#AUTHORITATIVE} returns {@code null}; a 404 from an
+     * endpoint configured with {@link NotFoundPolicy#TRY_NEXT_ENDPOINT} advances
+     * to the next endpoint.</p>
      *
      * @param authority the authority name, lower-cased (e.g., {@code "epsg"})
      * @param code      the CRS code (e.g., {@code "4326"})
@@ -239,7 +283,8 @@ public final class UrlCRSProvider implements CRSProvider {
         List<CRSFetchException> endpointFailures = new ArrayList<>();
         List<String> outcomes = new ArrayList<>();
 
-        for (UrlCRSFetcher currentFetcher : fetchers) {
+        for (Endpoint endpoint : endpoints) {
+            UrlCRSFetcher currentFetcher = endpoint.fetcher;
             UrlCRSFetcher.FetchResult result = currentFetcher.fetch(authority, code);
 
             switch (result.getStatus()) {
@@ -247,10 +292,10 @@ public final class UrlCRSProvider implements CRSProvider {
                     return wrapResult(result.getBody());
 
                 case NOT_FOUND:
-                    if (endpointFailures.isEmpty()) {
+                    outcomes.add(currentFetcher.getBaseUrl() + ": HTTP 404");
+                    if (endpoint.notFoundPolicy == NotFoundPolicy.AUTHORITATIVE) {
                         return null;
                     }
-                    outcomes.add(currentFetcher.getBaseUrl() + ": HTTP 404");
                     break;
 
                 case HTTP_ERROR:
@@ -273,6 +318,9 @@ public final class UrlCRSProvider implements CRSProvider {
             }
         }
 
+        if (endpointFailures.isEmpty()) {
+            return null;
+        }
         throw combinedFailure(fullCode, endpointFailures, outcomes);
     }
 
@@ -286,7 +334,7 @@ public final class UrlCRSProvider implements CRSProvider {
                         fullCode,
                         CRSFetchException.Reason.HTTP_ERROR,
                         "CRS endpoint " + name + " (" + currentFetcher.getBaseUrl()
-                                + ") returned HTTP " + result.getHttpStatusCode()
+                                + ") returned " + outcomeDescription(result)
                                 + " for " + fullCode + " after "
                                 + result.getAttemptCount() + " attempts",
                         result.getLastException());
@@ -325,7 +373,12 @@ public final class UrlCRSProvider implements CRSProvider {
     private static String outcomeDescription(UrlCRSFetcher.FetchResult result) {
         switch (result.getStatus()) {
             case HTTP_ERROR:
-                return "HTTP " + result.getHttpStatusCode();
+                String description = "HTTP " + result.getHttpStatusCode();
+                String redirectDetail =
+                        UrlCRSFetcher.refusedRedirectDescription(result);
+                return redirectDetail == null
+                        ? description
+                        : description + " (" + redirectDetail + ")";
             case NETWORK_ERROR:
                 return "network error";
             case CIRCUIT_OPEN:
@@ -387,6 +440,15 @@ public final class UrlCRSProvider implements CRSProvider {
      */
     public List<UrlCRSFetcher> getFetchers() { return fetchers; }
 
+    /**
+     * Get each endpoint's not-found policy in resolution order.
+     *
+     * @return an unmodifiable list aligned with {@link #getFetchers()}
+     */
+    public List<NotFoundPolicy> getNotFoundPolicies() {
+        return notFoundPolicies;
+    }
+
     /** Get the expected response format. */
     public CRSResult.Format getFormat() { return format; }
 
@@ -411,14 +473,16 @@ public final class UrlCRSProvider implements CRSProvider {
      *
      * <p>Required: {@link #baseUrl(String)}. Everything else has sensible defaults.</p>
      *
-     * <p>Except for {@link #fallbackFetcher(UrlCRSFetcher)}, these methods configure
-     * the primary fetcher only. Each fallback carries its own URL, headers,
-     * reliability settings, cache, and circuit breaker.</p>
+     * <p>Except for the fallback methods, these methods configure the primary
+     * fetcher only. Each fallback carries its own URL, headers, reliability
+     * settings, cache, and circuit breaker.</p>
      */
     public static final class Builder {
         private final String name;
         private final UrlCRSFetcher.Builder fetcherBuilder = UrlCRSFetcher.builder();
-        private final List<UrlCRSFetcher> fallbackFetchers = new ArrayList<>();
+        private final List<Endpoint> fallbackEndpoints = new ArrayList<>();
+        private NotFoundPolicy primaryNotFoundPolicy =
+                NotFoundPolicy.AUTHORITATIVE;
         private CRSResult.Format format = CRSResult.Format.PROJJSON;
         private Set<String> authorities; // null = all
 
@@ -596,9 +660,43 @@ public final class UrlCRSProvider implements CRSProvider {
         }
 
         /**
+         * Set how long the primary fetcher caches HTTP 404 responses. A zero
+         * duration keeps them for the fetcher's lifetime. Default: zero.
+         *
+         * @param ttl zero for no expiration, or a positive cache duration
+         * @return this builder
+         * @throws IllegalArgumentException if {@code ttl} is null, negative,
+         *         or too large to represent in nanoseconds
+         */
+        public Builder notFoundCacheTtl(Duration ttl) {
+            fetcherBuilder.notFoundCacheTtl(ttl);
+            return this;
+        }
+
+        /**
+         * Set whether a primary HTTP 404 is definitive. Default:
+         * {@link NotFoundPolicy#AUTHORITATIVE}.
+         *
+         * @param policy primary not-found policy
+         * @return this builder
+         * @throws IllegalArgumentException if {@code policy} is null
+         */
+        public Builder primaryNotFoundPolicy(NotFoundPolicy policy) {
+            if (policy == null) {
+                throw new IllegalArgumentException(
+                        "primary not-found policy must not be null");
+            }
+            this.primaryNotFoundPolicy = policy;
+            return this;
+        }
+
+        /**
          * Add an independently configured fallback fetcher. Fallbacks are tried
-         * in insertion order after HTTP errors, network errors, or an open primary
-         * circuit. A primary HTTP 404 remains definitive.
+         * in insertion order after HTTP errors, network errors, or an open
+         * primary circuit. By default, fallback 404s advance to the next
+         * endpoint, if present. A terminal fallback 404 returns not-found when
+         * no earlier endpoint failed; otherwise the earlier failure is
+         * propagated.
          *
          * <p>Configure each fallback separately so endpoint-specific headers,
          * timeouts, caches, and circuit breakers remain isolated. Every fallback
@@ -606,13 +704,35 @@ public final class UrlCRSProvider implements CRSProvider {
          *
          * @param fallbackFetcher independently configured fallback fetcher
          * @return this builder
+         * @throws IllegalArgumentException if {@code fallbackFetcher} is null
          */
         public Builder fallbackFetcher(UrlCRSFetcher fallbackFetcher) {
+            return fallbackFetcher(
+                    fallbackFetcher, NotFoundPolicy.TRY_NEXT_ENDPOINT);
+        }
+
+        /**
+         * Add an independently configured fallback fetcher with an explicit
+         * not-found policy.
+         *
+         * @param fallbackFetcher independently configured fallback fetcher
+         * @param notFoundPolicy whether this endpoint's HTTP 404 is definitive
+         * @return this builder
+         * @throws IllegalArgumentException if either argument is null
+         */
+        public Builder fallbackFetcher(
+                UrlCRSFetcher fallbackFetcher,
+                NotFoundPolicy notFoundPolicy) {
             if (fallbackFetcher == null) {
                 throw new IllegalArgumentException(
                         "fallbackFetcher must not be null");
             }
-            fallbackFetchers.add(fallbackFetcher);
+            if (notFoundPolicy == null) {
+                throw new IllegalArgumentException(
+                        "fallback not-found policy must not be null");
+            }
+            fallbackEndpoints.add(new Endpoint(
+                    fallbackFetcher, notFoundPolicy));
             return this;
         }
 

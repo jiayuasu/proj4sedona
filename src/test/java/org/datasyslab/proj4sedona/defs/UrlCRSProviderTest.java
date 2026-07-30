@@ -26,6 +26,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -49,6 +50,7 @@ class UrlCRSProviderTest {
             new ConcurrentHashMap<>();
     private static final AtomicReference<String> redirectedAuthorization =
             new AtomicReference<>();
+    private static final AtomicInteger redirectedRequests = new AtomicInteger();
     private static volatile CountDownLatch oldRequestStarted;
     private static volatile CountDownLatch releaseOldRequest;
     private static volatile CountDownLatch probeRequestStarted;
@@ -56,6 +58,8 @@ class UrlCRSProviderTest {
     private static volatile CountDownLatch slowBodyStopped;
     private static volatile CountDownLatch slowRedirectStopped;
     private static volatile CountDownLatch interruptRequestStarted;
+    private static volatile CountDownLatch ttlRefreshStarted;
+    private static volatile CountDownLatch releaseTtlRefresh;
 
     /** A valid PROJJSON for WGS 84 (EPSG:4326). */
     private static final String WGS84_PROJJSON = "{\n" +
@@ -96,6 +100,7 @@ class UrlCRSProviderTest {
         redirectTargetBaseUrl = "http://127.0.0.1:"
                 + redirectTargetServer.getAddress().getPort();
         redirectTargetServer.createContext("/", exchange -> {
+            redirectedRequests.incrementAndGet();
             redirectedAuthorization.set(
                     exchange.getRequestHeaders().getFirst("Authorization"));
             respond(exchange, 200, WGS84_PROJJSON);
@@ -178,12 +183,33 @@ class UrlCRSProviderTest {
                 } else {
                     respond(exchange, 200, WGS84_PROJJSON);
                 }
+            } else if ("/ttl/epsg/3000.json".equals(path)) {
+                if (currentRequestCount == 1) {
+                    respond(exchange, 404, "Not Found");
+                } else {
+                    ttlRefreshStarted.countDown();
+                    awaitLatch(releaseTtlRefresh);
+                    respond(exchange, 200, WGS84_PROJJSON);
+                }
+            } else if ("/cdn/epsg/cdn-lag.json".equals(path)) {
+                respond(exchange, 404, "Not Found");
+            } else if ("/github/epsg/cdn-lag.json".equals(path)) {
+                respond(exchange, 200, WGS84_PROJJSON);
+            } else if ("/cdn/epsg/missing.json".equals(path)) {
+                respond(exchange, 503, "Service Unavailable");
+            } else if ("/github/epsg/missing.json".equals(path)) {
+                respond(exchange, 404, "Not Found");
+            } else if ("/cdn/epsg/github-down.json".equals(path)) {
+                respond(exchange, 404, "Not Found");
+            } else if ("/github/epsg/github-down.json".equals(path)) {
+                respond(exchange, 503, "Service Unavailable");
             } else if ("/primary/epsg/4326.json".equals(path)
                     || "/primary/epsg/2154.json".equals(path)
                     || "/primary/esri/102001.json".equals(path)) {
                 respond(exchange, 503, "Service Unavailable");
             } else if ("/fallback/epsg/4326.json".equals(path)
-                    || "/fallback/esri/102001.json".equals(path)) {
+                    || "/fallback/esri/102001.json".equals(path)
+                    || "/fallback/epsg/cross-origin.json".equals(path)) {
                 respond(exchange, 200, WGS84_PROJJSON);
             } else if ("/primary/epsg/9999.json".equals(path)
                     || "/fallback/epsg/2154.json".equals(path)) {
@@ -232,6 +258,7 @@ class UrlCRSProviderTest {
         Defs.reset();
         requestCounts.clear();
         redirectedAuthorization.set(null);
+        redirectedRequests.set(0);
         oldRequestStarted = new CountDownLatch(1);
         releaseOldRequest = new CountDownLatch(1);
         probeRequestStarted = new CountDownLatch(1);
@@ -239,6 +266,8 @@ class UrlCRSProviderTest {
         slowBodyStopped = new CountDownLatch(1);
         slowRedirectStopped = new CountDownLatch(1);
         interruptRequestStarted = new CountDownLatch(1);
+        ttlRefreshStarted = new CountDownLatch(1);
+        releaseTtlRefresh = new CountDownLatch(1);
     }
 
     @AfterEach
@@ -266,7 +295,7 @@ class UrlCRSProviderTest {
             long durationMs,
             CountDownLatch stopped)
             throws IOException {
-        byte[] chunk = new byte[64 * 1024];
+        byte[] chunk = new byte[1024];
         chunk[0] = '{';
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(statusCode, 0);
@@ -357,6 +386,39 @@ class UrlCRSProviderTest {
     }
 
     @Test
+    void testBuilder_NullNotFoundPoliciesThrow() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .build();
+
+        assertThrows(IllegalArgumentException.class, () ->
+                UrlCRSProvider.builder("test")
+                        .baseUrl(baseUrl)
+                        .primaryNotFoundPolicy(null));
+        assertThrows(IllegalArgumentException.class, () ->
+                UrlCRSProvider.builder("test")
+                        .baseUrl(baseUrl)
+                        .fallbackFetcher(fallback, null));
+    }
+
+    @Test
+    void testBuilder_InvalidNotFoundCacheTtlThrows() {
+        assertThrows(IllegalArgumentException.class, () ->
+                UrlCRSFetcher.builder()
+                        .baseUrl(baseUrl)
+                        .notFoundCacheTtl(null));
+        assertThrows(IllegalArgumentException.class, () ->
+                UrlCRSFetcher.builder()
+                        .baseUrl(baseUrl)
+                        .notFoundCacheTtl(Duration.ofNanos(-1)));
+        assertThrows(IllegalArgumentException.class, () ->
+                UrlCRSFetcher.builder()
+                        .baseUrl(baseUrl)
+                        .notFoundCacheTtl(
+                                Duration.ofSeconds(Long.MAX_VALUE)));
+    }
+
+    @Test
     void testExistingFailureEnumOrdinalsRemainStable() {
         assertEquals(2, UrlCRSFetcher.FetchResult.Status.NETWORK_ERROR.ordinal());
         assertEquals(1, CRSFetchException.Reason.NETWORK_ERROR.ordinal());
@@ -406,6 +468,82 @@ class UrlCRSProviderTest {
         UrlCRSFetcher.FetchResult r2 = fetcher.fetch("epsg", "9999");
         assertTrue(r2.isNotFound());
         assertEquals(0, r2.getAttemptCount());
+    }
+
+    @Test
+    void testFetcher_NegativeCacheExpiresAtConfiguredTtl() {
+        AtomicLong nowNanos = new AtomicLong();
+        Duration ttl = Duration.ofMinutes(5);
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/rolling/{authority}/{code}.json")
+                .notFoundCacheTtl(ttl)
+                .notFoundCacheTicker(nowNanos::get)
+                .build();
+
+        UrlCRSFetcher.FetchResult first = fetcher.fetch("epsg", "3000");
+        assertTrue(first.isNotFound());
+        assertEquals(1, first.getAttemptCount());
+        assertEquals(1, requestCount("/rolling/epsg/3000.json"));
+
+        nowNanos.set(ttl.toNanos() - 1);
+        UrlCRSFetcher.FetchResult cached = fetcher.fetch("epsg", "3000");
+        assertTrue(cached.isNotFound());
+        assertEquals(0, cached.getAttemptCount());
+        assertTrue(fetcher.isInNotFoundCache("epsg", "3000"));
+        assertEquals(1, fetcher.getNotFoundCacheSize());
+
+        nowNanos.set(ttl.toNanos());
+        assertFalse(fetcher.isInNotFoundCache("epsg", "3000"));
+        assertEquals(0, fetcher.getNotFoundCacheSize());
+        UrlCRSFetcher.FetchResult refreshed = fetcher.fetch("epsg", "3000");
+        assertTrue(refreshed.isSuccess());
+        assertEquals(1, refreshed.getAttemptCount());
+        assertEquals(2, requestCount("/rolling/epsg/3000.json"));
+    }
+
+    @Test
+    void testFetcher_ConcurrentExpiryPerformsOneRevalidation() throws Exception {
+        AtomicLong nowNanos = new AtomicLong();
+        Duration ttl = Duration.ofMinutes(5);
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/ttl/{authority}/{code}.json")
+                .notFoundCacheTtl(ttl)
+                .notFoundCacheTicker(nowNanos::get)
+                .build();
+        assertTrue(fetcher.fetch("epsg", "3000").isNotFound());
+        nowNanos.set(ttl.toNanos());
+
+        int callerCount = 32;
+        ExecutorService callers = Executors.newFixedThreadPool(callerCount);
+        CountDownLatch ready = new CountDownLatch(callerCount);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<UrlCRSFetcher.FetchResult>> results = new ArrayList<>();
+        try {
+            for (int i = 0; i < callerCount; i++) {
+                results.add(callers.submit(() -> {
+                    ready.countDown();
+                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    return fetcher.fetch("epsg", "3000");
+                }));
+            }
+            assertTrue(ready.await(5, TimeUnit.SECONDS));
+            start.countDown();
+            assertTrue(ttlRefreshStarted.await(5, TimeUnit.SECONDS));
+            assertEquals(1, fetcher.getInFlightCount());
+            releaseTtlRefresh.countDown();
+
+            for (Future<UrlCRSFetcher.FetchResult> result : results) {
+                assertTrue(result.get(5, TimeUnit.SECONDS).isSuccess());
+            }
+        } finally {
+            releaseTtlRefresh.countDown();
+            callers.shutdownNow();
+        }
+
+        assertEquals(2, requestCount("/ttl/epsg/3000.json"),
+                "expiry should trigger one shared revalidation request");
     }
 
     @Test
@@ -663,7 +801,58 @@ class UrlCRSProviderTest {
 
         assertTrue(result.isHttpError());
         assertEquals(302, result.getHttpStatusCode());
+        assertNotNull(result.getLastException());
+        assertTrue(result.getLastException().getMessage()
+                .contains("refused unsafe redirect"));
+        assertTrue(result.getLastException().getMessage().contains(baseUrl));
+        assertTrue(result.getLastException().getMessage()
+                .contains(redirectTargetBaseUrl));
+        assertFalse(result.getLastException().getMessage()
+                .contains("/target.json"));
+        assertEquals(0, redirectedRequests.get());
         assertNull(redirectedAuthorization.get());
+    }
+
+    @Test
+    void testProvider_ReportsRefusedRedirectAndUsesFallback() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("redirecting")
+                .baseUrl(baseUrl)
+                .pathTemplate("/redirect/{code}.json")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        assertNotNull(provider.resolve("epsg", "cross-origin"));
+        assertEquals(0, redirectedRequests.get());
+        assertEquals(1, requestCount("/fallback/epsg/cross-origin.json"));
+    }
+
+    @Test
+    void testProvider_ReportsRefusedRedirectWhenFallbacksFail() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/github")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("redirecting")
+                .baseUrl(baseUrl)
+                .pathTemplate("/redirect/{code}.json")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        CRSFetchException failure = assertThrows(
+                CRSFetchException.class,
+                () -> provider.resolve("epsg", "cross-origin"));
+
+        assertTrue(failure.getMessage().contains("HTTP 302"));
+        assertTrue(failure.getMessage().contains("refused unsafe redirect"));
+        assertTrue(failure.getMessage().contains(baseUrl));
+        assertTrue(failure.getMessage().contains(redirectTargetBaseUrl));
+        assertEquals(0, redirectedRequests.get());
     }
 
     @Test
@@ -812,6 +1001,7 @@ class UrlCRSProviderTest {
                 .circuitBreakerFailureThreshold(4)
                 .circuitBreakerResetTimeout(Duration.ofSeconds(45))
                 .cacheNotFound(false)
+                .notFoundCacheTtl(Duration.ofMinutes(2))
                 .header("X-Key", "abc")
                 .build();
 
@@ -825,6 +1015,7 @@ class UrlCRSProviderTest {
         assertEquals(4, fetcher.getCircuitBreakerFailureThreshold());
         assertEquals(Duration.ofSeconds(45), fetcher.getCircuitBreakerResetTimeout());
         assertFalse(fetcher.isNotFoundCacheEnabled());
+        assertEquals(Duration.ofMinutes(2), fetcher.getNotFoundCacheTtl());
         assertEquals("abc", fetcher.getHeaders().get("X-Key"));
     }
 
@@ -841,6 +1032,7 @@ class UrlCRSProviderTest {
         assertEquals(0, fetcher.getTotalTimeoutSeconds());
         assertEquals(0, fetcher.getCircuitBreakerFailureThreshold());
         assertTrue(fetcher.isNotFoundCacheEnabled());
+        assertEquals(Duration.ZERO, fetcher.getNotFoundCacheTtl());
     }
 
     // ==================== UrlCRSProvider ====================
@@ -952,31 +1144,136 @@ class UrlCRSProviderTest {
 
     @Test
     @SuppressWarnings("deprecation")
-    void testSpatialReferenceProviderUsesGitHubWithPinnedCdnFallback() {
+    void testSpatialReferenceProviderUsesRollingCdnThenGitHub() {
         UrlCRSProvider provider = UrlCRSProvider.spatialReference();
-        String commit = "c43e4e72634af65fcf684def42ddc2dcfd834938";
         String github =
                 "https://raw.githubusercontent.com/OSGeo/spatialreference.org/gh-pages";
         String jsDelivr =
-                "https://cdn.jsdelivr.net/gh/OSGeo/spatialreference.org@" + commit;
+                "https://cdn.jsdelivr.net/gh/OSGeo/spatialreference.org@gh-pages";
 
-        assertEquals(commit, UrlCRSProvider.SPATIAL_REFERENCE_SNAPSHOT_COMMIT);
         assertEquals(github, UrlCRSProvider.SPATIAL_REFERENCE_GITHUB_BASE_URL);
         assertEquals(jsDelivr, UrlCRSProvider.SPATIAL_REFERENCE_CDN_BASE_URL);
         assertEquals(2, provider.getFetchers().size());
-        assertEquals(github, provider.getFetcher().getBaseUrl());
-        assertEquals(github, provider.getFetchers().get(0).getBaseUrl());
-        assertEquals(jsDelivr, provider.getFetchers().get(1).getBaseUrl());
         assertEquals(
-                github + "/ref/epsg/2154/projjson.json",
-                provider.getFetcher().buildUrl("epsg", "2154"));
+                List.of(
+                        UrlCRSProvider.NotFoundPolicy.TRY_NEXT_ENDPOINT,
+                        UrlCRSProvider.NotFoundPolicy.AUTHORITATIVE),
+                provider.getNotFoundPolicies());
+        assertEquals(jsDelivr, provider.getFetcher().getBaseUrl());
+        assertEquals(jsDelivr, provider.getFetchers().get(0).getBaseUrl());
+        assertEquals(github, provider.getFetchers().get(1).getBaseUrl());
         assertEquals(
                 jsDelivr + "/ref/epsg/2154/projjson.json",
+                provider.getFetcher().buildUrl("epsg", "2154"));
+        assertEquals(
+                github + "/ref/epsg/2154/projjson.json",
                 provider.getFetchers().get(1).buildUrl("epsg", "2154"));
-        assertFalse(provider.getFetcher().isNotFoundCacheEnabled());
+        assertTrue(provider.getFetcher().isNotFoundCacheEnabled());
         assertTrue(provider.getFetchers().get(1).isNotFoundCacheEnabled());
+        assertEquals(
+                UrlCRSProvider.SPATIAL_REFERENCE_NOT_FOUND_CACHE_TTL,
+                provider.getFetcher().getNotFoundCacheTtl());
+        assertEquals(
+                UrlCRSProvider.SPATIAL_REFERENCE_NOT_FOUND_CACHE_TTL,
+                provider.getFetchers().get(1).getNotFoundCacheTtl());
         assertEquals("https://spatialreference.org",
                 UrlCRSProvider.SPATIAL_REFERENCE_BASE_URL);
+    }
+
+    @Test
+    void testProvider_NonAuthoritativeCdnMissUsesGitHub() {
+        UrlCRSFetcher github = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/github")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("cdn-first")
+                .baseUrl(baseUrl + "/cdn")
+                .maxRetries(1)
+                .primaryNotFoundPolicy(
+                        UrlCRSProvider.NotFoundPolicy.TRY_NEXT_ENDPOINT)
+                .fallbackFetcher(
+                        github,
+                        UrlCRSProvider.NotFoundPolicy.AUTHORITATIVE)
+                .build();
+
+        assertNotNull(provider.resolve("epsg", "cdn-lag"));
+        assertEquals(1, requestCount("/cdn/epsg/cdn-lag.json"));
+        assertEquals(1, requestCount("/github/epsg/cdn-lag.json"));
+    }
+
+    @Test
+    void testProvider_AuthoritativeGitHubMissWinsAfterCdnFailure() {
+        UrlCRSFetcher github = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/github")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("cdn-first")
+                .baseUrl(baseUrl + "/cdn")
+                .maxRetries(1)
+                .primaryNotFoundPolicy(
+                        UrlCRSProvider.NotFoundPolicy.TRY_NEXT_ENDPOINT)
+                .fallbackFetcher(
+                        github,
+                        UrlCRSProvider.NotFoundPolicy.AUTHORITATIVE)
+                .build();
+
+        assertNull(provider.resolve("epsg", "missing"));
+        assertEquals(1, requestCount("/cdn/epsg/missing.json"));
+        assertEquals(1, requestCount("/github/epsg/missing.json"));
+    }
+
+    @Test
+    void testProvider_GitHubFailureDoesNotTurnCdnMissIntoNotFound() {
+        UrlCRSFetcher github = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/github")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("cdn-first")
+                .baseUrl(baseUrl + "/cdn")
+                .maxRetries(1)
+                .primaryNotFoundPolicy(
+                        UrlCRSProvider.NotFoundPolicy.TRY_NEXT_ENDPOINT)
+                .fallbackFetcher(
+                        github,
+                        UrlCRSProvider.NotFoundPolicy.AUTHORITATIVE)
+                .build();
+
+        CRSFetchException failure = assertThrows(
+                CRSFetchException.class,
+                () -> provider.resolve("epsg", "github-down"));
+
+        assertEquals(CRSFetchException.Reason.HTTP_ERROR, failure.getReason());
+        assertTrue(failure.getMessage().contains("HTTP 404"));
+        assertTrue(failure.getMessage().contains("HTTP 503"));
+        assertEquals(1, requestCount("/cdn/epsg/github-down.json"));
+        assertEquals(1, requestCount("/github/epsg/github-down.json"));
+    }
+
+    @Test
+    void testProvider_RepeatedMissingCodeUsesBothEndpointCaches() {
+        UrlCRSFetcher github = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/github")
+                .notFoundCacheTtl(Duration.ofMinutes(5))
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("cdn-first")
+                .baseUrl(baseUrl + "/cdn")
+                .notFoundCacheTtl(Duration.ofMinutes(5))
+                .primaryNotFoundPolicy(
+                        UrlCRSProvider.NotFoundPolicy.TRY_NEXT_ENDPOINT)
+                .fallbackFetcher(
+                        github,
+                        UrlCRSProvider.NotFoundPolicy.AUTHORITATIVE)
+                .build();
+
+        Defs.globals();
+        Defs.clearProviders();
+        Defs.registerProvider(provider, 50);
+        for (int i = 0; i < 10_000; i++) {
+            assertNull(Defs.get("EPSG:unknown"));
+        }
+
+        assertEquals(1, requestCount("/cdn/epsg/unknown.json"));
+        assertEquals(1, requestCount("/github/epsg/unknown.json"));
     }
 
     @Test
@@ -1312,21 +1609,64 @@ class UrlCRSProviderTest {
     @Test
     void testProvider_FallsThroughWhen404() {
         Defs.globals();
-
-        UrlCRSProvider provider = UrlCRSProvider.builder("fallthrough")
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        UrlCRSProvider urlProvider = UrlCRSProvider.builder("fallthrough")
                 .baseUrl(baseUrl)
+                .authorities("custom")
                 .build();
-        Defs.registerProvider(provider, 50);
+        CRSProvider fallback = new CRSProvider() {
+            @Override
+            public String getName() {
+                return "custom-fallback";
+            }
 
-        // EPSG:4326 is served by our mock; it should resolve
-        ProjectionDef def = Defs.get("EPSG:4326");
-        assertNotNull(def);
+            @Override
+            public CRSResult resolve(String authority, String code) {
+                fallbackCalls.incrementAndGet();
+                return CRSResult.proj4("+proj=longlat +datum=WGS84");
+            }
+        };
+        Defs.registerProvider(urlProvider, 50);
+        Defs.registerProvider(fallback, 60);
 
-        // A code that doesn't exist on our mock server — UrlCRSProvider returns null,
-        // falls through to BuiltInCRSProvider which knows EPSG:3857
-        ProjectionDef merc = Defs.get("EPSG:3857");
-        assertNotNull(merc);
-        assertEquals("merc", merc.getProjName());
+        ProjectionDef resolved = Defs.get("CUSTOM:missing");
+
+        assertNotNull(resolved);
+        assertEquals("longlat", resolved.getProjName());
+        assertEquals(1, requestCount("/custom/missing.json"));
+        assertEquals(1, fallbackCalls.get());
+    }
+
+    @Test
+    void testProvider_HttpErrorStopsDefsChain() {
+        Defs.globals();
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        UrlCRSProvider urlProvider = UrlCRSProvider.builder("http-error")
+                .baseUrl(baseUrl)
+                .authorities("error")
+                .maxRetries(1)
+                .build();
+        CRSProvider fallback = new CRSProvider() {
+            @Override
+            public String getName() {
+                return "should-not-run";
+            }
+
+            @Override
+            public CRSResult resolve(String authority, String code) {
+                fallbackCalls.incrementAndGet();
+                return CRSResult.proj4("+proj=longlat +datum=WGS84");
+            }
+        };
+        Defs.registerProvider(urlProvider, 50);
+        Defs.registerProvider(fallback, 60);
+
+        CRSFetchException failure = assertThrows(
+                CRSFetchException.class,
+                () -> Defs.get("ERROR:403"));
+
+        assertEquals(CRSFetchException.Reason.HTTP_ERROR, failure.getReason());
+        assertEquals(0, fallbackCalls.get());
     }
 
     @Test
