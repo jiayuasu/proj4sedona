@@ -6,7 +6,9 @@ package org.datasyslab.proj4sedona.defs;
  * <p>This is an unchecked (runtime) exception that indicates one of the following:</p>
  * <ul>
  *   <li>{@link Reason#NOT_FOUND} - The CRS code does not exist on the remote server (HTTP 404)</li>
+ *   <li>{@link Reason#HTTP_ERROR} - The server rejected the request or returned an error response</li>
  *   <li>{@link Reason#NETWORK_ERROR} - A network error occurred (connection failed, timeout, etc.)</li>
+ *   <li>{@link Reason#CIRCUIT_OPEN} - Requests are temporarily suppressed after repeated failures</li>
  *   <li>{@link Reason#INVALID_RESPONSE} - The server returned an invalid or unparseable response</li>
  * </ul>
  * 
@@ -35,14 +37,24 @@ public class CRSFetchException extends RuntimeException {
         NOT_FOUND,
 
         /**
-         * A network error occurred while fetching (connection failed, timeout, server error, etc.).
+         * A network error occurred while fetching (connection failed, timeout, etc.).
          */
         NETWORK_ERROR,
 
         /**
          * The server returned an invalid or unparseable response.
          */
-        INVALID_RESPONSE
+        INVALID_RESPONSE,
+
+        /**
+         * The remote server returned an HTTP error other than 404.
+         */
+        HTTP_ERROR,
+
+        /**
+         * The remote provider's circuit breaker is open after repeated failures.
+         */
+        CIRCUIT_OPEN
     }
 
     private final String crsCode;

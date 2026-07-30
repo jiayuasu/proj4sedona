@@ -14,8 +14,20 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -29,8 +41,25 @@ class UrlCRSProviderTest {
 
     /** Embedded HTTP server serving fake CRS files. */
     private static HttpServer server;
+    private static HttpServer redirectTargetServer;
+    private static ExecutorService serverExecutor;
     private static int port;
     private static String baseUrl;
+    private static String redirectTargetBaseUrl;
+    private static final ConcurrentMap<String, AtomicInteger> requestCounts =
+            new ConcurrentHashMap<>();
+    private static final AtomicReference<String> redirectedAuthorization =
+            new AtomicReference<>();
+    private static final AtomicInteger redirectedRequests = new AtomicInteger();
+    private static volatile CountDownLatch oldRequestStarted;
+    private static volatile CountDownLatch releaseOldRequest;
+    private static volatile CountDownLatch probeRequestStarted;
+    private static volatile CountDownLatch releaseProbeRequest;
+    private static volatile CountDownLatch slowBodyStopped;
+    private static volatile CountDownLatch slowRedirectStopped;
+    private static volatile CountDownLatch interruptRequestStarted;
+    private static volatile CountDownLatch ttlRefreshStarted;
+    private static volatile CountDownLatch releaseTtlRefresh;
 
     /** A valid PROJJSON for WGS 84 (EPSG:4326). */
     private static final String WGS84_PROJJSON = "{\n" +
@@ -66,10 +95,23 @@ class UrlCRSProviderTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         port = server.getAddress().getPort();
         baseUrl = "http://127.0.0.1:" + port;
+        redirectTargetServer =
+                HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        redirectTargetBaseUrl = "http://127.0.0.1:"
+                + redirectTargetServer.getAddress().getPort();
+        redirectTargetServer.createContext("/", exchange -> {
+            redirectedRequests.incrementAndGet();
+            redirectedAuthorization.set(
+                    exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, WGS84_PROJJSON);
+        });
 
         // Serve PROJJSON files at /{authority}/{code}.json
         server.createContext("/", exchange -> {
             String path = exchange.getRequestURI().getPath();
+            int currentRequestCount =
+                    requestCounts.computeIfAbsent(path, ignored -> new AtomicInteger())
+                            .incrementAndGet();
 
             if ("/epsg/4326.json".equals(path)) {
                 respond(exchange, 200, WGS84_PROJJSON);
@@ -82,9 +124,47 @@ class UrlCRSProviderTest {
                 respond(exchange, 200, LCC_PROJ4);
             } else if ("/error/500.json".equals(path)) {
                 respond(exchange, 500, "Internal Server Error");
+            } else if ("/error/503.json".equals(path)) {
+                respond(exchange, 503, "Service Unavailable");
+            } else if ("/error/429.json".equals(path)) {
+                respond(exchange, 429, "Too Many Requests");
+            } else if ("/error/403.json".equals(path)) {
+                respond(exchange, 403, "Forbidden");
             } else if ("/slow/timeout.json".equals(path)) {
                 // Simulate a slow response
                 try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
+                respond(exchange, 200, WGS84_PROJJSON);
+            } else if ("/singleflight/4326.json".equals(path)) {
+                try { Thread.sleep(250); } catch (InterruptedException ignored) {}
+                respond(exchange, 200, WGS84_PROJJSON);
+            } else if ("/slowbody/timeout.json".equals(path)) {
+                streamResponse(exchange, 200, 5000, slowBodyStopped);
+            } else if ("/redirect/normal.json".equals(path)) {
+                exchange.getResponseHeaders().set("Location", "/epsg/4326.json");
+                exchange.sendResponseHeaders(302, -1);
+                exchange.close();
+            } else if ("/redirect/slow.json".equals(path)) {
+                exchange.getResponseHeaders().set("Location", "/epsg/4326.json");
+                streamResponse(exchange, 302, 5000, slowRedirectStopped);
+            } else if ("/redirect/cross-origin.json".equals(path)) {
+                exchange.getResponseHeaders().set(
+                        "Location", redirectTargetBaseUrl + "/target.json");
+                exchange.sendResponseHeaders(302, -1);
+                exchange.close();
+            } else if ("/mixed/failure.json".equals(path)) {
+                if (currentRequestCount == 1) {
+                    respond(exchange, 503, "Service Unavailable");
+                } else {
+                    try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
+                    respond(exchange, 200, WGS84_PROJJSON);
+                }
+            } else if ("/race/old.json".equals(path)) {
+                oldRequestStarted.countDown();
+                awaitLatch(releaseOldRequest);
+                respond(exchange, 200, WGS84_PROJJSON);
+            } else if ("/race/probe.json".equals(path)) {
+                probeRequestStarted.countDown();
+                awaitLatch(releaseProbeRequest);
                 respond(exchange, 200, WGS84_PROJJSON);
             } else if ("/epsg/2154.json".equals(path)) {
                 respond(exchange, 200, WGS84_PROJJSON); // Reuse WGS84 for simplicity
@@ -97,13 +177,67 @@ class UrlCRSProviderTest {
                 String body = "{\"auth\":\"" + (auth != null ? auth : "") +
                         "\",\"custom\":\"" + (custom != null ? custom : "") + "\"}";
                 respond(exchange, 200, body);
+            } else if ("/rolling/epsg/3000.json".equals(path)) {
+                if (currentRequestCount == 1) {
+                    respond(exchange, 404, "Not Found");
+                } else {
+                    respond(exchange, 200, WGS84_PROJJSON);
+                }
+            } else if ("/ttl/epsg/3000.json".equals(path)) {
+                if (currentRequestCount == 1) {
+                    respond(exchange, 404, "Not Found");
+                } else {
+                    ttlRefreshStarted.countDown();
+                    awaitLatch(releaseTtlRefresh);
+                    respond(exchange, 200, WGS84_PROJJSON);
+                }
+            } else if ("/cdn/epsg/cdn-lag.json".equals(path)) {
+                respond(exchange, 404, "Not Found");
+            } else if ("/github/epsg/cdn-lag.json".equals(path)) {
+                respond(exchange, 200, WGS84_PROJJSON);
+            } else if ("/cdn/epsg/missing.json".equals(path)) {
+                respond(exchange, 503, "Service Unavailable");
+            } else if ("/github/epsg/missing.json".equals(path)) {
+                respond(exchange, 404, "Not Found");
+            } else if ("/cdn/epsg/github-down.json".equals(path)) {
+                respond(exchange, 404, "Not Found");
+            } else if ("/github/epsg/github-down.json".equals(path)) {
+                respond(exchange, 503, "Service Unavailable");
+            } else if ("/primary/epsg/4326.json".equals(path)
+                    || "/primary/epsg/2154.json".equals(path)
+                    || "/primary/esri/102001.json".equals(path)) {
+                respond(exchange, 503, "Service Unavailable");
+            } else if ("/fallback/epsg/4326.json".equals(path)
+                    || "/fallback/esri/102001.json".equals(path)
+                    || "/fallback/epsg/cross-origin.json".equals(path)) {
+                respond(exchange, 200, WGS84_PROJJSON);
+            } else if ("/primary/epsg/9999.json".equals(path)
+                    || "/fallback/epsg/2154.json".equals(path)) {
+                respond(exchange, 404, "Not Found");
+            } else if ("/fallback/epsg/9999.json".equals(path)) {
+                respond(exchange, 200, WGS84_PROJJSON);
+            } else if ("/second-fallback/epsg/2154.json".equals(path)) {
+                respond(exchange, 200, WGS84_PROJJSON);
+            } else if ("/primary/epsg/500.json".equals(path)) {
+                respond(exchange, 500, "Internal Server Error");
+            } else if ("/fallback/epsg/500.json".equals(path)) {
+                respond(exchange, 429, "Too Many Requests");
+            } else if ("/interrupt-primary/epsg/4326.json".equals(path)) {
+                interruptRequestStarted.countDown();
+                try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
+                respond(exchange, 200, WGS84_PROJJSON);
+            } else if ("/interrupt-fallback/epsg/4326.json".equals(path)) {
+                respond(exchange, 200, WGS84_PROJJSON);
             } else {
                 respond(exchange, 404, "Not Found");
             }
         });
 
-        server.setExecutor(null);
+        serverExecutor = Executors.newCachedThreadPool();
+        server.setExecutor(serverExecutor);
+        redirectTargetServer.setExecutor(serverExecutor);
         server.start();
+        redirectTargetServer.start();
     }
 
     @AfterAll
@@ -111,11 +245,29 @@ class UrlCRSProviderTest {
         if (server != null) {
             server.stop(0);
         }
+        if (redirectTargetServer != null) {
+            redirectTargetServer.stop(0);
+        }
+        if (serverExecutor != null) {
+            serverExecutor.shutdownNow();
+        }
     }
 
     @BeforeEach
     void setUp() {
         Defs.reset();
+        requestCounts.clear();
+        redirectedAuthorization.set(null);
+        redirectedRequests.set(0);
+        oldRequestStarted = new CountDownLatch(1);
+        releaseOldRequest = new CountDownLatch(1);
+        probeRequestStarted = new CountDownLatch(1);
+        releaseProbeRequest = new CountDownLatch(1);
+        slowBodyStopped = new CountDownLatch(1);
+        slowRedirectStopped = new CountDownLatch(1);
+        interruptRequestStarted = new CountDownLatch(1);
+        ttlRefreshStarted = new CountDownLatch(1);
+        releaseTtlRefresh = new CountDownLatch(1);
     }
 
     @AfterEach
@@ -129,6 +281,49 @@ class UrlCRSProviderTest {
         exchange.sendResponseHeaders(statusCode, bytes.length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(bytes);
+        }
+    }
+
+    private static int requestCount(String path) {
+        AtomicInteger count = requestCounts.get(path);
+        return count == null ? 0 : count.get();
+    }
+
+    private static void streamResponse(
+            HttpExchange exchange,
+            int statusCode,
+            long durationMs,
+            CountDownLatch stopped)
+            throws IOException {
+        byte[] chunk = new byte[1024];
+        chunk[0] = '{';
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(statusCode, 0);
+        long deadlineNanos =
+                System.nanoTime() + Duration.ofMillis(durationMs).toNanos();
+        try (OutputStream os = exchange.getResponseBody()) {
+            while (System.nanoTime() < deadlineNanos) {
+                os.write(chunk);
+                os.flush();
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        } catch (IOException ignored) {
+            // Expected when the client cancels after its overall deadline.
+        } finally {
+            stopped.countDown();
+        }
+    }
+
+    private static void awaitLatch(CountDownLatch latch) {
+        try {
+            latch.await(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -172,6 +367,62 @@ class UrlCRSProviderTest {
     void testBuilder_InvalidPathTemplateThrows() {
         assertThrows(IllegalArgumentException.class, () ->
                 UrlCRSProvider.builder("test").baseUrl(baseUrl).pathTemplate("no-leading-slash"));
+    }
+
+    @Test
+    void testBuilder_InvalidCircuitBreakerResetTimeoutThrows() {
+        assertThrows(IllegalArgumentException.class, () ->
+                UrlCRSProvider.builder("test")
+                        .baseUrl(baseUrl)
+                        .circuitBreakerResetTimeout(Duration.ZERO));
+    }
+
+    @Test
+    void testBuilder_NullFallbackFetcherThrows() {
+        assertThrows(IllegalArgumentException.class, () ->
+                UrlCRSProvider.builder("test")
+                        .baseUrl(baseUrl)
+                        .fallbackFetcher(null));
+    }
+
+    @Test
+    void testBuilder_NullNotFoundPoliciesThrow() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .build();
+
+        assertThrows(IllegalArgumentException.class, () ->
+                UrlCRSProvider.builder("test")
+                        .baseUrl(baseUrl)
+                        .primaryNotFoundPolicy(null));
+        assertThrows(IllegalArgumentException.class, () ->
+                UrlCRSProvider.builder("test")
+                        .baseUrl(baseUrl)
+                        .fallbackFetcher(fallback, null));
+    }
+
+    @Test
+    void testBuilder_InvalidNotFoundCacheTtlThrows() {
+        assertThrows(IllegalArgumentException.class, () ->
+                UrlCRSFetcher.builder()
+                        .baseUrl(baseUrl)
+                        .notFoundCacheTtl(null));
+        assertThrows(IllegalArgumentException.class, () ->
+                UrlCRSFetcher.builder()
+                        .baseUrl(baseUrl)
+                        .notFoundCacheTtl(Duration.ofNanos(-1)));
+        assertThrows(IllegalArgumentException.class, () ->
+                UrlCRSFetcher.builder()
+                        .baseUrl(baseUrl)
+                        .notFoundCacheTtl(
+                                Duration.ofSeconds(Long.MAX_VALUE)));
+    }
+
+    @Test
+    void testExistingFailureEnumOrdinalsRemainStable() {
+        assertEquals(2, UrlCRSFetcher.FetchResult.Status.NETWORK_ERROR.ordinal());
+        assertEquals(1, CRSFetchException.Reason.NETWORK_ERROR.ordinal());
+        assertEquals(2, CRSFetchException.Reason.INVALID_RESPONSE.ordinal());
     }
 
     // ==================== UrlCRSFetcher ====================
@@ -220,6 +471,100 @@ class UrlCRSProviderTest {
     }
 
     @Test
+    void testFetcher_NegativeCacheExpiresAtConfiguredTtl() {
+        AtomicLong nowNanos = new AtomicLong();
+        Duration ttl = Duration.ofMinutes(5);
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/rolling/{authority}/{code}.json")
+                .notFoundCacheTtl(ttl)
+                .notFoundCacheTicker(nowNanos::get)
+                .build();
+
+        UrlCRSFetcher.FetchResult first = fetcher.fetch("epsg", "3000");
+        assertTrue(first.isNotFound());
+        assertEquals(1, first.getAttemptCount());
+        assertEquals(1, requestCount("/rolling/epsg/3000.json"));
+
+        nowNanos.set(ttl.toNanos() - 1);
+        UrlCRSFetcher.FetchResult cached = fetcher.fetch("epsg", "3000");
+        assertTrue(cached.isNotFound());
+        assertEquals(0, cached.getAttemptCount());
+        assertTrue(fetcher.isInNotFoundCache("epsg", "3000"));
+        assertEquals(1, fetcher.getNotFoundCacheSize());
+
+        nowNanos.set(ttl.toNanos());
+        assertFalse(fetcher.isInNotFoundCache("epsg", "3000"));
+        assertEquals(0, fetcher.getNotFoundCacheSize());
+        UrlCRSFetcher.FetchResult refreshed = fetcher.fetch("epsg", "3000");
+        assertTrue(refreshed.isSuccess());
+        assertEquals(1, refreshed.getAttemptCount());
+        assertEquals(2, requestCount("/rolling/epsg/3000.json"));
+    }
+
+    @Test
+    void testFetcher_ConcurrentExpiryPerformsOneRevalidation() throws Exception {
+        AtomicLong nowNanos = new AtomicLong();
+        Duration ttl = Duration.ofMinutes(5);
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/ttl/{authority}/{code}.json")
+                .notFoundCacheTtl(ttl)
+                .notFoundCacheTicker(nowNanos::get)
+                .build();
+        assertTrue(fetcher.fetch("epsg", "3000").isNotFound());
+        nowNanos.set(ttl.toNanos());
+
+        int callerCount = 32;
+        ExecutorService callers = Executors.newFixedThreadPool(callerCount);
+        CountDownLatch ready = new CountDownLatch(callerCount);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<UrlCRSFetcher.FetchResult>> results = new ArrayList<>();
+        try {
+            for (int i = 0; i < callerCount; i++) {
+                results.add(callers.submit(() -> {
+                    ready.countDown();
+                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    return fetcher.fetch("epsg", "3000");
+                }));
+            }
+            assertTrue(ready.await(5, TimeUnit.SECONDS));
+            start.countDown();
+            assertTrue(ttlRefreshStarted.await(5, TimeUnit.SECONDS));
+            assertEquals(1, fetcher.getInFlightCount());
+            releaseTtlRefresh.countDown();
+
+            for (Future<UrlCRSFetcher.FetchResult> result : results) {
+                assertTrue(result.get(5, TimeUnit.SECONDS).isSuccess());
+            }
+        } finally {
+            releaseTtlRefresh.countDown();
+            callers.shutdownNow();
+        }
+
+        assertEquals(2, requestCount("/ttl/epsg/3000.json"),
+                "expiry should trigger one shared revalidation request");
+    }
+
+    @Test
+    void testFetcher_NegativeCacheCanBeDisabledForRollingCatalog() {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/rolling/{authority}/{code}.json")
+                .cacheNotFound(false)
+                .build();
+
+        UrlCRSFetcher.FetchResult first = fetcher.fetch("epsg", "3000");
+        UrlCRSFetcher.FetchResult second = fetcher.fetch("epsg", "3000");
+
+        assertTrue(first.isNotFound());
+        assertTrue(second.isSuccess());
+        assertFalse(fetcher.isNotFoundCacheEnabled());
+        assertFalse(fetcher.isInNotFoundCache("epsg", "3000"));
+        assertEquals(2, requestCount("/rolling/epsg/3000.json"));
+    }
+
+    @Test
     void testFetcher_ClearNegativeCache() {
         UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
                 .baseUrl(baseUrl)
@@ -231,6 +576,357 @@ class UrlCRSProviderTest {
         fetcher.clearNotFoundCache();
         assertEquals(0, fetcher.getNotFoundCacheSize());
         assertFalse(fetcher.isInNotFoundCache("epsg", "9999"));
+    }
+
+    @Test
+    void testFetcher_ForbiddenIsHttpErrorAndIsNotNegativeCached() {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/error/{code}.json")
+                .circuitBreakerFailureThreshold(100)
+                .build();
+
+        UrlCRSFetcher.FetchResult first = fetcher.fetch("epsg", "403");
+        assertTrue(first.isHttpError());
+        assertEquals(403, first.getHttpStatusCode());
+        assertEquals(1, first.getAttemptCount());
+        assertFalse(fetcher.isInNotFoundCache("epsg", "403"));
+
+        UrlCRSFetcher.FetchResult second = fetcher.fetch("epsg", "403");
+        assertTrue(second.isHttpError());
+        assertEquals(2, requestCount("/error/403.json"),
+                "403 must not be cached as a missing CRS");
+    }
+
+    @Test
+    void testFetcher_RetryableHttpErrorPreservesStatus() {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/error/{code}.json")
+                .maxRetries(2)
+                .initialBackoffMs(0)
+                .build();
+
+        UrlCRSFetcher.FetchResult result = fetcher.fetch("epsg", "503");
+
+        assertTrue(result.isHttpError());
+        assertEquals(503, result.getHttpStatusCode());
+        assertEquals(2, result.getAttemptCount());
+        assertEquals(2, requestCount("/error/503.json"));
+    }
+
+    @Test
+    void testFetcher_TooManyRequestsIsRetriedAndPreservesStatus() {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/error/{code}.json")
+                .maxRetries(2)
+                .initialBackoffMs(0)
+                .build();
+
+        UrlCRSFetcher.FetchResult result = fetcher.fetch("epsg", "429");
+
+        assertTrue(result.isHttpError());
+        assertEquals(429, result.getHttpStatusCode());
+        assertEquals(2, result.getAttemptCount());
+        assertEquals(2, requestCount("/error/429.json"));
+    }
+
+    @Test
+    void testFetcher_SingleFlightCoalescesConcurrentLookups() throws Exception {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/singleflight/{code}.json")
+                .build();
+        int callers = 12;
+        ExecutorService callersPool = Executors.newFixedThreadPool(callers);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<UrlCRSFetcher.FetchResult>> futures = new ArrayList<>();
+
+        try {
+            for (int i = 0; i < callers; i++) {
+                futures.add(callersPool.submit(() -> {
+                    start.await();
+                    return fetcher.fetch("epsg", "4326");
+                }));
+            }
+            start.countDown();
+
+            for (Future<UrlCRSFetcher.FetchResult> future : futures) {
+                assertTrue(future.get(5, TimeUnit.SECONDS).isSuccess());
+            }
+        } finally {
+            callersPool.shutdownNow();
+        }
+
+        assertEquals(1, requestCount("/singleflight/4326.json"));
+        assertEquals(0, fetcher.getInFlightCount());
+    }
+
+    @Test
+    void testFetcher_CircuitBreakerRejectsAndRecovers() throws Exception {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .maxRetries(1)
+                .circuitBreakerFailureThreshold(2)
+                .circuitBreakerResetTimeout(Duration.ofMillis(100))
+                .build();
+
+        assertTrue(fetcher.fetch("error", "503").isHttpError());
+        assertTrue(fetcher.fetch("error", "503").isHttpError());
+        assertTrue(fetcher.isCircuitOpen());
+
+        UrlCRSFetcher.FetchResult rejected = fetcher.fetch("epsg", "4326");
+        assertTrue(rejected.isCircuitOpen());
+        assertEquals(0, rejected.getAttemptCount());
+        assertEquals(0, requestCount("/epsg/4326.json"));
+
+        Thread.sleep(150);
+        UrlCRSFetcher.FetchResult recovered = fetcher.fetch("epsg", "4326");
+        assertTrue(recovered.isSuccess());
+        assertFalse(fetcher.isCircuitOpen());
+        assertEquals(0, fetcher.getConsecutiveFailureCount());
+    }
+
+    @Test
+    void testFetcher_LateRequestCannotReleaseHalfOpenProbe() throws Exception {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .maxRetries(1)
+                .circuitBreakerFailureThreshold(1)
+                .circuitBreakerResetTimeout(Duration.ofMillis(100))
+                .build();
+        ExecutorService callersPool = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<UrlCRSFetcher.FetchResult> oldRequest =
+                    callersPool.submit(() -> fetcher.fetch("race", "old"));
+            assertTrue(oldRequestStarted.await(2, TimeUnit.SECONDS));
+
+            assertTrue(fetcher.fetch("error", "503").isHttpError());
+            assertTrue(fetcher.isCircuitOpen());
+
+            Thread.sleep(150);
+            Future<UrlCRSFetcher.FetchResult> probeRequest =
+                    callersPool.submit(() -> fetcher.fetch("race", "probe"));
+            assertTrue(probeRequestStarted.await(2, TimeUnit.SECONDS));
+
+            releaseOldRequest.countDown();
+            assertTrue(oldRequest.get(2, TimeUnit.SECONDS).isSuccess());
+
+            UrlCRSFetcher.FetchResult rejected = fetcher.fetch("race", "extra");
+            assertTrue(rejected.isCircuitOpen());
+            assertEquals(0, requestCount("/race/extra.json"));
+
+            releaseProbeRequest.countDown();
+            assertTrue(probeRequest.get(2, TimeUnit.SECONDS).isSuccess());
+            assertFalse(fetcher.isCircuitOpen());
+        } finally {
+            releaseOldRequest.countDown();
+            releaseProbeRequest.countDown();
+            callersPool.shutdownNow();
+        }
+    }
+
+    @Test
+    void testFetcher_OverallTimeoutBoundsRetries() {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/slow/{code}.json")
+                .readTimeout(5)
+                .totalTimeout(1)
+                .maxRetries(2)
+                .initialBackoffMs(0)
+                .build();
+
+        long started = System.nanoTime();
+        UrlCRSFetcher.FetchResult result = fetcher.fetch("epsg", "timeout");
+        long elapsedMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
+
+        assertTrue(result.isNetworkError());
+        assertTrue(elapsedMs < 2500,
+                "overall timeout should bound the lookup, took " + elapsedMs + "ms");
+    }
+
+    @Test
+    void testFetcher_OverallTimeoutIncludesResponseBody() throws Exception {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/slowbody/{code}.json")
+                .readTimeout(5)
+                .totalTimeout(1)
+                .maxRetries(1)
+                .build();
+
+        long started = System.nanoTime();
+        UrlCRSFetcher.FetchResult result = fetcher.fetch("epsg", "timeout");
+        long elapsedMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
+
+        assertTrue(result.isNetworkError());
+        assertEquals(-1, result.getHttpStatusCode());
+        assertTrue(elapsedMs < 2500,
+                "response body must be covered by the total timeout, took " + elapsedMs + "ms");
+        assertTrue(slowBodyStopped.await(2, TimeUnit.SECONDS),
+                "timing out must cancel the response body subscription");
+    }
+
+    @Test
+    void testFetcher_FollowsRedirectWithinDeadline() {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/redirect/{code}.json")
+                .readTimeout(5)
+                .totalTimeout(2)
+                .maxRetries(1)
+                .build();
+
+        UrlCRSFetcher.FetchResult result = fetcher.fetch("epsg", "normal");
+
+        assertTrue(result.isSuccess());
+        assertEquals(1, requestCount("/redirect/normal.json"));
+        assertEquals(1, requestCount("/epsg/4326.json"));
+    }
+
+    @Test
+    void testFetcher_DoesNotForwardHeadersAcrossOrigins() {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/redirect/{code}.json")
+                .maxRetries(1)
+                .header("Authorization", "Bearer top-secret")
+                .build();
+
+        UrlCRSFetcher.FetchResult result =
+                fetcher.fetch("epsg", "cross-origin");
+
+        assertTrue(result.isHttpError());
+        assertEquals(302, result.getHttpStatusCode());
+        assertNotNull(result.getLastException());
+        assertTrue(result.getLastException().getMessage()
+                .contains("refused unsafe redirect"));
+        assertTrue(result.getLastException().getMessage().contains(baseUrl));
+        assertTrue(result.getLastException().getMessage()
+                .contains(redirectTargetBaseUrl));
+        assertFalse(result.getLastException().getMessage()
+                .contains("/target.json"));
+        assertEquals(0, redirectedRequests.get());
+        assertNull(redirectedAuthorization.get());
+    }
+
+    @Test
+    void testProvider_ReportsRefusedRedirectAndUsesFallback() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("redirecting")
+                .baseUrl(baseUrl)
+                .pathTemplate("/redirect/{code}.json")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        assertNotNull(provider.resolve("epsg", "cross-origin"));
+        assertEquals(0, redirectedRequests.get());
+        assertEquals(1, requestCount("/fallback/epsg/cross-origin.json"));
+    }
+
+    @Test
+    void testProvider_ReportsRefusedRedirectWhenFallbacksFail() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/github")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("redirecting")
+                .baseUrl(baseUrl)
+                .pathTemplate("/redirect/{code}.json")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        CRSFetchException failure = assertThrows(
+                CRSFetchException.class,
+                () -> provider.resolve("epsg", "cross-origin"));
+
+        assertTrue(failure.getMessage().contains("HTTP 302"));
+        assertTrue(failure.getMessage().contains("refused unsafe redirect"));
+        assertTrue(failure.getMessage().contains(baseUrl));
+        assertTrue(failure.getMessage().contains(redirectTargetBaseUrl));
+        assertEquals(0, redirectedRequests.get());
+    }
+
+    @Test
+    void testFetcher_OverallTimeoutCancelsRedirectBody() throws Exception {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/redirect/{code}.json")
+                .readTimeout(5)
+                .totalTimeout(1)
+                .maxRetries(1)
+                .build();
+
+        long started = System.nanoTime();
+        UrlCRSFetcher.FetchResult result = fetcher.fetch("epsg", "slow");
+        long elapsedMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
+
+        assertTrue(result.isNetworkError());
+        assertTrue(elapsedMs < 2500,
+                "redirect body must be covered by the total timeout, took "
+                        + elapsedMs + "ms");
+        assertTrue(slowRedirectStopped.await(2, TimeUnit.SECONDS),
+                "timing out must cancel the redirect body subscription");
+        assertEquals(0, requestCount("/epsg/4326.json"),
+                "the redirect target must not start before its body completes");
+    }
+
+    @Test
+    void testFetcher_NetworkFailureSupersedesEarlierHttpStatus() {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .pathTemplate("/mixed/{code}.json")
+                .readTimeout(1)
+                .totalTimeout(3)
+                .maxRetries(2)
+                .initialBackoffMs(0)
+                .build();
+
+        UrlCRSFetcher.FetchResult result = fetcher.fetch("epsg", "failure");
+
+        assertTrue(result.isNetworkError());
+        assertEquals(-1, result.getHttpStatusCode());
+        assertEquals(2, result.getAttemptCount());
+        assertEquals(2, requestCount("/mixed/failure.json"));
+    }
+
+    @Test
+    void testFetcher_InvalidUrlDoesNotOpenCircuit() {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .circuitBreakerFailureThreshold(1)
+                .build();
+
+        assertThrows(IllegalArgumentException.class, () -> fetcher.fetch("epsg", "%"));
+        assertFalse(fetcher.isCircuitOpen());
+        assertEquals(0, fetcher.getConsecutiveFailureCount());
+        assertTrue(fetcher.fetch("epsg", "4326").isSuccess());
+    }
+
+    @Test
+    void testFetcher_InvalidHalfOpenProbeReleasesPermit() throws Exception {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl)
+                .maxRetries(1)
+                .circuitBreakerFailureThreshold(1)
+                .circuitBreakerResetTimeout(Duration.ofMillis(100))
+                .build();
+
+        assertTrue(fetcher.fetch("error", "503").isHttpError());
+        Thread.sleep(150);
+
+        assertThrows(IllegalArgumentException.class, () -> fetcher.fetch("epsg", "%"));
+        assertTrue(fetcher.isCircuitOpen());
+        assertTrue(fetcher.fetch("epsg", "4326").isSuccess());
+        assertFalse(fetcher.isCircuitOpen());
     }
 
     @Test
@@ -301,6 +997,11 @@ class UrlCRSProviderTest {
                 .readTimeout(15)
                 .maxRetries(2)
                 .initialBackoffMs(100)
+                .totalTimeout(20)
+                .circuitBreakerFailureThreshold(4)
+                .circuitBreakerResetTimeout(Duration.ofSeconds(45))
+                .cacheNotFound(false)
+                .notFoundCacheTtl(Duration.ofMinutes(2))
                 .header("X-Key", "abc")
                 .build();
 
@@ -310,7 +1011,28 @@ class UrlCRSProviderTest {
         assertEquals(15, fetcher.getReadTimeoutSeconds());
         assertEquals(2, fetcher.getMaxRetries());
         assertEquals(100, fetcher.getInitialBackoffMs());
+        assertEquals(20, fetcher.getTotalTimeoutSeconds());
+        assertEquals(4, fetcher.getCircuitBreakerFailureThreshold());
+        assertEquals(Duration.ofSeconds(45), fetcher.getCircuitBreakerResetTimeout());
+        assertFalse(fetcher.isNotFoundCacheEnabled());
+        assertEquals(Duration.ofMinutes(2), fetcher.getNotFoundCacheTtl());
         assertEquals("abc", fetcher.getHeaders().get("X-Key"));
+    }
+
+    @Test
+    void testFetcher_GenericDefaultsRemainCompatible() {
+        UrlCRSFetcher fetcher = UrlCRSFetcher.builder()
+                .baseUrl("https://example.com")
+                .build();
+
+        assertEquals(10, fetcher.getConnectTimeoutSeconds());
+        assertEquals(30, fetcher.getReadTimeoutSeconds());
+        assertEquals(3, fetcher.getMaxRetries());
+        assertEquals(500, fetcher.getInitialBackoffMs());
+        assertEquals(0, fetcher.getTotalTimeoutSeconds());
+        assertEquals(0, fetcher.getCircuitBreakerFailureThreshold());
+        assertTrue(fetcher.isNotFoundCacheEnabled());
+        assertEquals(Duration.ZERO, fetcher.getNotFoundCacheTtl());
     }
 
     // ==================== UrlCRSProvider ====================
@@ -382,6 +1104,390 @@ class UrlCRSProviderTest {
                 provider.resolve("epsg", "4326"));
         assertEquals(CRSFetchException.Reason.NETWORK_ERROR, ex.getReason());
         assertTrue(ex.getMessage().contains("test-network-err"));
+        assertTrue(ex.getMessage().contains("http://127.0.0.1:59990"));
+    }
+
+    @Test
+    void testProvider_ForbiddenIncludesHttpStatusAndCrs() {
+        UrlCRSProvider provider = UrlCRSProvider.builder("test-http-err")
+                .baseUrl(baseUrl)
+                .pathTemplate("/error/{code}.json")
+                .build();
+
+        CRSFetchException ex = assertThrows(CRSFetchException.class, () ->
+                provider.resolve("epsg", "403"));
+
+        assertEquals("EPSG:403", ex.getCrsCode());
+        assertEquals(CRSFetchException.Reason.HTTP_ERROR, ex.getReason());
+        assertTrue(ex.getMessage().contains("HTTP 403"));
+        assertTrue(ex.getMessage().contains("EPSG:403"));
+        assertTrue(ex.getMessage().contains(baseUrl));
+    }
+
+    @Test
+    void testProvider_CircuitOpenHasDistinctReason() {
+        UrlCRSProvider provider = UrlCRSProvider.builder("test-circuit")
+                .baseUrl(baseUrl)
+                .maxRetries(1)
+                .circuitBreakerFailureThreshold(1)
+                .build();
+
+        assertThrows(CRSFetchException.class, () ->
+                provider.resolve("error", "503"));
+        CRSFetchException ex = assertThrows(CRSFetchException.class, () ->
+                provider.resolve("epsg", "4326"));
+
+        assertEquals(CRSFetchException.Reason.CIRCUIT_OPEN, ex.getReason());
+        assertTrue(ex.getMessage().contains("circuit breaker is open"));
+        assertTrue(ex.getMessage().contains(baseUrl));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void testSpatialReferenceProviderUsesRollingCdnThenGitHub() {
+        UrlCRSProvider provider = UrlCRSProvider.spatialReference();
+        String github =
+                "https://raw.githubusercontent.com/OSGeo/spatialreference.org/gh-pages";
+        String jsDelivr =
+                "https://cdn.jsdelivr.net/gh/OSGeo/spatialreference.org@gh-pages";
+
+        assertEquals(github, UrlCRSProvider.SPATIAL_REFERENCE_GITHUB_BASE_URL);
+        assertEquals(jsDelivr, UrlCRSProvider.SPATIAL_REFERENCE_CDN_BASE_URL);
+        assertEquals(2, provider.getFetchers().size());
+        assertEquals(
+                List.of(
+                        UrlCRSProvider.NotFoundPolicy.TRY_NEXT_ENDPOINT,
+                        UrlCRSProvider.NotFoundPolicy.AUTHORITATIVE),
+                provider.getNotFoundPolicies());
+        assertEquals(jsDelivr, provider.getFetcher().getBaseUrl());
+        assertEquals(jsDelivr, provider.getFetchers().get(0).getBaseUrl());
+        assertEquals(github, provider.getFetchers().get(1).getBaseUrl());
+        assertEquals(
+                jsDelivr + "/ref/epsg/2154/projjson.json",
+                provider.getFetcher().buildUrl("epsg", "2154"));
+        assertEquals(
+                github + "/ref/epsg/2154/projjson.json",
+                provider.getFetchers().get(1).buildUrl("epsg", "2154"));
+        assertTrue(provider.getFetcher().isNotFoundCacheEnabled());
+        assertTrue(provider.getFetchers().get(1).isNotFoundCacheEnabled());
+        assertEquals(
+                UrlCRSProvider.SPATIAL_REFERENCE_NOT_FOUND_CACHE_TTL,
+                provider.getFetcher().getNotFoundCacheTtl());
+        assertEquals(
+                UrlCRSProvider.SPATIAL_REFERENCE_NOT_FOUND_CACHE_TTL,
+                provider.getFetchers().get(1).getNotFoundCacheTtl());
+        assertEquals("https://spatialreference.org",
+                UrlCRSProvider.SPATIAL_REFERENCE_BASE_URL);
+    }
+
+    @Test
+    void testProvider_NonAuthoritativeCdnMissUsesGitHub() {
+        UrlCRSFetcher github = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/github")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("cdn-first")
+                .baseUrl(baseUrl + "/cdn")
+                .maxRetries(1)
+                .primaryNotFoundPolicy(
+                        UrlCRSProvider.NotFoundPolicy.TRY_NEXT_ENDPOINT)
+                .fallbackFetcher(
+                        github,
+                        UrlCRSProvider.NotFoundPolicy.AUTHORITATIVE)
+                .build();
+
+        assertNotNull(provider.resolve("epsg", "cdn-lag"));
+        assertEquals(1, requestCount("/cdn/epsg/cdn-lag.json"));
+        assertEquals(1, requestCount("/github/epsg/cdn-lag.json"));
+    }
+
+    @Test
+    void testProvider_AuthoritativeGitHubMissWinsAfterCdnFailure() {
+        UrlCRSFetcher github = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/github")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("cdn-first")
+                .baseUrl(baseUrl + "/cdn")
+                .maxRetries(1)
+                .primaryNotFoundPolicy(
+                        UrlCRSProvider.NotFoundPolicy.TRY_NEXT_ENDPOINT)
+                .fallbackFetcher(
+                        github,
+                        UrlCRSProvider.NotFoundPolicy.AUTHORITATIVE)
+                .build();
+
+        assertNull(provider.resolve("epsg", "missing"));
+        assertEquals(1, requestCount("/cdn/epsg/missing.json"));
+        assertEquals(1, requestCount("/github/epsg/missing.json"));
+    }
+
+    @Test
+    void testProvider_GitHubFailureDoesNotTurnCdnMissIntoNotFound() {
+        UrlCRSFetcher github = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/github")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("cdn-first")
+                .baseUrl(baseUrl + "/cdn")
+                .maxRetries(1)
+                .primaryNotFoundPolicy(
+                        UrlCRSProvider.NotFoundPolicy.TRY_NEXT_ENDPOINT)
+                .fallbackFetcher(
+                        github,
+                        UrlCRSProvider.NotFoundPolicy.AUTHORITATIVE)
+                .build();
+
+        CRSFetchException failure = assertThrows(
+                CRSFetchException.class,
+                () -> provider.resolve("epsg", "github-down"));
+
+        assertEquals(CRSFetchException.Reason.HTTP_ERROR, failure.getReason());
+        assertTrue(failure.getMessage().contains("HTTP 404"));
+        assertTrue(failure.getMessage().contains("HTTP 503"));
+        assertEquals(1, requestCount("/cdn/epsg/github-down.json"));
+        assertEquals(1, requestCount("/github/epsg/github-down.json"));
+    }
+
+    @Test
+    void testProvider_RepeatedMissingCodeUsesBothEndpointCaches() {
+        UrlCRSFetcher github = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/github")
+                .notFoundCacheTtl(Duration.ofMinutes(5))
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("cdn-first")
+                .baseUrl(baseUrl + "/cdn")
+                .notFoundCacheTtl(Duration.ofMinutes(5))
+                .primaryNotFoundPolicy(
+                        UrlCRSProvider.NotFoundPolicy.TRY_NEXT_ENDPOINT)
+                .fallbackFetcher(
+                        github,
+                        UrlCRSProvider.NotFoundPolicy.AUTHORITATIVE)
+                .build();
+
+        Defs.globals();
+        Defs.clearProviders();
+        Defs.registerProvider(provider, 50);
+        for (int i = 0; i < 10_000; i++) {
+            assertNull(Defs.get("EPSG:unknown"));
+        }
+
+        assertEquals(1, requestCount("/cdn/epsg/unknown.json"));
+        assertEquals(1, requestCount("/github/epsg/unknown.json"));
+    }
+
+    @Test
+    void testProvider_FallsBackAfterPrimaryHttpError() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("with-fallback")
+                .baseUrl(baseUrl + "/primary")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        CRSResult result = provider.resolve("epsg", "4326");
+
+        assertNotNull(result);
+        assertEquals(1, requestCount("/primary/epsg/4326.json"));
+        assertEquals(1, requestCount("/fallback/epsg/4326.json"));
+        assertEquals(2, provider.getFetchers().size());
+    }
+
+    @Test
+    void testProvider_PrimaryNotFoundDoesNotUseOlderFallback() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("with-fallback")
+                .baseUrl(baseUrl + "/primary")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        assertNull(provider.resolve("epsg", "9999"));
+        assertEquals(1, requestCount("/primary/epsg/9999.json"));
+        assertEquals(0, requestCount("/fallback/epsg/9999.json"));
+    }
+
+    @Test
+    void testProvider_FallbackNotFoundDoesNotMaskPrimaryFailure() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("with-fallback")
+                .baseUrl(baseUrl + "/primary")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        CRSFetchException ex = assertThrows(CRSFetchException.class, () ->
+                provider.resolve("epsg", "2154"));
+
+        assertEquals(CRSFetchException.Reason.HTTP_ERROR, ex.getReason());
+        assertTrue(ex.getMessage().contains(baseUrl + "/primary"));
+        assertTrue(ex.getMessage().contains("HTTP 503"));
+        assertTrue(ex.getMessage().contains(baseUrl + "/fallback"));
+        assertTrue(ex.getMessage().contains("HTTP 404"));
+    }
+
+    @Test
+    void testProvider_TriesFallbacksInOrderUntilOneSucceeds() {
+        UrlCRSFetcher missingFallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSFetcher successfulFallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/second-fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("multiple-fallbacks")
+                .baseUrl(baseUrl + "/primary")
+                .maxRetries(1)
+                .fallbackFetcher(missingFallback)
+                .fallbackFetcher(successfulFallback)
+                .build();
+
+        assertNotNull(provider.resolve("epsg", "2154"));
+        assertEquals(1, requestCount("/primary/epsg/2154.json"));
+        assertEquals(1, requestCount("/fallback/epsg/2154.json"));
+        assertEquals(1, requestCount("/second-fallback/epsg/2154.json"));
+        assertEquals(3, provider.getFetchers().size());
+    }
+
+    @Test
+    void testProvider_AllEndpointFailuresKeepDiagnostics() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("with-fallback")
+                .baseUrl(baseUrl + "/primary")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        CRSFetchException ex = assertThrows(CRSFetchException.class, () ->
+                provider.resolve("epsg", "500"));
+
+        assertEquals(CRSFetchException.Reason.HTTP_ERROR, ex.getReason());
+        assertTrue(ex.getMessage().contains(baseUrl + "/primary"));
+        assertTrue(ex.getMessage().contains("HTTP 500"));
+        assertTrue(ex.getMessage().contains(baseUrl + "/fallback"));
+        assertTrue(ex.getMessage().contains("HTTP 429"));
+        assertEquals(1, ex.getSuppressed().length);
+    }
+
+    @Test
+    void testProvider_PrimaryAndFallbackCircuitsAreIndependent() {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/fallback")
+                .maxRetries(1)
+                .circuitBreakerFailureThreshold(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("with-fallback")
+                .baseUrl(baseUrl + "/primary")
+                .maxRetries(1)
+                .circuitBreakerFailureThreshold(1)
+                .fallbackFetcher(fallback)
+                .build();
+
+        assertNotNull(provider.resolve("epsg", "4326"));
+        assertTrue(provider.getFetcher().isCircuitOpen());
+        assertFalse(fallback.isCircuitOpen());
+
+        assertNotNull(provider.resolve("esri", "102001"));
+        assertEquals(0, requestCount("/primary/esri/102001.json"));
+        assertEquals(1, requestCount("/fallback/esri/102001.json"));
+    }
+
+    @Test
+    void testProvider_InterruptedPrimaryDoesNotCallFallback() throws Exception {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/interrupt-fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("interruptible")
+                .baseUrl(baseUrl + "/interrupt-primary")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+        AtomicReference<Throwable> thrown = new AtomicReference<>();
+        Thread resolver = new Thread(() -> {
+            try {
+                provider.resolve("epsg", "4326");
+            } catch (Throwable t) {
+                thrown.set(t);
+            }
+        });
+
+        resolver.start();
+        assertTrue(interruptRequestStarted.await(5, TimeUnit.SECONDS));
+        resolver.interrupt();
+        resolver.join(5000);
+
+        assertFalse(resolver.isAlive());
+        assertTrue(thrown.get() instanceof CRSFetchException);
+        CRSFetchException failure = (CRSFetchException) thrown.get();
+        assertEquals(CRSFetchException.Reason.NETWORK_ERROR, failure.getReason());
+        assertEquals(0, requestCount("/interrupt-fallback/epsg/4326.json"));
+    }
+
+    @Test
+    void testProvider_InterruptedSingleFlightOwnerDoesNotPoisonWaiter()
+            throws Exception {
+        UrlCRSFetcher fallback = UrlCRSFetcher.builder()
+                .baseUrl(baseUrl + "/interrupt-fallback")
+                .maxRetries(1)
+                .build();
+        UrlCRSProvider provider = UrlCRSProvider.builder("interruptible-shared")
+                .baseUrl(baseUrl + "/interrupt-primary")
+                .maxRetries(1)
+                .fallbackFetcher(fallback)
+                .build();
+        AtomicReference<Throwable> ownerFailure = new AtomicReference<>();
+        AtomicReference<Throwable> waiterFailure = new AtomicReference<>();
+        AtomicReference<CRSResult> waiterResult = new AtomicReference<>();
+        Thread owner = new Thread(() -> {
+            try {
+                provider.resolve("epsg", "4326");
+            } catch (Throwable t) {
+                ownerFailure.set(t);
+            }
+        });
+        Thread waiter = new Thread(() -> {
+            try {
+                waiterResult.set(provider.resolve("epsg", "4326"));
+            } catch (Throwable t) {
+                waiterFailure.set(t);
+            }
+        });
+
+        owner.start();
+        assertTrue(interruptRequestStarted.await(5, TimeUnit.SECONDS));
+        waiter.start();
+        long waitingDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (waiter.getState() != Thread.State.WAITING
+                && System.nanoTime() < waitingDeadline) {
+            Thread.sleep(5);
+        }
+        assertEquals(Thread.State.WAITING, waiter.getState());
+
+        owner.interrupt();
+        owner.join(5000);
+        waiter.join(5000);
+
+        assertFalse(owner.isAlive());
+        assertFalse(waiter.isAlive());
+        assertTrue(ownerFailure.get() instanceof CRSFetchException);
+        assertNull(waiterFailure.get());
+        assertNotNull(waiterResult.get());
+        assertEquals(1, requestCount("/interrupt-primary/epsg/4326.json"));
+        assertEquals(1, requestCount("/interrupt-fallback/epsg/4326.json"));
     }
 
     // ==================== Authority Filtering ====================
@@ -477,6 +1583,11 @@ class UrlCRSProviderTest {
         // and serves it from our mock server
         ProjectionDef def = Defs.get("EPSG:2154");
         assertNotNull(def, "Should resolve EPSG:2154 via UrlCRSProvider");
+
+        ProjectionDef cached = Defs.get("epsg:2154");
+        assertSame(def, cached);
+        assertEquals(1, requestCount("/epsg/2154.json"),
+                "successful remote definitions should be cached in the JVM");
     }
 
     @Test
@@ -498,21 +1609,64 @@ class UrlCRSProviderTest {
     @Test
     void testProvider_FallsThroughWhen404() {
         Defs.globals();
-
-        UrlCRSProvider provider = UrlCRSProvider.builder("fallthrough")
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        UrlCRSProvider urlProvider = UrlCRSProvider.builder("fallthrough")
                 .baseUrl(baseUrl)
+                .authorities("custom")
                 .build();
-        Defs.registerProvider(provider, 50);
+        CRSProvider fallback = new CRSProvider() {
+            @Override
+            public String getName() {
+                return "custom-fallback";
+            }
 
-        // EPSG:4326 is served by our mock; it should resolve
-        ProjectionDef def = Defs.get("EPSG:4326");
-        assertNotNull(def);
+            @Override
+            public CRSResult resolve(String authority, String code) {
+                fallbackCalls.incrementAndGet();
+                return CRSResult.proj4("+proj=longlat +datum=WGS84");
+            }
+        };
+        Defs.registerProvider(urlProvider, 50);
+        Defs.registerProvider(fallback, 60);
 
-        // A code that doesn't exist on our mock server — UrlCRSProvider returns null,
-        // falls through to BuiltInCRSProvider which knows EPSG:3857
-        ProjectionDef merc = Defs.get("EPSG:3857");
-        assertNotNull(merc);
-        assertEquals("merc", merc.getProjName());
+        ProjectionDef resolved = Defs.get("CUSTOM:missing");
+
+        assertNotNull(resolved);
+        assertEquals("longlat", resolved.getProjName());
+        assertEquals(1, requestCount("/custom/missing.json"));
+        assertEquals(1, fallbackCalls.get());
+    }
+
+    @Test
+    void testProvider_HttpErrorStopsDefsChain() {
+        Defs.globals();
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        UrlCRSProvider urlProvider = UrlCRSProvider.builder("http-error")
+                .baseUrl(baseUrl)
+                .authorities("error")
+                .maxRetries(1)
+                .build();
+        CRSProvider fallback = new CRSProvider() {
+            @Override
+            public String getName() {
+                return "should-not-run";
+            }
+
+            @Override
+            public CRSResult resolve(String authority, String code) {
+                fallbackCalls.incrementAndGet();
+                return CRSResult.proj4("+proj=longlat +datum=WGS84");
+            }
+        };
+        Defs.registerProvider(urlProvider, 50);
+        Defs.registerProvider(fallback, 60);
+
+        CRSFetchException failure = assertThrows(
+                CRSFetchException.class,
+                () -> Defs.get("ERROR:403"));
+
+        assertEquals(CRSFetchException.Reason.HTTP_ERROR, failure.getReason());
+        assertEquals(0, fallbackCalls.get());
     }
 
     @Test
