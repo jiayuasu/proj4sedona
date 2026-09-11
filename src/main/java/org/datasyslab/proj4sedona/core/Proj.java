@@ -204,8 +204,15 @@ public class Proj {
         // Look up datum by code
         Datum datumDef = Datum.get(def.getDatumCode());
         if (datumDef != null) {
+            // An explicit TOWGS84[...] / +towgs84= is the operation the definition's author
+            // chose. The registry only fills in what was left unspecified; in particular its
+            // grid list must not be added on top of an explicit transform, because createDatum()
+            // prefers grids whenever nadgrids is set, and a grid-shift datum whose grids are not
+            // loaded cannot transform at all.
+            boolean explicitTransform = def.getDatumParams() != null;
+
             // Fill in datum_params if not already set
-            if (def.getDatumParams() == null) {
+            if (!explicitTransform) {
                 double[] towgs84 = datumDef.getTowgs84Array();
                 if (towgs84 != null) {
                     def.setDatumParams(towgs84);
@@ -223,8 +230,8 @@ public class Proj {
                     datumDef.getDatumName() : def.getDatumCode());
             }
 
-            // Handle nadgrids
-            if (def.getNadgrids() == null && datumDef.getNadgrids() != null) {
+            // Handle nadgrids: a registry default only, never over an explicit transform
+            if (!explicitTransform && def.getNadgrids() == null && datumDef.getNadgrids() != null) {
                 def.setNadgrids(datumDef.getNadgrids());
             }
         }

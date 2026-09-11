@@ -3100,7 +3100,13 @@ public final class CRSSerializer {
         boolean declaresGridShift =
             declaredDatum != null && declaredDatum.getNadgrids() != null;
         boolean hasGridShift = datum != null && datum.isGridShift();
-        if ((declaresGridShift || hasGridShift)
+        // An explicit three- or seven-parameter transform on a grid-shift datum name is
+        // representable: the TOWGS84 node carries the operation, and parsing honours an
+        // explicit transform over the registry's grid list, so the export round-trips.
+        boolean explicitTransform =
+            datum != null && !datum.isGridShift() && datum.getDatumParams() != null;
+        if (!explicitTransform
+                && (declaresGridShift || hasGridShift)
                 && !gridShiftReconstructsFromDeclaredDatum(params)) {
             throw unsupportedStandardParameter(
                 "Grid-shift datum operations cannot be represented losslessly");
