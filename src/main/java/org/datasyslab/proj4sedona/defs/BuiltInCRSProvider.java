@@ -15,6 +15,8 @@ import java.util.Map;
  *   <li>EPSG:3857 — WGS 84 / Pseudo-Mercator</li>
  *   <li>EPSG:326xx — UTM zones 1–60 North (WGS 84)</li>
  *   <li>EPSG:327xx — UTM zones 1–60 South (WGS 84)</li>
+ *   <li>EPSG:269xx — UTM zones 1–23 North (NAD83)</li>
+ *   <li>EPSG:267xx — UTM zones 1–22 North (NAD27)</li>
  *   <li>EPSG:5041 — WGS 84 / UPS North</li>
  *   <li>EPSG:5042 — WGS 84 / UPS South</li>
  * </ul>
@@ -73,6 +75,17 @@ public final class BuiltInCRSProvider implements CRSProvider {
                     "+proj=utm +zone=" + zone + " +datum=WGS84 +units=m");
             put("EPSG:" + (32700 + zone),
                     "+proj=utm +zone=" + zone + " +south +datum=WGS84 +units=m");
+        }
+
+        // UTM zones NAD83 (1–23 North; EPSG:26901–26923) and NAD27 (1–22 North;
+        // EPSG:26701–26722) so North American UTM data identifies without a lookup.
+        for (int zone = 1; zone <= 23; zone++) {
+            put("EPSG:" + (26900 + zone),
+                    "+proj=utm +zone=" + zone + " +datum=NAD83 +units=m");
+        }
+        for (int zone = 1; zone <= 22; zone++) {
+            put("EPSG:" + (26700 + zone),
+                    "+proj=utm +zone=" + zone + " +datum=NAD27 +units=m");
         }
 
         // UPS North

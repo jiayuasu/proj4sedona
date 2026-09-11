@@ -54,7 +54,10 @@ public class Sinusoidal implements Projection {
             x = a * lon * c / Math.sqrt(1 - es * s * s);
         }
 
-        return new Point(x, y, p.z);
+        // proj4js sinu forward omits x0/y0 while its inverse subtracts them, so an
+        // offset CRS would not round-trip. Apply them here (the inverse already reverses
+        // them). Standard sinu CRSs use x_0=y_0=0, so their output is unchanged.
+        return new Point(x + x0, y + y0, p.z);
     }
 
     @Override

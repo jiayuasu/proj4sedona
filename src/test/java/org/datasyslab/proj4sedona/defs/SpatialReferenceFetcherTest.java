@@ -21,22 +21,21 @@ import static org.junit.jupiter.api.Assertions.*;
  * so these tests exercise both the provider and the underlying
  * {@link UrlCRSFetcher} directly for retry / negative-cache behaviour.</p>
  *
- * <p>Some tests require network access to spatialreference.org and may be
- * slow due to network latency.</p>
+ * <p>Some tests require network access to the rolling OSGeo catalog through
+ * jsDelivr or raw GitHub and may be slow due to network latency.</p>
  */
 class SpatialReferenceFetcherTest {
 
     /** A UrlCRSFetcher configured exactly like the default spatialReference() provider. */
-    private UrlCRSFetcher defaultFetcher;
+    private UrlCRSFetcher cdnFetcher;
+    private UrlCRSFetcher githubFetcher;
 
     @BeforeEach
     void setUp() {
         Defs.reset();
-        defaultFetcher = UrlCRSFetcher.builder()
-                .baseUrl(UrlCRSProvider.SPATIAL_REFERENCE_BASE_URL)
-                .pathTemplate(UrlCRSProvider.SPATIAL_REFERENCE_PATH)
-                .header("Accept", "application/json")
-                .build();
+        UrlCRSProvider provider = UrlCRSProvider.spatialReference();
+        cdnFetcher = provider.getFetcher();
+        githubFetcher = provider.getFetchers().get(1);
     }
 
     @AfterEach
@@ -44,13 +43,13 @@ class SpatialReferenceFetcherTest {
         Defs.reset();
     }
 
-    // ==================== Direct UrlCRSFetcher Tests (spatialreference.org) ====================
+    // ==================== Direct UrlCRSFetcher Tests (OSGeo remote catalog) ====================
 
     @Test
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void testFetchProjJson_EPSG2154() {
         // EPSG:2154 - RGF93 / Lambert-93 (French national projection)
-        UrlCRSFetcher.FetchResult result = defaultFetcher.fetch("epsg", "2154");
+        UrlCRSFetcher.FetchResult result = cdnFetcher.fetch("epsg", "2154");
 
         assertTrue(result.isSuccess(), "Should fetch PROJJSON for EPSG:2154");
         assertNotNull(result.getBody());
@@ -64,24 +63,26 @@ class SpatialReferenceFetcherTest {
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void testFetchProjJson_NonExistent() {
         // EPSG:999999 should not exist
-        UrlCRSFetcher.FetchResult result = defaultFetcher.fetch("epsg", "999999");
+        UrlCRSFetcher.FetchResult result = cdnFetcher.fetch("epsg", "999999");
 
         assertTrue(result.isNotFound(), "Should return NOT_FOUND for non-existent EPSG code");
         assertNull(result.getBody());
+        assertTrue(cdnFetcher.isInNotFoundCache("epsg", "999999"),
+                "Rolling CDN misses should be cached for the configured TTL");
     }
 
     @Test
     void testNegativeCache() {
         // First call should add to negative cache
-        UrlCRSFetcher.FetchResult result1 = defaultFetcher.fetch("epsg", "999999");
+        UrlCRSFetcher.FetchResult result1 = githubFetcher.fetch("epsg", "999999");
         assertTrue(result1.isNotFound());
 
         // Verify it's in the negative cache
-        assertTrue(defaultFetcher.isInNotFoundCache("epsg", "999999"),
-                "Non-existent code should be in negative cache");
+        assertTrue(githubFetcher.isInNotFoundCache("epsg", "999999"),
+                "GitHub fallback should cache a non-existent code");
 
         // Second call should return from cache immediately (0 attempts)
-        UrlCRSFetcher.FetchResult result2 = defaultFetcher.fetch("epsg", "999999");
+        UrlCRSFetcher.FetchResult result2 = githubFetcher.fetch("epsg", "999999");
         assertTrue(result2.isNotFound());
         assertEquals(0, result2.getAttemptCount(), "Should return from cache with 0 attempts");
     }
@@ -89,25 +90,44 @@ class SpatialReferenceFetcherTest {
     @Test
     void testClearNotFoundCache() {
         // Add to negative cache
-        defaultFetcher.fetch("epsg", "999999");
-        assertTrue(defaultFetcher.isInNotFoundCache("epsg", "999999"));
+        githubFetcher.fetch("epsg", "999999");
+        assertTrue(githubFetcher.isInNotFoundCache("epsg", "999999"));
 
         // Clear cache
-        defaultFetcher.clearNotFoundCache();
+        githubFetcher.clearNotFoundCache();
 
         // Should no longer be in cache
-        assertFalse(defaultFetcher.isInNotFoundCache("epsg", "999999"));
-        assertEquals(0, defaultFetcher.getNotFoundCacheSize());
+        assertFalse(githubFetcher.isInNotFoundCache("epsg", "999999"));
+        assertEquals(0, githubFetcher.getNotFoundCacheSize());
     }
 
     @Test
     void testFetcherDefaults() {
-        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_BASE_URL, defaultFetcher.getBaseUrl());
-        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_PATH, defaultFetcher.getPathTemplate());
-        assertEquals(UrlCRSFetcher.DEFAULT_CONNECT_TIMEOUT_SECONDS, defaultFetcher.getConnectTimeoutSeconds());
-        assertEquals(UrlCRSFetcher.DEFAULT_READ_TIMEOUT_SECONDS, defaultFetcher.getReadTimeoutSeconds());
-        assertEquals(UrlCRSFetcher.DEFAULT_MAX_RETRIES, defaultFetcher.getMaxRetries());
-        assertEquals(UrlCRSFetcher.DEFAULT_INITIAL_BACKOFF_MS, defaultFetcher.getInitialBackoffMs());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_CDN_BASE_URL,
+                cdnFetcher.getBaseUrl());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_GITHUB_BASE_URL,
+                githubFetcher.getBaseUrl());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_PATH, cdnFetcher.getPathTemplate());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_CONNECT_TIMEOUT_SECONDS,
+                cdnFetcher.getConnectTimeoutSeconds());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_READ_TIMEOUT_SECONDS,
+                cdnFetcher.getReadTimeoutSeconds());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_MAX_ATTEMPTS,
+                cdnFetcher.getMaxRetries());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_INITIAL_BACKOFF_MS,
+                cdnFetcher.getInitialBackoffMs());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_TOTAL_TIMEOUT_SECONDS,
+                cdnFetcher.getTotalTimeoutSeconds());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+                cdnFetcher.getCircuitBreakerFailureThreshold());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_CIRCUIT_BREAKER_RESET_TIMEOUT,
+                cdnFetcher.getCircuitBreakerResetTimeout());
+        assertTrue(cdnFetcher.isNotFoundCacheEnabled());
+        assertTrue(githubFetcher.isNotFoundCacheEnabled());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_NOT_FOUND_CACHE_TTL,
+                cdnFetcher.getNotFoundCacheTtl());
+        assertEquals(UrlCRSProvider.SPATIAL_REFERENCE_NOT_FOUND_CACHE_TTL,
+                githubFetcher.getNotFoundCacheTtl());
     }
 
     // ==================== Network Failure Tests ====================
@@ -181,7 +201,7 @@ class SpatialReferenceFetcherTest {
         // EPSG:2154 is not in the default globals, should be fetched remotely
         ProjectionDef def = Defs.get("EPSG:2154");
 
-        assertNotNull(def, "Should fetch EPSG:2154 from spatialreference.org");
+        assertNotNull(def, "Should fetch EPSG:2154 from the OSGeo remote catalog");
         assertEquals("EPSG:2154", def.getSrsCode());
     }
 

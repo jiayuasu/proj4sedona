@@ -1,5 +1,9 @@
 package org.datasyslab.proj4sedona.core;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Projection definition - holds all parsed parameters for a coordinate system.
  * Mirrors: ProjectionDefinition type in lib/defs.js
@@ -40,7 +44,8 @@ public class ProjectionDef {
     private Double rectifiedGridAngle;  // gamma: Rectified grid angle
 
     // Scale and offsets
-    private Double k0;             // k_0 or k: Scale factor (default 1.0)
+    private Double k0;             // k_0 or k (default 1)
+    private boolean k0Specified;   // True when k_0 or k was explicitly supplied
     private Double x0;             // x_0: False easting (default 0)
     private Double y0;             // y_0: False northing (default 0)
 
@@ -49,6 +54,8 @@ public class ProjectionDef {
     private String units;          // Unit name: m, ft, us-ft, etc.
     private Double fromGreenwich;  // Prime meridian offset in radians
     private String axis;           // Axis order: enu, neu, etc. (default "enu")
+    private String coordinateSystemType;
+    private List<CoordinateAxis> coordinateAxes = Collections.emptyList();
 
     // UTM specific
     private Integer zone;          // UTM zone number
@@ -60,6 +67,22 @@ public class ProjectionDef {
     private Boolean over;          // Allow longitude wrapping
     private Boolean noUoff;        // no_uoff / no_off: Oblique Mercator without origin offset (variant A)
     private Boolean noRot;         // no_rot: Oblique Mercator without rectification rotation
+    private Double longWrap;       // lon_wrap: center of longitude wrapping range
+    private Double h;              // h: satellite/view height (Geostationary, Tilted Perspective)
+    private String projStr;        // full original PROJ string (when parsed from one)
+    private String oProj;          // o_proj: inner projection (General Oblique Transformation)
+    private Double oLatP;          // o_lat_p: latitude of new pole (ob_tran)
+    private Double oLonP;          // o_lon_p: longitude of new pole (ob_tran)
+    private Double oAlpha;         // o_alpha: rotation angle (ob_tran)
+    private Double oLonC;          // o_lon_c: rotation center longitude (ob_tran)
+    private Double oLatC;          // o_lat_c: rotation center latitude (ob_tran)
+    private Double oLon1;          // o_lon_1: first new-equator point longitude (ob_tran)
+    private Double oLat1;          // o_lat_1: first new-equator point latitude (ob_tran)
+    private Double oLon2;          // o_lon_2: second new-equator point longitude (ob_tran)
+    private Double oLat2;          // o_lat_2: second new-equator point latitude (ob_tran)
+    private Double tilt;           // tilt: camera tilt from nadir (Tilted Perspective)
+    private Double azi;            // azi: camera azimuth from north (Tilted Perspective)
+    private String sweep;          // sweep: sweep axis 'x' or 'y' (Geostationary)
 
     // Datum object (populated after parsing)
     private DatumParams datum;
@@ -141,7 +164,11 @@ public class ProjectionDef {
     public void setRectifiedGridAngle(Double rectifiedGridAngle) { this.rectifiedGridAngle = rectifiedGridAngle; }
 
     public Double getK0() { return k0; }
-    public void setK0(Double k0) { this.k0 = k0; }
+    public void setK0(Double k0) {
+        this.k0 = k0;
+        this.k0Specified = k0 != null;
+    }
+    public boolean isK0Specified() { return k0Specified; }
 
     public Double getX0() { return x0; }
     public void setX0(Double x0) { this.x0 = x0; }
@@ -160,6 +187,21 @@ public class ProjectionDef {
 
     public String getAxis() { return axis; }
     public void setAxis(String axis) { this.axis = axis; }
+
+    public String getCoordinateSystemType() { return coordinateSystemType; }
+    public void setCoordinateSystemType(String coordinateSystemType) {
+        this.coordinateSystemType = coordinateSystemType;
+    }
+
+    public List<CoordinateAxis> getCoordinateAxes() { return coordinateAxes; }
+    public void setCoordinateAxes(List<CoordinateAxis> coordinateAxes) {
+        if (coordinateAxes == null || coordinateAxes.isEmpty()) {
+            this.coordinateAxes = Collections.emptyList();
+        } else {
+            this.coordinateAxes =
+                Collections.unmodifiableList(new ArrayList<>(coordinateAxes));
+        }
+    }
 
     public Integer getZone() { return zone; }
     public void setZone(Integer zone) { this.zone = zone; }
@@ -181,6 +223,46 @@ public class ProjectionDef {
 
     public Boolean getNoRot() { return noRot; }
     public void setNoRot(Boolean noRot) { this.noRot = noRot; }
+
+    public Double getLongWrap() { return longWrap; }
+    public void setLongWrap(Double longWrap) { this.longWrap = longWrap; }
+
+    public Double getH() { return h; }
+    public void setH(Double h) { this.h = h; }
+
+    public String getProjStr() { return projStr; }
+    public void setProjStr(String projStr) { this.projStr = projStr; }
+
+    public String getOProj() { return oProj; }
+    public void setOProj(String oProj) { this.oProj = oProj; }
+
+    public Double getOLatP() { return oLatP; }
+    public void setOLatP(Double v) { this.oLatP = v; }
+    public Double getOLonP() { return oLonP; }
+    public void setOLonP(Double v) { this.oLonP = v; }
+    public Double getOAlpha() { return oAlpha; }
+    public void setOAlpha(Double v) { this.oAlpha = v; }
+    public Double getOLonC() { return oLonC; }
+    public void setOLonC(Double v) { this.oLonC = v; }
+    public Double getOLatC() { return oLatC; }
+    public void setOLatC(Double v) { this.oLatC = v; }
+    public Double getOLon1() { return oLon1; }
+    public void setOLon1(Double v) { this.oLon1 = v; }
+    public Double getOLat1() { return oLat1; }
+    public void setOLat1(Double v) { this.oLat1 = v; }
+    public Double getOLon2() { return oLon2; }
+    public void setOLon2(Double v) { this.oLon2 = v; }
+    public Double getOLat2() { return oLat2; }
+    public void setOLat2(Double v) { this.oLat2 = v; }
+
+    public Double getTilt() { return tilt; }
+    public void setTilt(Double tilt) { this.tilt = tilt; }
+
+    public Double getAzi() { return azi; }
+    public void setAzi(Double azi) { this.azi = azi; }
+
+    public String getSweep() { return sweep; }
+    public void setSweep(String sweep) { this.sweep = sweep; }
 
     public DatumParams getDatum() { return datum; }
     public void setDatum(DatumParams datum) { this.datum = datum; }

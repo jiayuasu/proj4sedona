@@ -27,7 +27,11 @@ import org.datasyslab.proj4sedona.core.Point;
  * </pre>
  * 
  * <p>This implementation delegates to {@link ExtendedTransverseMercator} for the
- * actual projection math, after setting up the UTM-specific parameters.</p>
+ * actual projection math, after setting up the UTM-specific parameters. With
+ * {@code +approx}, this port intentionally keeps the traditional TM path selected by
+ * that delegate. Current proj4js (commit 955bfd6) overwrites the approximate functions
+ * after initialization and effectively ignores the flag for UTM. Honoring it matches
+ * proj4js's own {@code +proj=tmerc +approx} expansion and PROJ more closely.</p>
  */
 public class UTM implements Projection {
 
@@ -69,6 +73,11 @@ public class UTM implements Projection {
         }
 
         // Set UTM-specific parameters
+        // Keep an auto-derived zone on the public parameter object.  Serialization
+        // happens after projection initialization, and without this assignment a
+        // valid zone-less definition (for example +proj=utm +lon_0=9 +south) lost
+        // both its zone and, historically, its hemisphere on PROJ-string export.
+        params.zone = zone;
         params.lat0 = 0.0;
         params.long0 = ((6 * Math.abs(zone)) - 183) * Values.D2R;
         params.x0 = 500000.0;

@@ -23,7 +23,7 @@ Proj fromJson = new Proj("{\"type\": \"ProjectedCRS\", ...}");
 |--------|-------------------|
 | PROJ string | Starts with `+` |
 | WKT1 | Contains `[` and starts with `PROJCS`, `GEOGCS`, `GEOCCS`, or `LOCAL_CS` |
-| WKT2 | Contains `[` and starts with `PROJCRS`, `GEOGCRS`, `GEODCRS`, `ENGCRS`, or `VERTCRS` |
+| WKT2 | Contains `[` and starts with `PROJCRS`, `GEOGCRS`, `GEODCRS`, `BOUNDCRS`, or `VERTCRS` |
 | PROJJSON | Starts with `{` |
 | Authority code | Matches pattern `AUTHORITY:CODE` (e.g., `EPSG:4326`, `ESRI:102001`, `IAU_2015:49900`) |
 | Shorthand alias | Matches a pre-registered name like `WGS84` or `GOOGLE` |
@@ -205,15 +205,16 @@ Proj proj = new Proj("EPSG:32618");
 
 // Export to PROJ string
 String projStr = proj.toProjString();
-// "+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs"
+// "+proj=utm +zone=18 +lon_0=-75 +k_0=0.9996 +x_0=500000.0 +ellps=WGS84 +datum=WGS84 +no_defs"
+// (metre CRSs emit no +units= token, matching PROJ)
 
 // Export to WKT1
 String wkt1 = proj.toWkt1();
-// "PROJCS[\"WGS 84 / UTM zone 18N\", ...]"
+// "PROJCS[\"EPSG:32618\", ...]"  (the CRS name is the input srsCode)
 
 // Export to WKT2
 String wkt2 = proj.toWkt2();
-// "PROJCRS[\"WGS 84 / UTM zone 18N\", ...]"
+// "PROJCRS[\"EPSG:32618\", ...]"
 
 // Export to PROJJSON
 String json = proj.toProjJson();
@@ -226,8 +227,77 @@ String prettyJson = proj.toProjJson(true);
 String epsg = proj.toEpsgCode();    // "EPSG:32618"
 
 // Get full authority reference
-String auth = proj.toAuthority();   // "EPSG:32618"
+String[] auth = proj.toAuthority();   // {"EPSG", "32618"}
 ```
+
+### Export Fidelity
+
+No single export is lossless for every supported definition. `toProjString()`
+preserves PROJ-specific operation parameters that WKT1, WKT2, and PROJJSON cannot
+encode, but legacy PROJ CRS strings cannot preserve all standard CRS metadata.
+For polar origins affected only by angular-unit conversion noise,
+`toProjString()` emits an exact `+lat_0=90` or `+lat_0=-90` because PROJ rejects
+values outside that range. WKT2 and PROJJSON preserve the parsed value instead,
+since those formats have no equivalent restriction; the in-memory latitude is
+not normalized.
+
+For example, WKT2 and PROJJSON can distinguish two polar horizontal axes using
+meridian metadata, while `+axis` cannot represent two axes that both point north
+or south. Proj4Sedona retains each such axis's name, abbreviation, direction,
+order, linear unit, and meridian when parsing WKT2 or PROJJSON, and reproduces
+that metadata in either standard format. `toProjString()` omits `+axis` only after
+the retained pair has been validated against the polar origin; WKT1 rejects the
+same input because it has no equivalent representation. Duplicate permutations
+supplied in raw PROJ input, incomplete or inconsistent meridian metadata, and all
+other invalid axis permutations are rejected with
+`UnsupportedOperationException`.
+
+The retained meridians also make duplicate-direction polar axes enforceable.
+With `enforceAxis=true`, coordinate transforms resolve each `nnu` or `ssu`
+horizontal coordinate to its positive easting or northing role from the axis
+meridian and projection origin. This supports both easting-first and
+northing-first definitions without treating the shared north/south direction as
+a sign inversion. Missing, malformed, or drifted metadata fails safely instead
+of dropping a coordinate. The default `enforceAxis=false` behavior and ordinary
+valid PROJ permutations such as `enu` and `neu` are unchanged.
+
+When a standard export would silently change coordinates, Proj4Sedona throws
+`UnsupportedOperationException` and, where the definition is representable in a
+legacy PROJ string, directs the caller to `toProjString()`.
+
+This is a compatibility change for callers that previously accepted lossy standard
+output: they must now handle `UnsupportedOperationException` or explicitly request a
+PROJ string.
+
+This applies to PROJ-only longitude handling (`+over`, `+lon_wrap`), authalic-radius
+mode (`+R_A`), `ob_tran`, Tilted Perspective, unsupported Oblique Mercator variants
+(`+no_rot` and the two-point form), and custom grid-shift operations. Approximate
+Transverse Mercator is format-dependent: WKT2 and PROJJSON reject it, while WKT1 emits
+the executable `Fast_Transverse_Mercator` method. Other uses of `+approx` are rejected
+by all standard exporters. WKT2 and
+PROJJSON preserve coordinate-affecting three- and seven-parameter `+towgs84`
+operations as a `BoundCRS` targeting WGS 84. This includes zero-valued operations
+on a non-WGS84 ellipsoid when they are not recoverable from a canonical named datum;
+the ellipsoid conversion still changes coordinates in that case.
+Geographic and projected sources target EPSG:4326 with EPSG methods 9603 and 9606;
+geocentric PROJJSON targets EPSG:4978 with methods 1031 and 1033. Helmert BoundCRS
+import is limited to those target/method combinations so an arbitrary target or
+coordinate-frame rotation cannot be silently rewritten as `+towgs84`. WKT1 preserves
+the same operation with `TOWGS84`.
+
+Canonical named grid-shift datums such as NAD27 are exportable in WKT1, WKT2, and
+PROJJSON. As in PROJ's standard exports, the document describes the datum and
+ellipsoid without embedding grid filenames: the grid belongs to the coordinate
+operation selected for that datum. Re-import resolves the emitted datum name through
+the bundled registry and restores the identical grid list. A custom or overridden
+`+nadgrids` list, a conflicting ellipsoid, or a simultaneous `+towgs84` operation is
+still rejected because a plain standard CRS document cannot preserve that definition.
+Geocentric CRS export is supported as a PROJ string or PROJJSON, but not yet as WKT.
+
+For supported definitions, standard exports preserve projection parameters,
+linear-unit factors, horizontal axis order and direction, and non-Greenwich prime
+meridians. Re-importing an exported definition therefore retains the coordinate
+semantics represented by that format.
 
 ### Using CRSSerializer Directly
 
@@ -241,7 +311,7 @@ String wkt1 = CRSSerializer.toWkt1(proj);
 String wkt2 = CRSSerializer.toWkt2(proj);
 String json = CRSSerializer.toProjJson(proj);
 String epsg = CRSSerializer.toEpsgCode(proj);
-String auth = CRSSerializer.toAuthority(proj);
+String[] auth = CRSSerializer.toAuthority(proj);
 ```
 
 ## See Also

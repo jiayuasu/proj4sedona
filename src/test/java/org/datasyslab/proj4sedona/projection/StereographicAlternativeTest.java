@@ -60,6 +60,18 @@ class StereographicAlternativeTest {
     }
 
     @Test
+    void testPolarLatTsTakesPrecedenceOverExplicitScale() {
+        // Polar Stereographic variant B derives its scale from lat_ts. Current
+        // proj4js (71b4ffc) and PROJ ignore a conflicting explicit k value here.
+        Converter conv = Proj4.proj4("+proj=longlat +datum=WGS84 +no_defs",
+            "+proj=stere +lat_0=90 +lat_ts=70 +lon_0=0 +k=0.5 "
+                + "+x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs");
+        Point xy = conv.forward(new Point(10, 80));
+        assertEquals(188568.08, xy.x, 0.5, "easting");
+        assertEquals(-1069422.73, xy.y, 0.5, "northing");
+    }
+
+    @Test
     void testEpsg28992RdNew() {
         // Amersfoort / RD New (Netherlands). proj4js: ll=[5.2, 52.25] -> xy=[142216.10, 473567.13]
         assertForwardInverse(

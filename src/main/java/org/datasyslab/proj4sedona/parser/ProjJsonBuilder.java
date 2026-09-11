@@ -1,9 +1,14 @@
 package org.datasyslab.proj4sedona.parser;
 
+import org.datasyslab.proj4sedona.constants.Values;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Converts WKT2 AST (List structure) to PROJJSON-like Map structure.
@@ -16,6 +21,9 @@ import java.util.Map;
  * into ProjectionDef objects.
  */
 public final class ProjJsonBuilder {
+
+    private static final Pattern AXIS_NAME_WITH_ABBREVIATION =
+        Pattern.compile("^(.*?)\\s*\\(([^()]*)\\)$");
 
     private ProjJsonBuilder() {
         // Utility class
@@ -55,7 +63,9 @@ public final class ProjJsonBuilder {
                 break;
 
             case "BASEGEOGCRS":
+            case "BASEGEODCRS":
             case "GEOGCRS":
+            case "GEODCRS":
                 convertGeogCrs(node, result);
                 break;
 
@@ -117,8 +127,12 @@ public final class ProjJsonBuilder {
             result.put("name", node.get(1));
         }
 
-        // Find and convert BASEGEOGCRS
+        // Find and convert the base CRS: BASEGEOGCRS (WKT2-2019) or BASEGEODCRS
+        // (WKT2-2015 — PROJ's WKT2:2015 output uses it for every projected CRS).
         List<Object> baseCrsNode = findNode(node, "BASEGEOGCRS");
+        if (baseCrsNode == null) {
+            baseCrsNode = findNode(node, "BASEGEODCRS");
+        }
         if (baseCrsNode != null) {
             result.put("base_crs", convert(baseCrsNode, new HashMap<>()));
         }
@@ -134,14 +148,18 @@ public final class ProjJsonBuilder {
         if (csNode != null) {
             Map<String, Object> coordSystem = new HashMap<>();
             if (csNode.size() > 1) {
-                coordSystem.put("type", csNode.get(1));
+                coordSystem.put("subtype", csNode.get(1));
             }
             coordSystem.put("axis", extractAxes(node));
             result.put("coordinate_system", coordSystem);
         }
 
-        // Find and convert LENGTHUNIT
+        // Find and convert the coordinate-system unit: LENGTHUNIT, or the plain
+        // UNIT keyword the WKT2 SIMPLIFIED conventions emit.
         List<Object> lengthUnitNode = findNode(node, "LENGTHUNIT");
+        if (lengthUnitNode == null) {
+            lengthUnitNode = findNode(node, "UNIT");
+        }
         if (lengthUnitNode != null) {
             Map<String, Object> unit = convertUnit(lengthUnitNode);
             Map<String, Object> coordSystem = (Map<String, Object>) result.get("coordinate_system");
@@ -149,6 +167,8 @@ public final class ProjJsonBuilder {
                 coordSystem.put("unit", unit);
             }
         }
+
+        applySimplifiedConversionUnits(result);
 
         // Find ID
         Map<String, Object> id = getId(node);
@@ -158,11 +178,22 @@ public final class ProjJsonBuilder {
     }
 
     /**
-     * Convert GEOGCRS or BASEGEOGCRS node.
+     * Convert a geodetic CRS node: GEOGCRS/BASEGEOGCRS (WKT2-2019) or
+     * GEODCRS/BASEGEODCRS (WKT2-2015; GEODCRS also covers geocentric CRSs via
+     * the Cartesian coordinate-system subtype).
      */
     @SuppressWarnings("unchecked")
     private static void convertGeogCrs(List<Object> node, Map<String, Object> result) {
-        result.put("type", "GeographicCRS");
+        // The WKT2-2015 GEODCRS keyword covers both geographic and geocentric CRSs;
+        // GEOGCRS (2019) is geographic only. The PROJJSON type is decided by the
+        // coordinate-system subtype, not the keyword: PROJ rejects a GeodeticCRS
+        // document with an ellipsoidal coordinate system ("expected a Cartesian or
+        // spherical CS") and itself normalizes an ellipsoidal GEODCRS to
+        // GeographicCRS. Divergence from wkt-parser 1.5.5, which stamps GeodeticCRS
+        // on every GEODCRS — its intermediate PROJJSON is internal, while ours is
+        // exposed via WktParser.parseWkt2ToProjJson. (The transformer still accepts
+        // GeodeticCRS + ellipsoidal leniently on input.)
+        boolean isGeodetic = "GEODCRS".equals(node.get(0).toString());
         if (node.size() > 1) {
             result.put("name", node.get(1));
         }
@@ -177,11 +208,34 @@ public final class ProjJsonBuilder {
             
             // Check for PRIMEM
             List<Object> primemNode = findNode(node, "PRIMEM");
-            if (primemNode != null && primemNode.size() > 1 && !"Greenwich".equals(primemNode.get(1))) {
+            if (primemNode != null && primemNode.size() > 1
+                    && (!"Greenwich".equals(primemNode.get(1))
+                        || primeMeridianIsNumericallyNonZero(primemNode))) {
                 Map<String, Object> primeMeridian = new HashMap<>();
                 primeMeridian.put("name", primemNode.get(1));
                 if (primemNode.size() > 2) {
-                    primeMeridian.put("longitude", parseDouble(primemNode.get(2)));
+                    // The PRIMEM value is in its own ANGLEUNIT when present, else in
+                    // the CRS's angular unit (the SIMPLIFIED form drops the local
+                    // unit — EPSG:4807's Paris meridian is 2.5969213 grads, not
+                    // degrees), else degrees. Normalized to degrees here, the plain-
+                    // number form of the PROJJSON prime_meridian.longitude field.
+                    // Divergence from wkt-parser 1.5.5, which reads the raw value as
+                    // degrees (~0.26 deg / 29 km error for grads meridians).
+                    double raw = parseDouble(primemNode.get(2));
+                    Double toRadians = angularUnitFactor(findNode(primemNode, "ANGLEUNIT"));
+                    if (toRadians == null) {
+                        toRadians = angularUnitFactor(findNode(primemNode, "UNIT"));
+                    }
+                    if (toRadians == null) {
+                        toRadians = angularUnitFactor(findNode(node, "ANGLEUNIT"));
+                    }
+                    if (toRadians == null) {
+                        toRadians = angularUnitFactor(findNode(node, "UNIT"));
+                    }
+                    double degrees = toRadians != null
+                        ? Math.round(raw * toRadians * Values.R2D * 1e9) / 1e9
+                        : raw;
+                    primeMeridian.put("longitude", degrees);
                 }
                 datum.put("prime_meridian", primeMeridian);
             }
@@ -189,10 +243,35 @@ public final class ProjJsonBuilder {
             result.put("datum_ensemble", convert(ensembleNode, new HashMap<>()));
         }
 
-        // Coordinate system
+        // Coordinate system. For GEODCRS the CS node's subtype decides geographic
+        // (ellipsoidal) vs geocentric (Cartesian) in the downstream transformer.
+        // Backported ahead of wkt-parser 1.5.6 (b7abacf), which now honors the CS
+        // node in WKT2-2015 too. PROJ's own WKT2:2015 output for EPSG:4978 carries
+        // CS[Cartesian,3] and no USAGE node (USAGE is 2019-only), and both parsers
+        // now classify it as geocentric.
         Map<String, Object> coordSystem = new HashMap<>();
-        coordSystem.put("type", "ellipsoidal");
+        String subtype = "ellipsoidal";
+        List<Object> csNode = findNode(node, "CS");
+        if (isGeodetic && csNode != null && csNode.size() > 1) {
+            subtype = csNode.get(1).toString();
+        }
+        result.put("type",
+            isGeodetic && "Cartesian".equals(subtype) ? "GeodeticCRS" : "GeographicCRS");
+        coordSystem.put("subtype", subtype);
         coordSystem.put("axis", extractAxes(node));
+        // The WKT2 SIMPLIFIED conventions carry a single CS-level unit (plain UNIT
+        // keyword) instead of per-axis units; without it a non-metre simplified
+        // geocentric CRS would silently lose its scale.
+        List<Object> csUnitNode = findNode(node, "LENGTHUNIT");
+        if (csUnitNode == null) {
+            csUnitNode = findNode(node, "ANGLEUNIT");
+        }
+        if (csUnitNode == null) {
+            csUnitNode = findNode(node, "UNIT");
+        }
+        if (csUnitNode != null) {
+            coordSystem.put("unit", convertUnit(csUnitNode));
+        }
         result.put("coordinate_system", coordSystem);
 
         // Find ID
@@ -200,6 +279,14 @@ public final class ProjJsonBuilder {
         if (id != null) {
             result.put("id", id);
         }
+    }
+
+    /**
+     * A WKT producer can label a non-zero meridian "Greenwich".  The numeric value
+     * is authoritative; dropping it by name changes every longitude in the CRS.
+     */
+    private static boolean primeMeridianIsNumericallyNonZero(List<Object> primemNode) {
+        return primemNode.size() > 2 && parseDouble(primemNode.get(2)) != 0.0;
     }
 
     /**
@@ -352,6 +439,76 @@ public final class ProjJsonBuilder {
     }
 
     /**
+     * WKT2 SIMPLIFIED omits each conversion parameter's local unit. Angular
+     * parameters inherit the base geographic CRS unit, linear parameters inherit
+     * the projected coordinate-system unit, and scale parameters use unity.
+     */
+    @SuppressWarnings("unchecked")
+    private static void applySimplifiedConversionUnits(Map<String, Object> projectedCrs) {
+        Object conversionValue = projectedCrs.get("conversion");
+        if (!(conversionValue instanceof Map)) {
+            return;
+        }
+        Object parametersValue =
+            ((Map<String, Object>) conversionValue).get("parameters");
+        if (!(parametersValue instanceof List)) {
+            return;
+        }
+
+        Object angularUnit = coordinateSystemUnit(projectedCrs.get("base_crs"));
+        Object linearUnit = coordinateSystemUnit(projectedCrs);
+        for (Object parameterValue : (List<?>) parametersValue) {
+            if (!(parameterValue instanceof Map)) {
+                continue;
+            }
+            Map<String, Object> parameter = (Map<String, Object>) parameterValue;
+            if (parameter.containsKey("unit") || parameter.get("name") == null) {
+                continue;
+            }
+            String name =
+                parameter.get("name").toString().toLowerCase(Locale.ROOT);
+            if (isAngularConversionParameter(name) && angularUnit != null) {
+                parameter.put("unit", angularUnit);
+            } else if (isLinearConversionParameter(name) && linearUnit != null) {
+                parameter.put("unit", linearUnit);
+            } else if (name.contains("scale factor")) {
+                Map<String, Object> scaleUnit = new HashMap<>();
+                scaleUnit.put("type", "ScaleUnit");
+                scaleUnit.put("name", "unity");
+                scaleUnit.put("conversion_factor", 1.0);
+                parameter.put("unit", scaleUnit);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object coordinateSystemUnit(Object crsValue) {
+        if (!(crsValue instanceof Map)) {
+            return null;
+        }
+        Object coordinateSystem =
+            ((Map<String, Object>) crsValue).get("coordinate_system");
+        if (!(coordinateSystem instanceof Map)) {
+            return null;
+        }
+        return ((Map<String, Object>) coordinateSystem).get("unit");
+    }
+
+    private static boolean isAngularConversionParameter(String name) {
+        return name.contains("latitude")
+            || name.contains("longitude")
+            || name.contains("azimuth")
+            || name.contains("angle")
+            || name.contains("co-latitude");
+    }
+
+    private static boolean isLinearConversionParameter(String name) {
+        return name.contains("easting")
+            || name.contains("northing")
+            || name.contains("height");
+    }
+
+    /**
      * Convert BOUNDCRS node.
      */
     @SuppressWarnings("unchecked")
@@ -362,7 +519,8 @@ public final class ProjJsonBuilder {
         List<Object> sourceCrsNode = findNode(node, "SOURCECRS");
         if (sourceCrsNode != null) {
             // Find the actual CRS content within SOURCECRS
-            List<Object> sourceCrsContent = findNodeAny(sourceCrsNode, "PROJCRS", "GEOGCRS");
+            List<Object> sourceCrsContent =
+                findNodeAny(sourceCrsNode, "PROJCRS", "GEOGCRS", "GEODCRS");
             if (sourceCrsContent != null) {
                 result.put("source_crs", convert(sourceCrsContent, new HashMap<>()));
             }
@@ -371,7 +529,8 @@ public final class ProjJsonBuilder {
         // Process TARGETCRS
         List<Object> targetCrsNode = findNode(node, "TARGETCRS");
         if (targetCrsNode != null) {
-            List<Object> targetCrsContent = findNodeAny(targetCrsNode, "PROJCRS", "GEOGCRS");
+            List<Object> targetCrsContent =
+                findNodeAny(targetCrsNode, "PROJCRS", "GEOGCRS", "GEODCRS");
             if (targetCrsContent != null) {
                 result.put("target_crs", convert(targetCrsContent, new HashMap<>()));
             }
@@ -430,7 +589,8 @@ public final class ProjJsonBuilder {
         // Adjust Scale difference parameter if present (for 7-param transforms)
         if (parameters.size() == 7) {
             Map<String, Object> scaleDiff = parameters.get(6);
-            if ("Scale difference".equals(scaleDiff.get("name"))) {
+            if ("Scale difference".equals(scaleDiff.get("name"))
+                    || hasEpsgId(scaleDiff, 8611)) {
                 Object valueObj = scaleDiff.get("value");
                 if (valueObj instanceof Number) {
                     double value = ((Number) valueObj).doubleValue();
@@ -447,6 +607,19 @@ public final class ProjJsonBuilder {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private static boolean hasEpsgId(Map<String, Object> object, int expectedCode) {
+        Object idValue = object.get("id");
+        if (!(idValue instanceof Map)) {
+            return false;
+        }
+        Map<String, Object> id = (Map<String, Object>) idValue;
+        Object authority = id.get("authority");
+        Double code = parseDouble(id.get("code"));
+        return authority != null && "EPSG".equalsIgnoreCase(authority.toString())
+            && code != null && code == expectedCode;
+    }
+
     /**
      * Convert AXIS node.
      */
@@ -454,7 +627,7 @@ public final class ProjJsonBuilder {
     private static void convertAxis(List<Object> node, Map<String, Object> result) {
         if (!result.containsKey("coordinate_system")) {
             Map<String, Object> coordSystem = new HashMap<>();
-            coordSystem.put("type", "unspecified");
+            // An AXIS node alone does not identify a coordinate-system subtype.
             coordSystem.put("axis", new ArrayList<Map<String, Object>>());
             result.put("coordinate_system", coordSystem);
         }
@@ -593,48 +766,55 @@ public final class ProjJsonBuilder {
     }
 
     /**
+     * The to-radians conversion factor of an ANGLEUNIT/UNIT node, or null when the
+     * node is absent or carries no numeric factor.
+     */
+    private static Double angularUnitFactor(List<Object> unitNode) {
+        if (unitNode == null || unitNode.size() < 3) {
+            return null;
+        }
+        Double factor = parseDouble(unitNode.get(2));
+        return factor != null && Double.isFinite(factor) && factor > 0 ? factor : null;
+    }
+
+    /**
      * Convert an AXIS node to Map.
      */
     @SuppressWarnings("unchecked")
     private static Map<String, Object> convertAxisNode(List<Object> node) {
         Map<String, Object> axis = new HashMap<>();
-        
-        String name = node.size() > 1 ? node.get(1).toString() : "Unknown";
+
+        String rawName = node.size() > 1 ? node.get(1).toString() : "Unknown";
+        String name = rawName;
+        String abbreviation = null;
+        Matcher nameMatcher = AXIS_NAME_WITH_ABBREVIATION.matcher(rawName);
+        if (nameMatcher.matches()) {
+            name = nameMatcher.group(1).trim();
+            abbreviation = nameMatcher.group(2);
+        }
         axis.put("name", name);
+        if (abbreviation != null) {
+            axis.put("abbreviation", abbreviation);
+        }
 
         // Determine direction
         String direction;
-        // Check for abbreviation pattern like "(E)" or "(N)"
-        if (name.matches("^\\([A-Za-z]\\)$")) {
-            String abbrev = name.substring(1, 2).toUpperCase();
-            switch (abbrev) {
-                case "E": direction = "east"; break;
-                case "N": direction = "north"; break;
-                case "U": direction = "up"; break;
-                case "W": direction = "west"; break;
-                case "S": direction = "south"; break;
-                default: direction = "unknown"; break;
-            }
-        } else if (node.size() > 2) {
-            direction = node.get(2).toString().toLowerCase();
+        if (node.size() > 2 && !(node.get(2) instanceof List)) {
+            // Preserve the token's case (wkt-parser 1.5.5): the PROJJSON direction
+            // enum is camelCase for geocentricX/Y/Z, so lowercasing produced
+            // schema-invalid values in the exposed intermediate PROJJSON. It is
+            // also authoritative over the abbreviation: a polar "(E)" axis may
+            // legitimately point south and be qualified by a meridian.
+            direction = node.get(2).toString();
         } else {
-            direction = "unknown";
+            direction = inferAxisDirection(abbreviation);
         }
         axis.put("direction", direction);
 
         // Find ORDER
         List<Object> orderNode = findNode(node, "ORDER");
         if (orderNode != null && orderNode.size() > 1) {
-            Object orderVal = orderNode.get(1);
-            if (orderVal instanceof Number) {
-                axis.put("order", ((Number) orderVal).intValue());
-            } else {
-                try {
-                    axis.put("order", Integer.parseInt(orderVal.toString()));
-                } catch (NumberFormatException e) {
-                    // Ignore
-                }
-            }
+            axis.put("order", parseAxisOrder(orderNode.get(1)));
         }
 
         // Find unit
@@ -643,7 +823,65 @@ public final class ProjJsonBuilder {
             axis.put("unit", convertUnit(unitNode));
         }
 
+        // A polar north/south direction is qualified by a meridian. PROJJSON
+        // represents a non-default angular unit inside longitude's value-and-unit
+        // object rather than as a sibling of longitude.
+        List<Object> meridianNode = findNode(node, "MERIDIAN");
+        if (meridianNode != null) {
+            if (meridianNode.size() <= 1) {
+                throw new IllegalArgumentException(
+                    "Axis MERIDIAN requires a longitude");
+            }
+            Double longitude = parseDouble(meridianNode.get(1));
+            if (longitude == null || !Double.isFinite(longitude)) {
+                throw new IllegalArgumentException(
+                    "Axis MERIDIAN longitude must be a finite number");
+            }
+            List<Object> meridianUnitNode =
+                findNodeAny(meridianNode, "ANGLEUNIT", "UNIT");
+            if (meridianUnitNode == null) {
+                throw new IllegalArgumentException(
+                    "Axis MERIDIAN requires ANGLEUNIT or UNIT");
+            }
+            Double meridianUnitFactor = angularUnitFactor(meridianUnitNode);
+            if (meridianUnitFactor == null || !Double.isFinite(meridianUnitFactor)) {
+                throw new IllegalArgumentException(
+                    "Axis MERIDIAN unit requires a positive finite conversion factor");
+            }
+            Map<String, Object> valueAndUnit = new HashMap<>();
+            valueAndUnit.put("value", longitude);
+            valueAndUnit.put("unit", convertUnit(meridianUnitNode));
+            Map<String, Object> meridian = new HashMap<>();
+            meridian.put("longitude", valueAndUnit);
+            axis.put("meridian", meridian);
+        }
+
         return axis;
+    }
+
+    private static String inferAxisDirection(String abbreviation) {
+        if (abbreviation == null || abbreviation.length() != 1) {
+            return "unknown";
+        }
+        switch (Character.toUpperCase(abbreviation.charAt(0))) {
+            case 'E': return "east";
+            case 'N': return "north";
+            case 'U': return "up";
+            case 'W': return "west";
+            case 'S': return "south";
+            default: return "unknown";
+        }
+    }
+
+    private static int parseAxisOrder(Object value) {
+        Double numeric = parseDouble(value);
+        if (numeric == null || !Double.isFinite(numeric)
+                || numeric != Math.rint(numeric)
+                || numeric < Integer.MIN_VALUE || numeric > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+                "Axis ORDER must be an integer: " + value);
+        }
+        return numeric.intValue();
     }
 
     /**
@@ -660,14 +898,9 @@ public final class ProjJsonBuilder {
                 }
             }
         }
-        // Sort by order if present
-        axes.sort((a, b) -> {
-            Integer orderA = (Integer) a.get("order");
-            Integer orderB = (Integer) b.get("order");
-            if (orderA == null) orderA = 0;
-            if (orderB == null) orderB = 0;
-            return orderA.compareTo(orderB);
-        });
+        // Array position is coordinate order. Retain ORDER as metadata but do not
+        // normalize malformed WKT by sorting it: WKT2 requires ORDER to agree with
+        // lexical position, and the serializer can then reject a mismatch.
         return axes;
     }
 

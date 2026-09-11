@@ -26,19 +26,36 @@ public class EquidistantCylindrical implements Projection {
     @Override
     public void init(ProjectionParams params) {
         this.a = params.a;
-        this.lat0 = params.getLat0();
-        this.latTs = params.getLatTs();
-        this.long0 = params.getLong0();
-        this.x0 = params.x0;
-        this.y0 = params.y0;
+        this.lat0 = defaultToZero(params.lat0);
+        this.latTs = resolveLatitudeOfTrueScale(params.latTs);
+        this.long0 = defaultToZero(params.long0);
+        this.x0 = defaultToZero(params.x0);
+        this.y0 = defaultToZero(params.y0);
         this.over = params.over;
         this.rc = Math.cos(latTs);
+    }
+
+    /**
+     * Resolve {@code +lat_ts} using JavaScript's {@code value || 0} semantics.
+     * In particular, an omitted, zero, or NaN value selects Plate Carrée rather
+     * than inheriting {@code +lat_0}.
+     */
+    public static double resolveLatitudeOfTrueScale(Double latTs) {
+        return latTs == null ? 0.0 : defaultToZero(latTs);
+    }
+
+    private static double defaultToZero(Double value) {
+        return value == null ? 0.0 : defaultToZero(value.doubleValue());
+    }
+
+    private static double defaultToZero(double value) {
+        return value == 0.0 || Double.isNaN(value) ? 0.0 : value;
     }
 
     @Override
     public Point forward(Point p) {
         double lon = ProjMath.adjustLon(p.x - long0, over);
-        double lat = p.y;
+        double lat = ProjMath.adjustLat(p.y - lat0);
         double x = a * lon * rc + x0;
         double y = a * lat + y0;
         return new Point(x, y, p.z);
@@ -49,7 +66,7 @@ public class EquidistantCylindrical implements Projection {
         double x = p.x - x0;
         double y = p.y - y0;
         double lon = ProjMath.adjustLon(x / (a * rc) + long0, over);
-        double lat = y / a;
+        double lat = ProjMath.adjustLat(lat0 + y / a);
         return new Point(lon, lat, p.z);
     }
 }

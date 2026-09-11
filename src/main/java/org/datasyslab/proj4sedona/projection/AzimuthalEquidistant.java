@@ -83,15 +83,16 @@ public class AzimuthalEquidistant implements Projection {
                 x = x0 + (Mlp + Ml) * Math.sin(dlon);
                 y = y0 + (Mlp + Ml) * Math.cos(dlon);
             } else {
-                // General case - use Vincenty formulas
+                // General case - use Vincenty formulas. Apply x0/y0 like the polar
+                // branches (proj4js 04bd414); the inverse subtracts them.
                 if (Math.abs(lon) < Values.EPSLN && Math.abs(lat - lat0) < Values.EPSLN) {
-                    return new Point(0, 0, p.z);
+                    return new Point(x0, y0, p.z);
                 }
                 double[] vars = vincentyInverse(lat0, long0, lat, lon, a, f);
                 double azi1 = vars[0];
                 double s12 = vars[1];
-                x = s12 * Math.sin(azi1);
-                y = s12 * Math.cos(azi1);
+                x = x0 + s12 * Math.sin(azi1);
+                y = y0 + s12 * Math.cos(azi1);
             }
         }
 

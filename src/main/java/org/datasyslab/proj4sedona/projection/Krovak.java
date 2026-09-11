@@ -1,0 +1,162 @@
+package org.datasyslab.proj4sedona.projection;
+
+import org.datasyslab.proj4sedona.common.ProjMath;
+import org.datasyslab.proj4sedona.core.Point;
+
+/**
+ * Krovak (oblique conformal conic) projection.
+ * Mirrors: lib/projections/krovak.js
+ *
+ * <p>Used by the Czech and Slovak national grids, e.g. EPSG:5514 / EPSG:2065
+ * (S-JTSK / Krovak). Krovak is always defined on the Bessel 1841 ellipsoid, so the
+ * ellipsoid constants are fixed here as in proj4js.</p>
+ *
+ * <p>Following proj4js, the {@code czech} orientation flag is never set. The resulting
+ * negative easting/northing coordinates are the north-orientated form used by
+ * {@code +proj=krovak} and EPSG:5514. The traditional southing/westing form is represented
+ * at the CRS level by {@code +axis=swu}, not by different projection math.</p>
+ *
+ * <p>{@link #init(ProjectionParams)} writes the effective public projection parameters
+ * back for serialization. Explicit nonzero latitude of centre, longitude of origin, and
+ * scale are honored (defaults are filled only when needed), while the cone-axis angle and
+ * pseudo-standard parallel are replaced with the fixed values used by runtime math.</p>
+ */
+public class Krovak implements Projection {
+
+    /** Effective angular constants (radians) fixed by the proj4js implementation. */
+    public static final double DEFAULT_LATITUDE_OF_PROJECTION_CENTRE = 0.863937979737193;
+    public static final double DEFAULT_LONGITUDE_OF_ORIGIN =
+        0.7417649320975901 - 0.308341501185665;
+    public static final double CO_LATITUDE_OF_CONE_AXIS =
+        2 * 0.785398163397448 - 1.04216856380474;
+    public static final double LATITUDE_OF_PSEUDO_STANDARD_PARALLEL = 1.37008346281555;
+    public static final double DEFAULT_SCALE_FACTOR = 0.9999;
+
+    private static final String[] NAMES = {
+        "Krovak", "Krovak Modified", "Krovak (North Orientated)",
+        "Krovak Modified (North Orientated)", "krovak"
+    };
+
+    private double a, e, e2, lat0, long0, k0, x0, y0;
+    private double s45, s0, alfa, k, n0, n, ro0, ad;
+    // proj4js never sets the czech flag. Its false branch is the north-orientated
+    // easting/northing form; a CRS with traditional southing/westing axes is handled by
+    // the transform pipeline's +axis=swu adjustment. Kept to mirror upstream structure.
+    private final boolean czech = false;
+    private Boolean over;
+
+    @Override
+    public String[] getNames() { return NAMES; }
+
+    @Override
+    public void init(ProjectionParams params) {
+        // Krovak is always on the Bessel 1841 ellipsoid.
+        this.a = 6377397.155;
+        this.e2 = 0.006674372230614;
+        this.e = Math.sqrt(this.e2);
+
+        this.lat0 = params.getLat0();
+        if (this.lat0 == 0) {
+            this.lat0 = DEFAULT_LATITUDE_OF_PROJECTION_CENTRE;
+        }
+        this.long0 = params.getLong0();
+        if (this.long0 == 0) {
+            this.long0 = DEFAULT_LONGITUDE_OF_ORIGIN;
+        }
+        // Persist effective public projection parameters for serialization. Explicit
+        // nonzero lat0/long0/k0 remain intact; defaults are filled only when needed,
+        // while alpha/lat1 are fixed by the runtime math. k0Specified still records
+        // whether scale was input.
+        params.lat0 = this.lat0;
+        params.long0 = this.long0;
+        this.k0 = resolveScaleFactor(params);
+        params.alpha = CO_LATITUDE_OF_CONE_AXIS;
+        params.lat1 = LATITUDE_OF_PSEUDO_STANDARD_PARALLEL;
+        params.k0 = this.k0;
+        // proj4js's krovak ignores +x_0/+y_0; this codebase applies offsets in the
+        // projection (Transform does not), and PROJ/pyproj apply them, so apply them here.
+        this.x0 = params.x0;
+        this.y0 = params.y0;
+        this.over = params.over;
+
+        this.s45 = 0.785398163397448; // 45 degrees
+        double fi0 = this.lat0;
+        this.alfa = Math.sqrt(1 + (this.e2 * Math.pow(Math.cos(fi0), 4)) / (1 - this.e2));
+        double u0 = Math.asin(Math.sin(fi0) / this.alfa);
+        double g = Math.pow((1 + this.e * Math.sin(fi0)) / (1 - this.e * Math.sin(fi0)), this.alfa * this.e / 2);
+        this.k = Math.tan(u0 / 2 + this.s45) / Math.pow(Math.tan(fi0 / 2 + this.s45), this.alfa) * g;
+        this.n0 = this.a * Math.sqrt(1 - this.e2) / (1 - this.e2 * Math.pow(Math.sin(fi0), 2));
+        this.s0 = LATITUDE_OF_PSEUDO_STANDARD_PARALLEL;
+        this.n = Math.sin(this.s0);
+        this.ro0 = this.k0 * this.n0 / Math.tan(this.s0);
+        this.ad = CO_LATITUDE_OF_CONE_AXIS;
+    }
+
+    /** Resolve Krovak's projection-specific scale default, including direct callers. */
+    public static double resolveScaleFactor(ProjectionParams params) {
+        boolean scaleSupplied = params.k0Specified || params.k0 != 1.0;
+        return !scaleSupplied || params.k0 == 0 || Double.isNaN(params.k0)
+            ? DEFAULT_SCALE_FACTOR : params.k0;
+    }
+
+    @Override
+    public Point forward(Point p) {
+        double lat = p.y;
+        double deltaLon = ProjMath.adjustLon(p.x - long0, over);
+
+        double gfi = Math.pow((1 + e * Math.sin(lat)) / (1 - e * Math.sin(lat)), alfa * e / 2);
+        double u = 2 * (Math.atan(k * Math.pow(Math.tan(lat / 2 + s45), alfa) / gfi) - s45);
+        double deltav = -deltaLon * alfa;
+        double s = Math.asin(Math.cos(ad) * Math.sin(u) + Math.sin(ad) * Math.cos(u) * Math.cos(deltav));
+        double d = Math.asin(Math.cos(u) * Math.sin(deltav) / Math.cos(s));
+        double eps = n * d;
+        double ro = ro0 * Math.pow(Math.tan(s0 / 2 + s45), n) / Math.pow(Math.tan(s / 2 + s45), n);
+
+        double y = ro * Math.cos(eps);
+        double x = ro * Math.sin(eps);
+
+        if (!czech) {
+            y *= -1;
+            x *= -1;
+        }
+        return new Point(x + x0, y + y0, p.z);
+    }
+
+    @Override
+    public Point inverse(Point p) {
+        // Remove false easting/northing, then revert x, y (as proj4js does).
+        double px = (p.y - y0);
+        double py = (p.x - x0);
+        if (!czech) {
+            py *= -1;
+            px *= -1;
+        }
+
+        double ro = Math.sqrt(px * px + py * py);
+        double eps = Math.atan2(py, px);
+        double d = eps / Math.sin(s0);
+        double s = 2 * (Math.atan(Math.pow(ro0 / ro, 1 / n) * Math.tan(s0 / 2 + s45)) - s45);
+        double u = Math.asin(Math.cos(ad) * Math.sin(s) - Math.sin(ad) * Math.cos(s) * Math.cos(d));
+        double deltav = Math.asin(Math.cos(s) * Math.sin(d) / Math.cos(u));
+        double lon = long0 - deltav / alfa;
+
+        double fi1 = u;
+        double lat = 0;
+        boolean ok = false;
+        int iter = 0;
+        do {
+            lat = 2 * (Math.atan(Math.pow(k, -1 / alfa) * Math.pow(Math.tan(u / 2 + s45), 1 / alfa)
+                * Math.pow((1 + e * Math.sin(fi1)) / (1 - e * Math.sin(fi1)), e / 2)) - s45);
+            if (Math.abs(fi1 - lat) < 0.0000000001) {
+                ok = true;
+            }
+            fi1 = lat;
+            iter += 1;
+        } while (!ok && iter < 15);
+        if (iter >= 15) {
+            return null;
+        }
+
+        return new Point(lon, lat, p.z);
+    }
+}

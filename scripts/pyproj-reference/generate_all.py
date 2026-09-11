@@ -7,6 +7,7 @@ This script orchestrates the generation of all reference data files:
 - parsing_reference.json: CRS parsing test cases
 - format_export_reference.json: CRS export format test cases
 - grid_transform_reference.json: Grid-based transformation test cases
+- meridian_axis_reference.json: Exhaustive projected CRS meridian-axis cases
 
 Usage:
     python generate_all.py --output-dir /path/to/output
@@ -22,6 +23,7 @@ from generate_transform_reference import generate_transform_reference
 from generate_parsing_reference import generate_parsing_reference
 from generate_format_reference import generate_format_reference
 from generate_grid_reference import generate_grid_reference
+from generate_meridian_axis_reference import generate_meridian_axis_reference
 
 
 def main():
@@ -59,6 +61,7 @@ def main():
         ("parsing_reference.json", generate_parsing_reference),
         ("format_export_reference.json", generate_format_reference),
         ("grid_transform_reference.json", generate_grid_reference),
+        ("meridian_axis_reference.json", generate_meridian_axis_reference),
     ]
     
     for filename, generator_func in generators:

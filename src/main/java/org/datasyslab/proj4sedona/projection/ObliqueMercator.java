@@ -64,7 +64,7 @@ public class ObliqueMercator implements Projection {
         this.a = params.a;
         this.es = params.es;
         this.e = Math.sqrt(es);
-        this.k0 = params.k0;
+        this.k0 = params.getK0OrDefault(1.0);
         this.lat0 = params.getLat0();
         this.x0 = params.x0;
         this.y0 = params.y0;

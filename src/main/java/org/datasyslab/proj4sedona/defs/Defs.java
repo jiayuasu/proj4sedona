@@ -22,16 +22,19 @@ import org.datasyslab.proj4sedona.util.CRSUtils;
  * <p>This class maintains a cache of parsed {@link ProjectionDef} objects and a
  * priority-ordered chain of {@link CRSProvider} instances that are consulted on cache
  * miss. Providers are tried in ascending priority order (lower value = tried first);
- * the first non-null {@link CRSResult} is parsed and cached.</p>
+ * the first non-null {@link CRSResult} is parsed and cached. A provider exception
+ * stops resolution and is propagated rather than being treated as not-found.</p>
  *
  * <p>By default, {@link #globals()} registers two providers:</p>
  * <ul>
  *   <li>{@link BuiltInCRSProvider} at priority <b>100</b> — instant map lookup, no network</li>
- *   <li>{@link UrlCRSProvider#spatialReference()} at priority <b>101</b> — fetches from spatialreference.org</li>
+ *   <li>{@link UrlCRSProvider#spatialReference()} at priority <b>101</b> — fetches
+ *       the OSGeo spatialreference.org catalog through jsDelivr with a raw GitHub fallback</li>
  * </ul>
  *
  * <p>Users can register custom providers at a lower priority to override defaults,
- * or at a higher priority to act as fallback:</p>
+ * or at a higher priority to act as fallback when earlier providers return
+ * {@code null}:</p>
  * <pre>
  * Defs.registerProvider(new MyCRSProvider(), 50);  // tried before built-in
  * </pre>
@@ -169,26 +172,57 @@ public final class Defs {
     /**
      * Set (register) a projection definition by name.
      *
-     * <p>If the definition is a PROJ string (starting with "+"), it will be
-     * automatically parsed into a ProjectionDef object.</p>
+     * <p>Accepts a PROJ string (starting with "+"), a PROJJSON document (starting
+     * with "{"), or a WKT string — mirroring proj4js {@code defs(code, definition)}
+     * (incl. proj4js 1a3b130, which fixed PROJJSON registration).</p>
      *
      * @param name The name/code to register the definition under (e.g., "EPSG:4326")
-     * @param projString The PROJ string definition (must start with "+")
+     * @param definition The PROJ string, PROJJSON, or WKT definition
      */
-    public static void set(String name, String projString) {
-        if (projString == null || projString.isEmpty()) {
-            definitions.remove(name);
+    public static void set(String name, String definition) {
+        // Normalize like get()/has()/remove(), so set("epsg:4326", ...) is
+        // retrievable via get("EPSG:4326") instead of silently shadowed by providers.
+        String key = CRSUtils.normalizeAuthorityCode(name);
+        String trimmed = definition == null ? "" : definition.trim();
+        if (trimmed.isEmpty()) {
+            definitions.remove(key);
             return;
         }
 
-        if (projString.charAt(0) == '+') {
-            ProjectionDef def = ProjString.parse(projString);
-            def.setSrsCode(name);
-            definitions.put(name, def);
+        ProjectionDef def;
+        if (trimmed.charAt(0) == '+') {
+            def = ProjString.parse(trimmed);
+        } else if (trimmed.charAt(0) == '{') {
+            // PROJJSON
+            @SuppressWarnings("unchecked")
+            Map<String, Object> json = GSON.fromJson(trimmed, Map.class);
+            def = WktParser.parse(json);
         } else {
-            throw new IllegalArgumentException(
-                "Unsupported definition format for Defs.set(name, String). Only PROJ strings (starting with '+') are supported by this method.");
+            // WKT1 / WKT2
+            def = WktParser.parse(trimmed);
         }
+        // The registered code identifies the definition (parsers may have set srsCode
+        // to the raw definition or its embedded name).
+        def.setSrsCode(key);
+        definitions.put(key, def);
+    }
+
+    /**
+     * Set (register) a PROJJSON definition by name.
+     * Mirrors proj4js {@code defs(code, projjsonObject)} (proj4js 1a3b130).
+     *
+     * @param name The name/code to register the definition under
+     * @param projjson The PROJJSON document as a parsed Map
+     */
+    public static void set(String name, Map<String, Object> projjson) {
+        String key = CRSUtils.normalizeAuthorityCode(name);
+        if (projjson == null) {
+            definitions.remove(key);
+            return;
+        }
+        ProjectionDef def = WktParser.parse(projjson);
+        def.setSrsCode(key);
+        definitions.put(key, def);
     }
 
     /**
@@ -198,13 +232,14 @@ public final class Defs {
      * @param def The ProjectionDef object
      */
     public static void set(String name, ProjectionDef def) {
+        String key = CRSUtils.normalizeAuthorityCode(name);
         if (def == null) {
-            definitions.remove(name);
+            definitions.remove(key);
         } else {
             if (def.getSrsCode() == null) {
-                def.setSrsCode(name);
+                def.setSrsCode(key);
             }
-            definitions.put(name, def);
+            definitions.put(key, def);
         }
     }
 
@@ -224,7 +259,8 @@ public final class Defs {
      *
      * @param name The name/code to look up (e.g., "EPSG:4326", "WGS84", "ESRI:102001")
      * @return The ProjectionDef, or null if no provider can resolve the code
-     * @throws CRSFetchException if a provider encounters a hard error (network failure, etc.)
+     * @throws CRSFetchException if a provider encounters an HTTP or network failure,
+     *         open circuit, or invalid response
      */
     public static ProjectionDef get(String name) {
         // Auto-initialize globals if not yet done
@@ -267,7 +303,8 @@ public final class Defs {
      * @return The ProjectionDef (never null)
      * @throws CRSFetchException with {@link CRSFetchException.Reason#NOT_FOUND} if no
      *         provider can resolve the code
-     * @throws CRSFetchException if a provider encounters a hard error (network failure, etc.)
+     * @throws CRSFetchException if a provider encounters an HTTP or network failure,
+     *         open circuit, or invalid response
      */
     public static ProjectionDef getOrThrow(String name) {
         ProjectionDef def = get(name);
@@ -383,7 +420,8 @@ public final class Defs {
      * after the first call. It registers:</p>
      * <ul>
      *   <li>{@link BuiltInCRSProvider} at priority 100</li>
-     *   <li>{@link UrlCRSProvider#spatialReference()} at priority 101</li>
+     *   <li>{@link UrlCRSProvider#spatialReference()} at priority 101, backed by
+     *       the OSGeo catalog through jsDelivr and raw GitHub</li>
      * </ul>
      *
      * <p>It also pre-populates the cache with common aliases that are not in

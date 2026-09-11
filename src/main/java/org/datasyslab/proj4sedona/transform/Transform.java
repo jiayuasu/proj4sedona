@@ -1,10 +1,12 @@
 package org.datasyslab.proj4sedona.transform;
 
 import org.datasyslab.proj4sedona.constants.Values;
+import org.datasyslab.proj4sedona.common.MeridianAxisResolver;
 import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.datum.DatumTransform;
+import org.datasyslab.proj4sedona.common.ProjMath;
 import org.datasyslab.proj4sedona.projection.ProjectionParams;
 
 /**
@@ -57,6 +59,19 @@ public final class Transform {
             }
         }
         return wgs84;
+    }
+
+    /**
+     * Canonical geocentric identity: matches any registered alias of the Geocentric
+     * projection (geocent/geocentric/Geocent/Geocentric), not just the raw "geocent"
+     * spelling (mirrors proj4js, whose geocent init sets a canonical name).
+     */
+    private static boolean isGeocent(ProjectionParams params) {
+        if (params.projName == null) {
+            return false;
+        }
+        String n = params.projName.toLowerCase(java.util.Locale.ROOT);
+        return "geocent".equals(n) || "geocentric".equals(n);
     }
 
     /**
@@ -141,11 +156,19 @@ public final class Transform {
             srcParams = source.getParams();
         }
 
-        // Step 2: Adjust for source axis order (e.g., "neu" to "enu")
-        if (enforceAxis && srcParams.axis != null && !"enu".equals(srcParams.axis)) {
-            p = AdjustAxis.adjust(srcParams.axis, false, p, hasZ);
-            if (p == null) {
+        // Step 2: Adjust for source axis order (e.g., "neu" to "enu").
+        // Duplicate polar directions (nnu/ssu) are resolved from their retained
+        // axis meridians; those direction tokens are geometry, not sign changes.
+        if (enforceAxis) {
+            String sourceAxis = axisForEnforcement(srcParams);
+            if (sourceAxis == null) {
                 return null;
+            }
+            if (!"enu".equals(sourceAxis)) {
+                p = AdjustAxis.adjustAxisToEnu(sourceAxis, p, hasZ);
+                if (p == null) {
+                    return null;
+                }
             }
         }
 
@@ -157,7 +180,11 @@ public final class Transform {
         } else {
             // Apply unit conversion if needed
             if (srcParams.toMeter != null && srcParams.toMeter != 0 && srcParams.toMeter != 1) {
-                p = new Point(p.x * srcParams.toMeter, p.y * srcParams.toMeter, p.z);
+                // Geocentric CRSs carry the linear unit on all three axes (as in PROJ;
+                // proj4js leaves z unscaled, producing mixed units).
+                double zIn = isGeocent(srcParams)
+                    ? p.z * srcParams.toMeter : p.z;
+                p = new Point(p.x * srcParams.toMeter, p.y * srcParams.toMeter, zIn);
                 p.m = point.m;
             }
             // Inverse projection: projected → geodetic
@@ -186,6 +213,11 @@ public final class Transform {
 
         // Step 7: Transform geodetic to destination coordinates
         if ("longlat".equals(destParams.projName)) {
+            // Wrap longitude into the range centered on longWrap, if requested
+            // (+lon_wrap). Mirrors lib/transform.js (proj4js bad16a6 + 39e7abc).
+            if (destParams.longWrap != null) {
+                p.x = destParams.longWrap + ProjMath.adjustLon(p.x - destParams.longWrap);
+            }
             // Convert radians to degrees
             p = new Point(p.x * Values.R2D, p.y * Values.R2D, p.z);
             p.m = point.m;
@@ -197,21 +229,52 @@ public final class Transform {
             }
             // Apply inverse unit conversion if needed
             if (destParams.toMeter != null && destParams.toMeter != 0 && destParams.toMeter != 1) {
-                p = new Point(p.x / destParams.toMeter, p.y / destParams.toMeter, p.z);
+                // Geocentric CRSs carry the linear unit on all three axes (as in PROJ).
+                double zOut = isGeocent(destParams)
+                    ? p.z / destParams.toMeter : p.z;
+                p = new Point(p.x / destParams.toMeter, p.y / destParams.toMeter, zOut);
             }
         }
 
         // Step 8: Adjust for destination axis order (e.g., "enu" to "neu")
-        if (enforceAxis && destParams.axis != null && !"enu".equals(destParams.axis)) {
-            p = AdjustAxis.adjust(destParams.axis, true, p, hasZ);
+        if (enforceAxis) {
+            String destinationAxis = axisForEnforcement(destParams);
+            if (destinationAxis == null) {
+                return null;
+            }
+            if (!"enu".equals(destinationAxis)) {
+                p = AdjustAxis.adjustAxisFromEnu(
+                    destinationAxis, p, hasZ || isGeocent(destParams));
+            }
         }
 
-        // Reset z if it wasn't in the original input
-        if (p != null && !hasZ) {
+        // Reset z if it wasn't in the original input — except when the destination is
+        // geocentric, where z is a computed coordinate even for 2D input (proj4js
+        // 0ee1202).
+        if (p != null && !hasZ && !isGeocent(destParams)) {
             p.z = 0;
         }
 
         return p;
+    }
+
+    /**
+     * Return the ordinary ENU permutation used by the axis adjuster.
+     *
+     * <p>Most definitions use the compact PROJ axis string directly. Polar
+     * coordinate systems with duplicate north/south directions require the
+     * richer meridian metadata to distinguish easting from northing. Invalid or
+     * drifted retained metadata returns {@code null} so enforcement fails
+     * safely instead of silently duplicating or dropping a coordinate.</p>
+     */
+    private static String axisForEnforcement(ProjectionParams params) {
+        if (!MeridianAxisResolver.requiresResolution(params)) {
+            return params.axis != null ? params.axis : "enu";
+        }
+        MeridianAxisResolver.Resolution resolution =
+            MeridianAxisResolver.resolve(params);
+        return resolution.isValid()
+            ? resolution.getConventionalAxis() : null;
     }
 
     /**

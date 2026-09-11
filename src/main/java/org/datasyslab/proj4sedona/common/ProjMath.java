@@ -127,6 +127,63 @@ public final class ProjMath {
     }
 
     /**
+     * Compute the isometric latitude.
+     * Mirrors: lib/common/latiso.js
+     *
+     * @param eccent Eccentricity of the ellipsoid (0 for the sphere form)
+     * @param phi Latitude in radians
+     * @param sinphi Sine of the latitude
+     * @return Isometric latitude (NaN beyond ±90°, ±Infinity at the poles)
+     */
+    public static double latiso(double eccent, double phi, double sinphi) {
+        if (Math.abs(phi) > Values.HALF_PI) {
+            return Double.NaN;
+        }
+        if (phi == Values.HALF_PI) {
+            return Double.POSITIVE_INFINITY;
+        }
+        if (phi == -Values.HALF_PI) {
+            return Double.NEGATIVE_INFINITY;
+        }
+
+        double con = eccent * sinphi;
+        return Math.log(Math.tan((Values.HALF_PI + phi) / 2))
+            + eccent * Math.log((1 - con) / (1 + con)) / 2;
+    }
+
+    /**
+     * Latitude from isometric latitude, single step.
+     * Mirrors: lib/common/fL.js
+     *
+     * @param x Multiplier
+     * @param L Isometric latitude
+     * @return Latitude in radians
+     */
+    public static double fL(double x, double L) {
+        return 2 * Math.atan(x * Math.exp(L)) - Values.HALF_PI;
+    }
+
+    /**
+     * Invert the isometric latitude iteratively.
+     * Mirrors: lib/common/invlatiso.js
+     *
+     * @param eccent Eccentricity of the ellipsoid
+     * @param ts Isometric latitude
+     * @return Latitude in radians
+     */
+    public static double invlatiso(double eccent, double ts) {
+        double phi = fL(1, ts);
+        double iPhi;
+        double con;
+        do {
+            iPhi = phi;
+            con = eccent * Math.sin(iPhi);
+            phi = fL(Math.exp(eccent * Math.log((1 + con) / (1 - con)) / 2), ts);
+        } while (Math.abs(phi - iPhi) > 1.0e-12);
+        return phi;
+    }
+
+    /**
      * Compute the latitude angle, phi2, for the inverse of various projections.
      * Mirrors: lib/common/phi2z.js
      *
@@ -165,6 +222,45 @@ public final class ProjMath {
                    (0.5 / eccent) * Math.log((1 - con) / (1 + con)));
         }
         return 2 * sinphi;
+    }
+
+    /**
+     * Coefficients for the authalic latitude series.
+     * Mirrors: lib/common/authset.js
+     *
+     * @param es Eccentricity squared
+     * @return three-element coefficient array (APA)
+     */
+    public static double[] authset(double es) {
+        final double P00 = 0.33333333333333333333;
+        final double P01 = 0.17222222222222222222;
+        final double P02 = 0.10257936507936507936;
+        final double P10 = 0.06388888888888888888;
+        final double P11 = 0.06640211640211640211;
+        final double P20 = 0.01641501294219154443;
+        double[] apa = new double[3];
+        apa[0] = es * P00;
+        double t = es * es;
+        apa[0] += t * P01;
+        apa[1] = t * P10;
+        t *= es;
+        apa[0] += t * P02;
+        apa[1] += t * P11;
+        apa[2] = t * P20;
+        return apa;
+    }
+
+    /**
+     * Convert authalic latitude to geodetic latitude using the series coefficients.
+     * Mirrors: lib/common/authlat.js
+     *
+     * @param beta Authalic latitude
+     * @param apa Coefficients from {@link #authset(double)}
+     * @return Geodetic latitude
+     */
+    public static double authlat(double beta, double[] apa) {
+        double t = beta + beta;
+        return beta + apa[0] * Math.sin(t) + apa[1] * Math.sin(t + t) + apa[2] * Math.sin(t + t + t);
     }
 
     // ==================== Meridional Distance Functions ====================

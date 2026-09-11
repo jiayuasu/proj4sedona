@@ -38,7 +38,7 @@ public class LambertConformalConic implements Projection {
         this.lat1 = params.getLat1();
         this.lat2 = params.getLat2();
         this.long0 = params.getLong0();
-        this.k0 = params.k0;
+        this.k0 = params.getK0OrDefault(1.0);
         this.x0 = params.x0;
         this.y0 = params.y0;
         this.over = params.over;
@@ -58,8 +58,7 @@ public class LambertConformalConic implements Projection {
         double ms2 = ProjMath.msfnz(e, sin2, cos2);
         double ts2 = ProjMath.tsfnz(e, lat2, sin2);
 
-        double ts0 = Math.abs(Math.abs(lat0) - Values.HALF_PI) < Values.EPSLN
-            ? 0 : ProjMath.tsfnz(e, lat0, Math.sin(lat0));
+        double ts0 = ProjMath.tsfnz(e, lat0, Math.sin(lat0));
 
         if (Math.abs(lat1 - lat2) > Values.EPSLN) {
             ns = Math.log(ms1 / ms2) / Math.log(ts1 / ts2);
@@ -70,7 +69,10 @@ public class LambertConformalConic implements Projection {
             ns = sin1;
         }
         f0 = ms1 / (ns * Math.pow(ts1, ns));
-        rh = a * f0 * Math.pow(ts0, ns);
+        // Handle poles by setting rh to 0 (proj4js 8c538fc): guarding ts0 instead
+        // breaks the south pole, where ns < 0 makes pow(0, ns) infinite.
+        rh = Math.abs(Math.abs(lat0) - Values.HALF_PI) < Values.EPSLN
+            ? 0 : a * f0 * Math.pow(ts0, ns);
     }
 
     @Override

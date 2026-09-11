@@ -15,6 +15,12 @@ import java.util.List;
 public class DatumParams {
 
     private int datumType;         // PJD_3PARAM, PJD_7PARAM, PJD_GRIDSHIFT, PJD_WGS84, PJD_NODATUM
+    // True when the 7-parameter tail was converted at parse time (arc-seconds to
+    // radians, ppm to multiplier). datumType alone cannot answer this after a
+    // nadgrids override flips it to PJD_GRIDSHIFT: the converted values stay in
+    // datumParams, while an all-zero tail is never converted. Serialization needs
+    // the distinction to re-encode correctly.
+    private boolean sevenParamsConverted;
     private double[] datumParams;  // 3 or 7 transformation parameters
     private double a;              // Semi-major axis of the ellipsoid
     private double b;              // Semi-minor axis of the ellipsoid
@@ -42,15 +48,24 @@ public class DatumParams {
         this.es = es;
         this.ep2 = ep2;
 
-        // Determine datum type based on inputs
-        // Mirrors logic from lib/datum.js
-        if (datumCode == null || "none".equalsIgnoreCase(datumCode)) {
-            this.datumType = Values.PJD_NODATUM;
-        } else {
-            this.datumType = Values.PJD_WGS84;
-        }
+        // Determine datum type based on inputs.
+        // Mirrors lib/datum.js (proj4js 61689a9, "Fix unknown datum handling to match
+        // PROJ behavior"): an unknown/unnamed datum with no towgs84 is NODATUM (no
+        // shift applied), not WGS84. Known datums (incl. +datum=WGS84) carry towgs84
+        // parameters from the registry, which sets WGS84/3PARAM/7PARAM below.
+        this.datumType = Values.PJD_NODATUM;
 
         if (datumParamsArray != null) {
+            // PROJ accepts exactly 3 or 7 towgs84 values and rejects any other arity
+            // at parse time. Neither reference behavior for malformed input is worth
+            // mirroring: this port previously threw ArrayIndexOutOfBounds for 4-6
+            // values, and proj4js silently reads past the array end, poisoning the
+            // 7-parameter branch with NaN rotations. Fail loudly instead.
+            if (datumParamsArray.length != 3 && datumParamsArray.length != 7) {
+                throw new IllegalArgumentException(
+                    "towgs84 requires 3 or 7 parameters, got " + datumParamsArray.length);
+            }
+            this.datumType = Values.PJD_WGS84;
             this.datumParams = datumParamsArray.clone();
             
             // Check if any translation params are non-zero
@@ -72,6 +87,7 @@ public class DatumParams {
                     this.datumParams[4] *= Values.SEC_TO_RAD;
                     this.datumParams[5] *= Values.SEC_TO_RAD;
                     this.datumParams[6] = (this.datumParams[6] / 1000000.0) + 1.0;
+                    this.sevenParamsConverted = true;
                 }
             }
         }
@@ -147,6 +163,7 @@ public class DatumParams {
     // Getters
 
     public int getDatumType() { return datumType; }
+    public boolean hasConverted7Params() { return sevenParamsConverted; }
     public double[] getDatumParams() { return datumParams; }
     public double getA() { return a; }
     public double getB() { return b; }

@@ -52,6 +52,20 @@ public final class Units {
     }
 
     /**
+     * Reverse lookup: the unit code whose to-meter factor matches within PROJ's
+     * tolerance (1e-10 relative, as in UnitOfMeasure::exportToPROJString). Returns
+     * null when no table entry matches.
+     */
+    public static String fromToMeter(double toMeter) {
+        for (Map.Entry<String, Double> entry : UNITS.entrySet()) {
+            if (Math.abs(entry.getValue() - toMeter) < 1e-10 * toMeter) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Check if a unit exists.
      */
     public static boolean contains(String unit) {

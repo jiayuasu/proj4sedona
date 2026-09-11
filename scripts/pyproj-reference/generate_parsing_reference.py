@@ -11,8 +11,37 @@ This script generates test cases for CRS parsing from various formats:
 """
 
 import json
-from typing import Dict, List, Any, Optional
+import math
+from typing import Dict, List, Any
 from pyproj import CRS
+
+
+def extract_effective_ellipsoid(crs: CRS) -> Dict[str, float]:
+    """Return the axes used by the operational PROJ definition."""
+    operational = crs.to_dict()
+    metadata_a = crs.ellipsoid.semi_major_metre
+    metadata_b = crs.ellipsoid.semi_minor_metre
+
+    if "R" in operational:
+        radius = float(operational["R"])
+        return {"semi_major_metre": radius, "semi_minor_metre": radius}
+
+    semi_major = float(operational.get("a", metadata_a))
+    if "b" in operational:
+        semi_minor = float(operational["b"])
+    elif "rf" in operational:
+        semi_minor = semi_major * (1 - 1 / float(operational["rf"]))
+    elif "f" in operational:
+        semi_minor = semi_major * (1 - float(operational["f"]))
+    elif "es" in operational:
+        semi_minor = semi_major * math.sqrt(1 - float(operational["es"]))
+    else:
+        semi_minor = metadata_b
+
+    return {
+        "semi_major_metre": semi_major,
+        "semi_minor_metre": semi_minor,
+    }
 
 
 def get_epsg_test_cases() -> List[Dict[str, Any]]:
@@ -93,6 +122,12 @@ def extract_crs_params(crs: CRS) -> Dict[str, Any]:
             "semi_minor_metre": crs.ellipsoid.semi_minor_metre,
             "inverse_flattening": crs.ellipsoid.inverse_flattening,
         }
+
+    # Projection libraries operate on the ellipsoid encoded by the effective
+    # PROJ definition. This intentionally differs from CRS metadata for
+    # EPSG:3857: the metadata names WGS84, while Pseudo-Mercator computes on a
+    # sphere with a=b=6378137. Keep both representations explicit.
+    params["effective_ellipsoid"] = extract_effective_ellipsoid(crs)
     
     # Get datum info
     if crs.datum:
@@ -126,11 +161,23 @@ def extract_crs_params(crs: CRS) -> Dict[str, Any]:
 
 def generate_parsing_reference(output_file: str, verbose: bool = False) -> None:
     """Generate parsing reference data."""
-    
+
+    epsg_cases = get_epsg_test_cases()
+    proj_cases = get_proj_string_test_cases()
+    wkt_source_cases = epsg_cases[:5]
+    expected_counts = {
+        "epsg": len(epsg_cases),
+        "proj_string": len(proj_cases),
+        "wkt": len(wkt_source_cases) * 2,
+    }
+    expected_counts["total"] = sum(expected_counts.values())
+
     reference_data = {
-        "version": "1.0",
+        "version": "1.1",
         "generator": "pyproj",
         "pyproj_version": None,
+        "expected_case_counts": expected_counts,
+        "tolerance_m": 0.01,
         "epsg_test_cases": [],
         "proj_string_test_cases": [],
         "wkt_test_cases": [],
@@ -144,13 +191,14 @@ def generate_parsing_reference(output_file: str, verbose: bool = False) -> None:
     if verbose:
         print("  Processing EPSG codes...")
     
-    for epsg_case in get_epsg_test_cases():
+    for epsg_case in epsg_cases:
         if verbose:
             print(f"    {epsg_case['code']}")
         
         try:
             crs = CRS(epsg_case["code"])
             test_case = {
+                "case_id": "epsg/" + epsg_case["code"].lower().replace(":", "_"),
                 "input": epsg_case["code"],
                 "description": epsg_case["desc"],
                 "parsed_params": extract_crs_params(crs),
@@ -162,6 +210,7 @@ def generate_parsing_reference(output_file: str, verbose: bool = False) -> None:
             }
         except Exception as e:
             test_case = {
+                "case_id": "epsg/" + epsg_case["code"].lower().replace(":", "_"),
                 "input": epsg_case["code"],
                 "description": epsg_case["desc"],
                 "parsed_params": None,
@@ -178,13 +227,14 @@ def generate_parsing_reference(output_file: str, verbose: bool = False) -> None:
     if verbose:
         print("  Processing PROJ strings...")
     
-    for proj_case in get_proj_string_test_cases():
+    for index, proj_case in enumerate(proj_cases):
         if verbose:
             print(f"    {proj_case['desc']}")
         
         try:
             crs = CRS(proj_case["proj_string"])
             test_case = {
+                "case_id": f"proj_string/{index:02d}",
                 "input": proj_case["proj_string"],
                 "description": proj_case["desc"],
                 "parsed_params": extract_crs_params(crs),
@@ -196,6 +246,7 @@ def generate_parsing_reference(output_file: str, verbose: bool = False) -> None:
             }
         except Exception as e:
             test_case = {
+                "case_id": f"proj_string/{index:02d}",
                 "input": proj_case["proj_string"],
                 "description": proj_case["desc"],
                 "parsed_params": None,
@@ -212,46 +263,57 @@ def generate_parsing_reference(output_file: str, verbose: bool = False) -> None:
     if verbose:
         print("  Generating WKT test cases...")
     
-    for epsg_case in get_epsg_test_cases()[:5]:  # Use first 5 EPSG codes
+    for epsg_case in wkt_source_cases:
+        source_id = epsg_case["code"].lower().replace(":", "_")
         try:
             crs = CRS(epsg_case["code"])
             wkt1 = crs.to_wkt(version="WKT1_GDAL")
             wkt2 = crs.to_wkt(version="WKT2_2019")
-            
-            # Test parsing WKT1
-            crs_from_wkt1 = CRS(wkt1)
-            wkt1_case = {
-                "input": wkt1,
-                "input_format": "WKT1",
-                "description": f"WKT1 from {epsg_case['code']}",
-                "parsed_params": extract_crs_params(crs_from_wkt1),
-                "error": None
-            }
-            reference_data["wkt_test_cases"].append(wkt1_case)
-            
-            # Test parsing WKT2
-            crs_from_wkt2 = CRS(wkt2)
-            wkt2_case = {
-                "input": wkt2,
-                "input_format": "WKT2",
-                "description": f"WKT2 from {epsg_case['code']}",
-                "parsed_params": extract_crs_params(crs_from_wkt2),
-                "error": None
-            }
-            reference_data["wkt_test_cases"].append(wkt2_case)
-            
         except Exception as e:
-            reference_data["wkt_test_cases"].append({
-                "input": epsg_case["code"],
-                "input_format": "WKT",
-                "description": f"WKT from {epsg_case['code']}",
-                "parsed_params": None,
-                "error": str(e)
-            })
+            wkt1 = None
+            wkt2 = None
+            source_error = str(e)
+        else:
+            source_error = None
+
+        # Keep two deterministic rows per source EPSG even if one export or parse
+        # fails. Consumers can then reconcile the fixture's declared count.
+        for format_name, wkt_value in (("wkt1", wkt1), ("wkt2", wkt2)):
+            case_id = f"wkt/{source_id}/{format_name}"
+            if source_error is not None:
+                wkt_case = {
+                    "case_id": case_id,
+                    "input": epsg_case["code"],
+                    "input_format": format_name.upper(),
+                    "description": f"{format_name.upper()} from {epsg_case['code']}",
+                    "parsed_params": None,
+                    "error": source_error,
+                }
+            else:
+                try:
+                    crs_from_wkt = CRS(wkt_value)
+                    wkt_case = {
+                        "case_id": case_id,
+                        "input": wkt_value,
+                        "input_format": format_name.upper(),
+                        "description": f"{format_name.upper()} from {epsg_case['code']}",
+                        "parsed_params": extract_crs_params(crs_from_wkt),
+                        "error": None,
+                    }
+                except Exception as e:
+                    wkt_case = {
+                        "case_id": case_id,
+                        "input": wkt_value,
+                        "input_format": format_name.upper(),
+                        "description": f"{format_name.upper()} from {epsg_case['code']}",
+                        "parsed_params": None,
+                        "error": str(e),
+                    }
+            reference_data["wkt_test_cases"].append(wkt_case)
     
     # Write output
     with open(output_file, 'w') as f:
-        json.dump(reference_data, f, indent=2)
+        json.dump(reference_data, f, indent=2, allow_nan=False)
 
 
 if __name__ == "__main__":

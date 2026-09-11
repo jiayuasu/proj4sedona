@@ -4,10 +4,12 @@ import org.datasyslab.proj4sedona.core.Point;
 
 /**
  * Adjusts coordinates based on the axis order of a CRS.
- * Mirrors: lib/adjust_axis.js
- * 
- * Standard axis order is "enu" (Easting-Northing-Up).
- * Some CRS use different orders like "neu", "wsu", etc.
+ * Mirrors: lib/adjust_axis.js (post proj4js c5bb8e1, "Fix enforceAxis for z and
+ * arbitrary orders")
+ *
+ * <p>Standard axis order is "enu" (Easting-Northing-Up). Some CRS use different
+ * orders like "neu", "wsu", or even orders that place the vertical axis first
+ * (e.g. "uen"); the per-position switch below handles any permutation.</p>
  */
 public final class AdjustAxis {
 
@@ -16,88 +18,35 @@ public final class AdjustAxis {
     }
 
     /**
-     * Adjust axis order for a point.
-     * 
-     * @param axis The axis specification (e.g., "enu", "neu", "wsu")
-     * @param denorm If true, converting from CRS to standard; if false, converting to CRS
-     * @param point The input point
+     * Convert a point in the CRS's axis order to ENU (east/north/up) order.
+     *
+     * @param axis The axis specification (e.g., "enu", "neu", "uen")
+     * @param point The input point in CRS axis order
      * @param hasZ Whether the point has a meaningful z coordinate
-     * @return A new point with adjusted coordinates, or null if axis is invalid
+     * @return A new point in ENU order, or null if axis is invalid
      */
-    public static Point adjust(String axis, boolean denorm, Point point, boolean hasZ) {
+    public static Point adjustAxisToEnu(String axis, Point point, boolean hasZ) {
         if (axis == null || axis.length() != 3) {
             return null;
         }
 
-        double xin = point.x;
-        double yin = point.y;
-        double zin = point.z;
-
+        double[] in = {point.x, point.y, point.z};
         double outX = 0, outY = 0, outZ = 0;
         boolean hasOutZ = false;
 
         for (int i = 0; i < 3; i++) {
-            // Skip z if denormalizing and no z present
-            if (denorm && i == 2 && !hasZ) {
+            if (i == 2 && !hasZ) {
                 continue;
             }
-
-            double v;
-            char target;
-
-            if (i == 0) {
-                v = xin;
-                char axisChar = axis.charAt(i);
-                if (axisChar == 'e' || axisChar == 'w') {
-                    target = 'x';
-                } else {
-                    target = 'y';
-                }
-            } else if (i == 1) {
-                v = yin;
-                char axisChar = axis.charAt(i);
-                if (axisChar == 'n' || axisChar == 's') {
-                    target = 'y';
-                } else {
-                    target = 'x';
-                }
-            } else {
-                v = zin;
-                target = 'z';
-            }
-
-            char axisChar = axis.charAt(i);
-            switch (axisChar) {
-                case 'e':
-                    if (target == 'x') outX = v;
-                    else outY = v;
-                    break;
-                case 'w':
-                    if (target == 'x') outX = -v;
-                    else outY = -v;
-                    break;
-                case 'n':
-                    if (target == 'y') outY = v;
-                    else outX = v;
-                    break;
-                case 's':
-                    if (target == 'y') outY = -v;
-                    else outX = -v;
-                    break;
-                case 'u':
-                    if (hasZ) {
-                        outZ = v;
-                        hasOutZ = true;
-                    }
-                    break;
-                case 'd':
-                    if (hasZ) {
-                        outZ = -v;
-                        hasOutZ = true;
-                    }
-                    break;
+            double v = in[i];
+            switch (axis.charAt(i)) {
+                case 'e': outX = v; break;
+                case 'w': outX = -v; break;
+                case 'n': outY = v; break;
+                case 's': outY = -v; break;
+                case 'u': outZ = v; hasOutZ = true; break;
+                case 'd': outZ = -v; hasOutZ = true; break;
                 default:
-                    // Unknown axis character
                     return null;
             }
         }
@@ -108,5 +57,64 @@ public final class AdjustAxis {
         }
         result.m = point.m;
         return result;
+    }
+
+    /**
+     * Convert a point in ENU (east/north/up) order to the CRS's axis order.
+     *
+     * @param axis The axis specification (e.g., "enu", "neu", "uen")
+     * @param point The input point in ENU order
+     * @param hasZ Whether the point has a meaningful z coordinate
+     * @return A new point in CRS axis order, or null if axis is invalid
+     */
+    public static Point adjustAxisFromEnu(String axis, Point point, boolean hasZ) {
+        if (axis == null || axis.length() != 3) {
+            return null;
+        }
+
+        double[] out = new double[3];
+        boolean hasOutZ = false;
+
+        for (int i = 0; i < 3; i++) {
+            if (i == 2 && !hasZ) {
+                continue;
+            }
+            double v;
+            switch (axis.charAt(i)) {
+                case 'e': v = point.x; break;
+                case 'w': v = -point.x; break;
+                case 'n': v = point.y; break;
+                case 's': v = -point.y; break;
+                case 'u': v = point.z; break;
+                case 'd': v = -point.z; break;
+                default:
+                    return null;
+            }
+            out[i] = v;
+            if (i == 2) {
+                hasOutZ = true;
+            }
+        }
+
+        Point result = new Point(out[0], out[1]);
+        if (hasOutZ || hasZ) {
+            result.z = out[2];
+        }
+        result.m = point.m;
+        return result;
+    }
+
+    /**
+     * Adjust axis order for a point.
+     *
+     * @deprecated Use {@link #adjustAxisToEnu} (source CRS to ENU) or
+     *     {@link #adjustAxisFromEnu} (ENU to destination CRS) instead; this shim
+     *     keeps the pre-c5bb8e1 signature working.
+     */
+    @Deprecated
+    public static Point adjust(String axis, boolean denorm, Point point, boolean hasZ) {
+        return denorm
+            ? adjustAxisFromEnu(axis, point, hasZ)
+            : adjustAxisToEnu(axis, point, hasZ);
     }
 }

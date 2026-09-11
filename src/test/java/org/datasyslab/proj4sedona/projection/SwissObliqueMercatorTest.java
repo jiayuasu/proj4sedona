@@ -94,9 +94,9 @@ class SwissObliqueMercatorTest {
     void testSerializationRoundTrip() {
         // Regression guard for the round-trip bug: proj4sedona's serializer emits the
         // method name "Swiss Oblique Mercator", which must re-import (previously failed
-        // with "Unknown projection: Swiss Oblique Mercator"). Compare the projection
-        // math (datum-independent) of the re-imported def against the original, so this
-        // does not depend on whether a given serialization preserves +towgs84.
+        // with "Unknown projection: Swiss Oblique Mercator"). Compare every executable
+        // export against the original; WKT2 and PROJJSON preserve the Swiss TOWGS84
+        // transformation in a BoundCRS.
         Proj original = new Proj(LV03);
         double[][] coords = {{7.439583333, 46.952405556}, {8.55, 47.37}, {6.14, 46.2}};
         for (String serialized : new String[] {

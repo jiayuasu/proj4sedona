@@ -14,7 +14,10 @@ import org.datasyslab.proj4sedona.core.Point;
 public class LambertAzimuthalEqualArea implements Projection {
 
     private static final String[] NAMES = {
-        "Lambert Azimuthal Equal Area", "Lambert_Azimuthal_Equal_Area", "laea"
+        "Lambert Azimuthal Equal Area",
+        "Lambert Azimuthal Equal Area (Spherical)",
+        "Lambert_Azimuthal_Equal_Area",
+        "laea"
     };
 
     private static final int S_POLE = 1, N_POLE = 2, EQUIT = 3, OBLIQ = 4;

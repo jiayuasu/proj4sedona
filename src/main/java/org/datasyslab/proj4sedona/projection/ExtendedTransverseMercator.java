@@ -30,7 +30,8 @@ public class ExtendedTransverseMercator implements Projection {
     private static final String[] NAMES = {
         "Extended_Transverse_Mercator", "Extended Transverse Mercator", 
         "etmerc", "Transverse_Mercator", "Transverse Mercator", 
-        "Gauss Kruger", "Gauss_Kruger", "tmerc"
+        "Gauss Kruger", "Gauss_Kruger", "tmerc",
+        "Fast_Transverse_Mercator", "Fast Transverse Mercator"
     };
 
     // Projection parameters
@@ -76,10 +77,19 @@ public class ExtendedTransverseMercator implements Projection {
         this.over = params.over;
         this.approx = params.approx;
 
+        // Current proj4js requires an ellipsoid for exact ETMERC. A sphere is only
+        // supported through the explicitly requested traditional TM algorithm.
+        if (!usesApproximateAlgorithm(params) && (Double.isNaN(es) || es <= 0)) {
+            throw new IllegalArgumentException(
+                "Incorrect elliptical usage. Try using the +approx option in the proj string, "
+                    + "or PROJECTION[\"Fast_Transverse_Mercator\"] in the WKT.");
+        }
+
         // Check if we should use approximate (simple tmerc) mode
-        if (Boolean.TRUE.equals(approx) || Double.isNaN(es) || es <= 0) {
+        if (usesApproximateAlgorithm(params)) {
             useApprox = true;
-            if (es > 0) {
+            this.k0 = params.getK0OrDefault(1.0);
+            if (es != 0.0 && !Double.isNaN(es)) {
                 en = ProjMath.pjEnfn(es);
                 ml0 = ProjMath.pjMlfn(lat0, Math.sin(lat0), Math.cos(lat0), en);
             }
@@ -139,6 +149,21 @@ public class ExtendedTransverseMercator implements Projection {
         Zb = -Qn * (Z + ProjMath.clens(gtu, 2 * Z));
     }
 
+    /** Whether this parameter set takes the traditional Transverse Mercator path. */
+    public static boolean usesApproximateAlgorithm(ProjectionParams params) {
+        return Boolean.TRUE.equals(params.approx) || isFastProjectionName(params.projName);
+    }
+
+    /** Whether a WKT method name directly selects proj4js's traditional TM implementation. */
+    public static boolean isFastProjectionName(String projectionName) {
+        if (projectionName == null) {
+            return false;
+        }
+        String normalized = ProjectionRegistry.getNormalizedProjName(
+            projectionName.toLowerCase(java.util.Locale.ROOT));
+        return "fast_transverse_mercator".equals(normalized);
+    }
+
     /**
      * Forward projection: geographic (lon/lat in radians) to projected (x/y in meters).
      */
@@ -192,6 +217,9 @@ public class ExtendedTransverseMercator implements Projection {
             // Spherical case
             double b = cosPhi * Math.sin(deltaLon);
             if (Math.abs(Math.abs(b) - 1) < 1e-10) {
+                // proj4js returns the legacy numeric error sentinel 93 here. The
+                // Point-returning Java API represents the same singularity as a
+                // non-finite coordinate instead of leaking an incompatible type.
                 return new Point(Double.NaN, Double.NaN, p.z);
             }
             x = 0.5 * a * k0 * Math.log((1 + b) / (1 - b)) + x0;

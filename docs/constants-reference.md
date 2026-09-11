@@ -6,6 +6,15 @@ Proj4Sedona includes built-in definitions for datums, ellipsoids, linear units, 
 
 Retrieved via `Datum.get(code)`. The `towgs84` field contains the parameters for transforming to WGS84.
 
+The registry mirrors the complete generated proj4js datum snapshot: 438 canonical
+definitions, comprising 437 three- or seven-parameter transformations and the NAD27
+grid definition. This includes authority keys such as `EPSG_4124`, `ESRI_104101`, and
+`IGNF_ANAA92G`, in addition to the familiar short names below. The authoritative
+machine-readable list is
+[`proj4js-datums.tsv`](../src/main/resources/org/datasyslab/proj4sedona/constants/proj4js-datums.tsv).
+
+The following table lists the legacy named definitions:
+
 | Code | Ellipsoid | Shift Parameters | Name |
 |------|-----------|-----------------|------|
 | `wgs84` | WGS84 | `0,0,0` | WGS 1984 |
@@ -15,7 +24,7 @@ Retrieved via `Datum.get(code)`. The `towgs84` field contains the parameters for
 | `ch1903` | bessel | `674.374,15.056,405.346` | Swiss CH1903 |
 | `ggrs87` | GRS80 | `-199.87,74.79,246.62` | Greek Geodetic Reference System 1987 |
 | `potsdam` | bessel | `598.1,73.7,418.2,0.202,0.045,-2.455,6.7` | Potsdam Rauenberg 1950 DHDN |
-| `carthage` | clark80 | `-263.0,6.0,431.0` | Carthage 1934 Tunisia |
+| `carthage` | clrk80ign | `-263.0,6.0,431.0` | Carthage 1934 Tunisia |
 | `hermannskogel` | bessel | `577.326,90.129,463.919,5.137,1.474,5.297,2.4232` | Hermannskogel |
 | `mgi` | bessel | `577.326,90.129,463.919,5.137,1.474,5.297,2.4232` | Militar-Geographische Institut |
 | `osni52` | airy | `482.530,-130.596,564.557,-1.042,-0.214,-0.631,8.15` | Irish National |
@@ -90,7 +99,7 @@ Retrieved via `Ellipsoid.get(code)`. Each ellipsoid defines the shape of the Ear
 | `walbeck` | 6376896 | b=6355834.8467 | Walbeck |
 | `WGS60` | 6378165 | rf=298.3 | WGS 60 |
 | `WGS66` | 6378145 | rf=298.25 | WGS 66 |
-| `WGS72` | 6378135 | rf=298.26 | WGS 72 |
+| `WGS7` | 6378135 | rf=298.26 | WGS 72 |
 | `WGS84` | 6378137 | rf=298.257223563 | WGS 84 |
 | `sphere` | 6370997 | b=6370997 | Normal Sphere (r=6370997) |
 

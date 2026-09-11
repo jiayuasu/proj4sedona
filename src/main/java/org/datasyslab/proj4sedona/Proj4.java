@@ -358,7 +358,8 @@ public final class Proj4 {
      * Convert longitude/latitude to MGRS string.
      * 
      * @param lonLat Array with [longitude, latitude] in degrees (WGS84)
-     * @param accuracy Accuracy in digits (1-5): 5=1m, 4=10m, 3=100m, 2=1km, 1=10km
+     * @param accuracy Accuracy in digits (0-5): 5=1m, 4=10m, 3=100m, 2=1km,
+     *                 1=10km, 0=100km
      * @return MGRS string for the given location
      */
     public static String toMGRS(double[] lonLat, int accuracy) {
@@ -380,7 +381,7 @@ public final class Proj4 {
      * 
      * @param lon Longitude in degrees (WGS84)
      * @param lat Latitude in degrees (WGS84)
-     * @param accuracy Accuracy in digits (1-5)
+     * @param accuracy Accuracy in digits (0-5)
      * @return MGRS string for the given location
      */
     public static String toMGRS(double lon, double lat, int accuracy) {

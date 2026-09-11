@@ -69,8 +69,13 @@ public class Proj {
         // Process datum definition
         processDatumDef(def);
 
+        // Keep track of whether flattening came from an explicit ellipsoid/datum.
+        // The public definition still receives proj4js's WGS84 default below, but
+        // PROJ treats a bare +a as spherical shorthand and +a with +ellps/+datum as
+        // an ellipsoid using that named flattening.
+        String ellpsForDerivation = def.getEllps();
+
         // Set defaults
-        if (def.getK0() == null) def.setK0(1.0);
         if (def.getAxis() == null) def.setAxis("enu");
         if (def.getEllps() == null) def.setEllps("wgs84");
         if (def.getLat1() == null && def.getLat0() != null) {
@@ -79,7 +84,7 @@ public class Proj {
 
         // Derive sphere constants
         DeriveConstants.SphereResult sphere = DeriveConstants.sphere(
-            def.getA(), def.getB(), def.getRf(), def.getEllps(), def.getSphere()
+            def.getA(), def.getB(), def.getRf(), ellpsForDerivation, def.getSphere()
         );
 
         // Derive eccentricity
@@ -199,8 +204,15 @@ public class Proj {
         // Look up datum by code
         Datum datumDef = Datum.get(def.getDatumCode());
         if (datumDef != null) {
+            // An explicit TOWGS84[...] / +towgs84= is the operation the definition's author
+            // chose. The registry only fills in what was left unspecified; in particular its
+            // grid list must not be added on top of an explicit transform, because createDatum()
+            // prefers grids whenever nadgrids is set, and a grid-shift datum whose grids are not
+            // loaded cannot transform at all.
+            boolean explicitTransform = def.getDatumParams() != null;
+
             // Fill in datum_params if not already set
-            if (def.getDatumParams() == null) {
+            if (!explicitTransform) {
                 double[] towgs84 = datumDef.getTowgs84Array();
                 if (towgs84 != null) {
                     def.setDatumParams(towgs84);
@@ -218,8 +230,8 @@ public class Proj {
                     datumDef.getDatumName() : def.getDatumCode());
             }
 
-            // Handle nadgrids
-            if (def.getNadgrids() == null && datumDef.getNadgrids() != null) {
+            // Handle nadgrids: a registry default only, never over an explicit transform
+            if (!explicitTransform && def.getNadgrids() == null && datumDef.getNadgrids() != null) {
                 def.setNadgrids(datumDef.getNadgrids());
             }
         }
@@ -295,8 +307,25 @@ public class Proj {
         p.rectifiedGridAngle = def.getRectifiedGridAngle();
         p.noUoff = def.getNoUoff();
         p.noRot = def.getNoRot();
+        p.h = def.getH();
+        p.projStr = def.getProjStr();
+        p.oProj = def.getOProj();
+        p.oLatP = def.getOLatP();
+        p.oLonP = def.getOLonP();
+        p.oAlpha = def.getOAlpha();
+        p.oLonC = def.getOLonC();
+        p.oLatC = def.getOLatC();
+        p.oLon1 = def.getOLon1();
+        p.oLat1 = def.getOLat1();
+        p.oLon2 = def.getOLon2();
+        p.oLat2 = def.getOLat2();
+        p.tilt = def.getTilt();
+        p.azi = def.getAzi();
+        p.longWrap = def.getLongWrap();
+        p.sweep = def.getSweep();
 
         // Scale and offsets
+        p.k0Specified = def.isK0Specified();
         p.k0 = def.getK0() != null ? def.getK0() : 1.0;
         p.x0 = def.getX0() != null ? def.getX0() : 0.0;
         p.y0 = def.getY0() != null ? def.getY0() : 0.0;
@@ -306,6 +335,8 @@ public class Proj {
         p.units = def.getUnits();
         p.fromGreenwich = def.getFromGreenwich();
         p.axis = def.getAxis() != null ? def.getAxis() : "enu";
+        p.coordinateSystemType = def.getCoordinateSystemType();
+        p.coordinateAxes = def.getCoordinateAxes();
 
         // UTM
         p.zone = def.getZone();
@@ -319,6 +350,7 @@ public class Proj {
         // Original
         p.srsCode = def.getSrsCode();
         p.datumCode = def.getDatumCode();
+        p.ellps = def.getEllps();
 
         return p;
     }

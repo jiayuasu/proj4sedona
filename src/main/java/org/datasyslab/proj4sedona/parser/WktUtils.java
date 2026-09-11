@@ -52,12 +52,13 @@ public final class WktUtils {
 
         String normalizedProjName = projName.toLowerCase().replace("_", " ");
 
-        // For Albers and Lambert Azimuthal, long0 from longc
+        // longitude_of_center feeds long0 whenever no central meridian was given,
+        // for every projection (wkt-parser 1.5.5 util.js dropped the Albers/LAEA-only
+        // restriction). Without this, GDAL-style WKT with longitude_of_center on e.g.
+        // Sinusoidal, Miller or Azimuthal_Equidistant silently projects around
+        // longitude 0. Projections that read longc directly (omerc) are unaffected.
         if (def.getLong0() == null && def.getLongc() != null) {
-            if (normalizedProjName.equals("albers conic equal area") ||
-                normalizedProjName.equals("lambert azimuthal equal area")) {
-                def.setLong0(def.getLongc());
-            }
+            def.setLong0(def.getLongc());
         }
 
         // Handle stereographic projections
@@ -337,6 +338,15 @@ public final class WktUtils {
         if ("belge_1972".equals(datumCode)) {
             return "rnb72";
         }
+        // Esri WKT spells the North American datums "D_North_American_1983" /
+        // "D_North_American_1927" (the "d_" prefix is stripped above). Map them to the
+        // registered PROJ datum codes so datum lookups and EPSG identification work.
+        if ("north_american_1983".equals(datumCode)) {
+            return "nad83";
+        }
+        if ("north_american_1927".equals(datumCode)) {
+            return "nad27";
+        }
         if (datumCode.contains("osgb_1936")) {
             return "osgb36";
         }
@@ -371,6 +381,7 @@ public final class WktUtils {
             {"standard_parallel_1", "Latitude of standard parallel", null},
             {"standard_parallel_2", "Standard_Parallel_2", null},
             {"standard_parallel_2", "Latitude of 2nd standard parallel", null},
+            {"pseudo_standard_parallel_1", "Pseudo_Standard_Parallel_1", null},
             {"false_easting", "False_Easting", null},
             {"false_easting", "False easting", null},
             {"false_easting", "Easting at false origin", null},
@@ -398,9 +409,12 @@ public final class WktUtils {
             {"lat0", "latitude_of_origin", (Function<Double, Double>) WktUtils::d2r},
             {"lat0", "standard_parallel_1", (Function<Double, Double>) WktUtils::d2r},
             {"lat1", "standard_parallel_1", (Function<Double, Double>) WktUtils::d2r},
+            {"lat1", "pseudo_standard_parallel_1", (Function<Double, Double>) WktUtils::d2r},
             {"lat2", "standard_parallel_2", (Function<Double, Double>) WktUtils::d2r},
             {"azimuth", "Azimuth", null},
             {"alpha", "azimuth", (Function<Double, Double>) WktUtils::d2r},
+            {"h", "satellite_height", null},
+            {"h", "Satellite_Height", null},
             {"srsCode", "name", null}
         };
 
@@ -477,6 +491,7 @@ public final class WktUtils {
         setDoubleIfPresent(wkt, "alpha", def::setAlpha);
         setDoubleIfPresent(wkt, "longc", def::setLongc);
         setDoubleIfPresent(wkt, "rectified_grid_angle", def::setRectifiedGridAngle);
+        setDoubleIfPresent(wkt, "h", def::setH);
 
         // Scale and offsets
         setDoubleIfPresent(wkt, "k0", def::setK0);

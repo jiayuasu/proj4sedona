@@ -1,5 +1,8 @@
 package org.datasyslab.proj4sedona.projection;
 
+import java.util.Collections;
+import java.util.List;
+import org.datasyslab.proj4sedona.core.CoordinateAxis;
 import org.datasyslab.proj4sedona.core.DatumParams;
 
 /**
@@ -92,6 +95,17 @@ public class ProjectionParams {
     
     /** Scale factor at central meridian (+k_0 or +k), defaults to 1.0 */
     public double k0 = 1.0;
+
+    /**
+     * Resolve a projection-local scale default using JavaScript numeric truthiness.
+     * Current proj4js treats zero and NaN as absent when applying these defaults.
+     */
+    public double getK0OrDefault(double defaultValue) {
+        return k0 == 0.0 || Double.isNaN(k0) ? defaultValue : k0;
+    }
+
+    /** Whether the source definition explicitly supplied +k_0/+k (including 1.0). */
+    public boolean k0Specified;
     
     /** False easting in projection units (+x_0), defaults to 0.0 */
     public double x0 = 0.0;
@@ -112,6 +126,15 @@ public class ProjectionParams {
     
     /** Axis order string (+axis), defaults to "enu" (east-north-up) */
     public String axis = "enu";
+
+    /** Coordinate-system subtype retained from WKT2/PROJJSON (for example Cartesian). */
+    public String coordinateSystemType;
+
+    /**
+     * Detailed WKT2/PROJJSON coordinate-axis metadata, used for faithful
+     * serialization and duplicate-direction polar axis enforcement.
+     */
+    public List<CoordinateAxis> coordinateAxes = Collections.emptyList();
 
     // ==================== UTM Specific ====================
     
@@ -138,6 +161,46 @@ public class ProjectionParams {
     /** Oblique Mercator without rectification rotation (+no_rot) */
     public Boolean noRot;
 
+    /** Center of the longitude wrapping range in radians (+lon_wrap) */
+    public Double longWrap;
+
+    /** Satellite/view height in meters (+h) - Geostationary, Tilted Perspective */
+    public Double h;
+
+    /** Full original PROJ string, when the CRS was parsed from one (else null) */
+    public String projStr;
+
+    /** Inner projection name (+o_proj) - General Oblique Transformation */
+    public String oProj;
+
+    /** New pole latitude in radians (+o_lat_p) - ob_tran */
+    public Double oLatP;
+    /** New pole longitude in radians (+o_lon_p) - ob_tran */
+    public Double oLonP;
+    /** Rotation angle in radians (+o_alpha) - ob_tran */
+    public Double oAlpha;
+    /** Rotation center longitude in radians (+o_lon_c) - ob_tran */
+    public Double oLonC;
+    /** Rotation center latitude in radians (+o_lat_c) - ob_tran */
+    public Double oLatC;
+    /** First new-equator point longitude in radians (+o_lon_1) - ob_tran */
+    public Double oLon1;
+    /** First new-equator point latitude in radians (+o_lat_1) - ob_tran */
+    public Double oLat1;
+    /** Second new-equator point longitude in radians (+o_lon_2) - ob_tran */
+    public Double oLon2;
+    /** Second new-equator point latitude in radians (+o_lat_2) - ob_tran */
+    public Double oLat2;
+
+    /** Camera tilt from nadir in radians (+tilt) - Tilted Perspective */
+    public Double tilt;
+
+    /** Camera azimuth from north in radians (+azi) - Tilted Perspective */
+    public Double azi;
+
+    /** Sweep axis "x" or "y" (+sweep) - used by the Geostationary projection */
+    public String sweep;
+
     // ==================== Original Definition ====================
     
     /** Original SRS code or PROJ string */
@@ -145,6 +208,13 @@ public class ProjectionParams {
     
     /** Datum code from definition (e.g., "WGS84") */
     public String datumCode;
+
+    /**
+     * The ellipsoid as stated by the definition: the +ellps= code, or the WKT/PROJJSON
+     * ellipsoid name. May be the "wgs84" placeholder Proj assigns when no ellipsoid
+     * was given, so consumers must validate it against a/b before trusting it.
+     */
+    public String ellps;
 
     // ==================== Accessor Methods ====================
 
@@ -177,6 +247,9 @@ public class ProjectionParams {
 
     /**
      * Get second standard parallel (lat2), defaulting to lat1 if not set.
+     * An explicit zero is preserved. This intentionally follows PROJ rather than
+     * proj4js's truthy {@code lat2 || lat1} fallback, which loses an equatorial
+     * second standard parallel.
      * @return Second standard parallel in radians
      */
     public double getLat2() {
