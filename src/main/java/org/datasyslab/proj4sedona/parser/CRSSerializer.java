@@ -2208,17 +2208,36 @@ public final class CRSSerializer {
                 boolean isSouth = Boolean.TRUE.equals(params.utmSouth) ||
                     params.y0 > 5000000;
 
-                String epsgCode = isSouth
-                    ? "EPSG:" + (32700 + zone)
-                    : "EPSG:" + (32600 + zone);
-
-                if (matchesDefinition(params, epsgCode)) {
-                    return epsgCode;
+                for (String epsgCode : utmCandidates(params.datumCode, zone, isSouth)) {
+                    if (matchesDefinition(params, epsgCode)) {
+                        return epsgCode;
+                    }
                 }
             }
         }
 
         return null;
+    }
+
+    /**
+     * EPSG codes that may describe a UTM zone on the given datum, most specific first: the
+     * NAD83 series (EPSG:269xx, zones 1–23 North) or the NAD27 series (EPSG:267xx, zones
+     * 1–22 North) when the datum resolves to one of those, then the WGS 84 series
+     * (EPSG:326xx / 327xx). {@link #matchesDefinition} still rejects any candidate whose
+     * datum or parameters differ, so an unknown datum can only match nothing.
+     */
+    private static List<String> utmCandidates(String datumCode, int zone, boolean isSouth) {
+        List<String> codes = new ArrayList<>(2);
+        String datumEpsg = datumCode == null ? null : normalizeDatumToEpsg(datumCode);
+        if (!isSouth) {
+            if ("EPSG:4269".equals(datumEpsg) && zone <= 23) {
+                codes.add("EPSG:" + (26900 + zone));
+            } else if ("EPSG:4267".equals(datumEpsg) && zone <= 22) {
+                codes.add("EPSG:" + (26700 + zone));
+            }
+        }
+        codes.add(isSouth ? "EPSG:" + (32700 + zone) : "EPSG:" + (32600 + zone));
+        return codes;
     }
 
     /**
@@ -3081,7 +3100,13 @@ public final class CRSSerializer {
         boolean declaresGridShift =
             declaredDatum != null && declaredDatum.getNadgrids() != null;
         boolean hasGridShift = datum != null && datum.isGridShift();
-        if ((declaresGridShift || hasGridShift)
+        // An explicit three- or seven-parameter transform on a grid-shift datum name is
+        // representable: the TOWGS84 node carries the operation, and parsing honours an
+        // explicit transform over the registry's grid list, so the export round-trips.
+        boolean explicitTransform =
+            datum != null && !datum.isGridShift() && datum.getDatumParams() != null;
+        if (!explicitTransform
+                && (declaresGridShift || hasGridShift)
                 && !gridShiftReconstructsFromDeclaredDatum(params)) {
             throw unsupportedStandardParameter(
                 "Grid-shift datum operations cannot be represented losslessly");
@@ -3263,9 +3288,9 @@ public final class CRSSerializer {
      * An explicit zero-valued Helmert operation is still significant when its source
      * ellipsoid is not WGS 84: the geodetic/geocentric conversion changes coordinates
      * even though the Cartesian translation, rotation, and scale are identities.
-     * Canonical named datums can stay unbound because their operation is recovered
-     * from the datum identity, and an unnamed WGS 84 ellipsoid with zero parameters
-     * is already equivalent to the target.
+     * Named datums can stay unbound only when their registry operation is the same
+     * no-op, so the datum identity recovers it; an unnamed WGS 84 ellipsoid with zero
+     * parameters is already equivalent to the target.
      */
     private static boolean needsTowgs84BoundCrs(ProjectionParams params) {
         DatumParams datum = params.datum;
@@ -3275,8 +3300,18 @@ public final class CRSSerializer {
         if (hasTransformingTowgs84(datum)) {
             return true;
         }
-        return resolveProjDatumToken(params) == null
-            && !hasWgs84EquivalentEllipsoid(params);
+        if (resolveProjDatumToken(params) == null && !hasWgs84EquivalentEllipsoid(params)) {
+            return true;
+        }
+        // The export still names the datum even when no PROJ datum token applies (for
+        // example NAD27 with an overriding +ellps=WGS84). Re-parsing that name restores the
+        // registry operation, so an explicit zero operation may only be dropped when the
+        // registry operation is the same no-op. A datum that carries a grid list or a
+        // non-zero shift (NAD27, Potsdam, ...) would otherwise replace the operation the
+        // author chose, so the BoundCRS wrapper must stay.
+        return params.datumCode != null
+            && Datum.get(params.datumCode) != null
+            && !declaredDatumOperationIsCanonical(params);
     }
 
     private static boolean hasWgs84EquivalentEllipsoid(ProjectionParams params) {

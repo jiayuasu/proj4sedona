@@ -1094,4 +1094,26 @@ class WktParserTest {
         ProjectionDef def = WktParser.parse(wkt);
         assertEquals(6377397.155, def.getA(), 1e-6, "Bessel semi-major from BASEGEODCRS");
     }
+
+    @Test
+    @DisplayName("Esri-style D_North_American_1983 datum normalizes to nad83")
+    void testEsriNad83DatumCode() {
+        ProjectionDef def = WktParser.parse(
+            "GEOGCS[\"GCS_North_American_1983\",DATUM[\"D_North_American_1983\","
+            + "SPHEROID[\"GRS_1980\",6378137.0,298.257222101]],PRIMEM[\"Greenwich\",0.0],"
+            + "UNIT[\"Degree\",0.0174532925199433]]");
+        assertNotNull(def);
+        assertEquals("nad83", def.getDatumCode());
+    }
+
+    @Test
+    @DisplayName("Esri-style D_North_American_1927 datum normalizes to nad27")
+    void testEsriNad27DatumCode() {
+        ProjectionDef def = WktParser.parse(
+            "GEOGCS[\"GCS_North_American_1927\",DATUM[\"D_North_American_1927\","
+            + "SPHEROID[\"Clarke_1866\",6378206.4,294.9786982]],PRIMEM[\"Greenwich\",0.0],"
+            + "UNIT[\"Degree\",0.0174532925199433]]");
+        assertNotNull(def);
+        assertEquals("nad27", def.getDatumCode());
+    }
 }

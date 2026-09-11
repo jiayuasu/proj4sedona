@@ -338,6 +338,15 @@ public final class WktUtils {
         if ("belge_1972".equals(datumCode)) {
             return "rnb72";
         }
+        // Esri WKT spells the North American datums "D_North_American_1983" /
+        // "D_North_American_1927" (the "d_" prefix is stripped above). Map them to the
+        // registered PROJ datum codes so datum lookups and EPSG identification work.
+        if ("north_american_1983".equals(datumCode)) {
+            return "nad83";
+        }
+        if ("north_american_1927".equals(datumCode)) {
+            return "nad27";
+        }
         if (datumCode.contains("osgb_1936")) {
             return "osgb36";
         }

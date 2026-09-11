@@ -2217,4 +2217,75 @@ class CRSSerializerTest {
             "the datum transform survives the +towgs84= round-trip");
     }
 
+
+    // ---- Esri-style WKT1 (as written by ArcGIS / the FileGDB API): datum names carry a "D_"
+    // prefix and Esri spellings such as "North_American_1983" instead of the EPSG names. ----
+
+    private static final String ESRI_NAD83_GCS =
+        "GEOGCS[\"GCS_North_American_1983\",DATUM[\"D_North_American_1983\","
+        + "SPHEROID[\"GRS_1980\",6378137.0,298.257222101]],PRIMEM[\"Greenwich\",0.0],"
+        + "UNIT[\"Degree\",0.0174532925199433]]";
+
+    private static final String ESRI_NAD27_GCS =
+        "GEOGCS[\"GCS_North_American_1927\",DATUM[\"D_North_American_1927\","
+        + "SPHEROID[\"Clarke_1866\",6378206.4,294.9786982]],PRIMEM[\"Greenwich\",0.0],"
+        + "UNIT[\"Degree\",0.0174532925199433]]";
+
+    @Test
+    @DisplayName("toEpsgCode: Esri-style NAD83 geographic WKT identifies as EPSG:4269")
+    void testToEpsgCodeEsriNad83Geographic() {
+        Proj proj = new Proj(ESRI_NAD83_GCS);
+        assertEquals("EPSG:4269", CRSSerializer.toEpsgCode(proj));
+    }
+
+    @Test
+    @DisplayName("toEpsgCode: Esri-style NAD27 geographic WKT identifies as EPSG:4267")
+    void testToEpsgCodeEsriNad27Geographic() {
+        Proj proj = new Proj(ESRI_NAD27_GCS);
+        assertEquals("EPSG:4267", CRSSerializer.toEpsgCode(proj));
+    }
+
+    private static String esriUtm(String name, String gcs, double centralMeridian) {
+        return "PROJCS[\"" + name + "\"," + gcs
+            + ",PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"False_Easting\",500000.0],"
+            + "PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\"," + centralMeridian + "],"
+            + "PARAMETER[\"Scale_Factor\",0.9996],PARAMETER[\"Latitude_Of_Origin\",0.0],"
+            + "UNIT[\"Meter\",1.0]]";
+    }
+
+    @Test
+    @DisplayName("toEpsgCode: Esri-style NAD83 UTM zone 19N identifies as EPSG:26919")
+    void testToEpsgCodeEsriNad83Utm19N() {
+        Proj proj = new Proj(esriUtm("NAD_1983_UTM_Zone_19N", ESRI_NAD83_GCS, -69.0));
+        assertEquals("EPSG:26919", CRSSerializer.toEpsgCode(proj));
+    }
+
+    @Test
+    @DisplayName("toEpsgCode: Esri-style NAD27 UTM zone 15N identifies as EPSG:26715")
+    void testToEpsgCodeEsriNad27Utm15N() {
+        Proj proj = new Proj(esriUtm("NAD_1927_UTM_Zone_15N", ESRI_NAD27_GCS, -93.0));
+        assertEquals("EPSG:26715", CRSSerializer.toEpsgCode(proj));
+    }
+
+    @Test
+    @DisplayName("toEpsgCode: OGC-spelled NAD83 UTM zone 19N without AUTHORITY identifies as EPSG:26919")
+    void testToEpsgCodeOgcNad83Utm19NWithoutAuthority() {
+        Proj proj = new Proj("PROJCS[\"NAD83 / UTM zone 19N\",GEOGCS[\"NAD83\","
+            + "DATUM[\"North_American_Datum_1983\",SPHEROID[\"GRS 1980\",6378137,298.257222101]],"
+            + "PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433]],"
+            + "PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"latitude_of_origin\",0],"
+            + "PARAMETER[\"central_meridian\",-69],PARAMETER[\"scale_factor\",0.9996],"
+            + "PARAMETER[\"false_easting\",500000],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1]]");
+        assertEquals("EPSG:26919", CRSSerializer.toEpsgCode(proj));
+    }
+
+    @Test
+    @DisplayName("toEpsgCode: Esri-style WGS84 UTM zone 19N still identifies as EPSG:32619")
+    void testToEpsgCodeEsriWgs84Utm19N() {
+        String wgs84 = "GEOGCS[\"GCS_WGS_1984\",DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\","
+            + "6378137.0,298.257223563]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]]";
+        Proj proj = new Proj(esriUtm("WGS_1984_UTM_Zone_19N", wgs84, -69.0));
+        assertEquals("EPSG:32619", CRSSerializer.toEpsgCode(proj));
+    }
+
 }
