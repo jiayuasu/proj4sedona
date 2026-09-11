@@ -3288,9 +3288,9 @@ public final class CRSSerializer {
      * An explicit zero-valued Helmert operation is still significant when its source
      * ellipsoid is not WGS 84: the geodetic/geocentric conversion changes coordinates
      * even though the Cartesian translation, rotation, and scale are identities.
-     * Canonical named datums can stay unbound because their operation is recovered
-     * from the datum identity, and an unnamed WGS 84 ellipsoid with zero parameters
-     * is already equivalent to the target.
+     * Named datums can stay unbound only when their registry operation is the same
+     * no-op, so the datum identity recovers it; an unnamed WGS 84 ellipsoid with zero
+     * parameters is already equivalent to the target.
      */
     private static boolean needsTowgs84BoundCrs(ProjectionParams params) {
         DatumParams datum = params.datum;
@@ -3300,8 +3300,18 @@ public final class CRSSerializer {
         if (hasTransformingTowgs84(datum)) {
             return true;
         }
-        return resolveProjDatumToken(params) == null
-            && !hasWgs84EquivalentEllipsoid(params);
+        if (resolveProjDatumToken(params) == null && !hasWgs84EquivalentEllipsoid(params)) {
+            return true;
+        }
+        // The export still names the datum even when no PROJ datum token applies (for
+        // example NAD27 with an overriding +ellps=WGS84). Re-parsing that name restores the
+        // registry operation, so an explicit zero operation may only be dropped when the
+        // registry operation is the same no-op. A datum that carries a grid list or a
+        // non-zero shift (NAD27, Potsdam, ...) would otherwise replace the operation the
+        // author chose, so the BoundCRS wrapper must stay.
+        return params.datumCode != null
+            && Datum.get(params.datumCode) != null
+            && !declaredDatumOperationIsCanonical(params);
     }
 
     private static boolean hasWgs84EquivalentEllipsoid(ProjectionParams params) {

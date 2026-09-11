@@ -117,4 +117,56 @@ class ExplicitTowgs84PreservationTest {
         assertNotNull(datum.getNadgrids());
         assertTrue(datum.getNadgrids().contains("@conus"), datum.getNadgrids());
     }
+
+    private static final String PROJ_NAD27_ZERO_3 =
+        "+proj=longlat +datum=NAD27 +ellps=WGS84 +towgs84=0,0,0 +no_defs";
+    private static final String PROJ_NAD27_ZERO_7 =
+        "+proj=longlat +datum=NAD27 +ellps=WGS84 +towgs84=0,0,0,0,0,0,0 +no_defs";
+
+    /**
+     * A zero-valued explicit operation on a grid-shift datum name is still significant: dropping
+     * it from an export lets the re-parse restore the registry's grids, turning a successful
+     * transform into a failure when no grid files are loaded. Every standard export must carry
+     * the operation and re-parse to the same transform.
+     */
+    private static void assertZeroOperationSurvives(String crs) {
+        Proj original = new Proj(crs);
+        DatumParams originalDatum = original.getParams().datum;
+        assertNull(originalDatum.getNadgrids(), "explicit zero operation must win over registry grids");
+        Point before = toWgs84(crs);
+        assertNotNull(before, "explicit zero operation must transform without grid files");
+
+        String wkt2 = CRSSerializer.toWkt2(original);
+        assertTrue(wkt2.contains("BOUNDCRS"), "WKT2 must keep the explicit zero operation: " + wkt2);
+        String projjson = CRSSerializer.toProjJson(original);
+        assertTrue(projjson.contains("BoundCRS"), "PROJJSON must keep the explicit zero operation: " + projjson);
+
+        for (String exported : new String[] {CRSSerializer.toWkt1(original), wkt2, projjson}) {
+            Proj reparsed = new Proj(exported);
+            DatumParams datum = reparsed.getParams().datum;
+            assertNull(datum.getNadgrids(), "re-parse must not restore registry grids: " + exported);
+            Point after = Proj4.transform(reparsed, new Proj("EPSG:4326"), new Point(-100, 40));
+            assertNotNull(after, "re-parsed CRS must still transform: " + exported);
+            assertEquals(before.x, after.x, TOLERANCE);
+            assertEquals(before.y, after.y, TOLERANCE);
+        }
+    }
+
+    @Test
+    @DisplayName("Explicit zero three-parameter transform on NAD27 survives WKT2 and PROJJSON export")
+    void zeroThreeParamTransformSurvivesStandardExports() {
+        assertZeroOperationSurvives(PROJ_NAD27_ZERO_3);
+    }
+
+    @Test
+    @DisplayName("Explicit zero seven-parameter transform on NAD27 survives WKT2 and PROJJSON export")
+    void zeroSevenParamTransformSurvivesStandardExports() {
+        assertZeroOperationSurvives(PROJ_NAD27_ZERO_7);
+    }
+
+    @Test
+    @DisplayName("Esri NAD27 WKT with TOWGS84[0,0,0] survives every standard export")
+    void esriZeroTowgs84SurvivesStandardExports() {
+        assertZeroOperationSurvives(ESRI_NAD27_PREFIX + ",TOWGS84[0,0,0]" + ESRI_NAD27_SUFFIX);
+    }
 }
