@@ -2217,4 +2217,32 @@ class CRSSerializerTest {
             "the datum transform survives the +towgs84= round-trip");
     }
 
+
+    // ---- Esri-style WKT1 (as written by ArcGIS / the FileGDB API): datum names carry a "D_"
+    // prefix and Esri spellings such as "North_American_1983" instead of the EPSG names. ----
+
+    private static final String ESRI_NAD83_GCS =
+        "GEOGCS[\"GCS_North_American_1983\",DATUM[\"D_North_American_1983\","
+        + "SPHEROID[\"GRS_1980\",6378137.0,298.257222101]],PRIMEM[\"Greenwich\",0.0],"
+        + "UNIT[\"Degree\",0.0174532925199433]]";
+
+    private static final String ESRI_NAD27_GCS =
+        "GEOGCS[\"GCS_North_American_1927\",DATUM[\"D_North_American_1927\","
+        + "SPHEROID[\"Clarke_1866\",6378206.4,294.9786982]],PRIMEM[\"Greenwich\",0.0],"
+        + "UNIT[\"Degree\",0.0174532925199433]]";
+
+    @Test
+    @DisplayName("toEpsgCode: Esri-style NAD83 geographic WKT identifies as EPSG:4269")
+    void testToEpsgCodeEsriNad83Geographic() {
+        Proj proj = new Proj(ESRI_NAD83_GCS);
+        assertEquals("EPSG:4269", CRSSerializer.toEpsgCode(proj));
+    }
+
+    @Test
+    @DisplayName("toEpsgCode: Esri-style NAD27 geographic WKT identifies as EPSG:4267")
+    void testToEpsgCodeEsriNad27Geographic() {
+        Proj proj = new Proj(ESRI_NAD27_GCS);
+        assertEquals("EPSG:4267", CRSSerializer.toEpsgCode(proj));
+    }
+
 }
