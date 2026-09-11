@@ -2208,17 +2208,36 @@ public final class CRSSerializer {
                 boolean isSouth = Boolean.TRUE.equals(params.utmSouth) ||
                     params.y0 > 5000000;
 
-                String epsgCode = isSouth
-                    ? "EPSG:" + (32700 + zone)
-                    : "EPSG:" + (32600 + zone);
-
-                if (matchesDefinition(params, epsgCode)) {
-                    return epsgCode;
+                for (String epsgCode : utmCandidates(params.datumCode, zone, isSouth)) {
+                    if (matchesDefinition(params, epsgCode)) {
+                        return epsgCode;
+                    }
                 }
             }
         }
 
         return null;
+    }
+
+    /**
+     * EPSG codes that may describe a UTM zone on the given datum, most specific first: the
+     * NAD83 series (EPSG:269xx, zones 1–23 North) or the NAD27 series (EPSG:267xx, zones
+     * 1–22 North) when the datum resolves to one of those, then the WGS 84 series
+     * (EPSG:326xx / 327xx). {@link #matchesDefinition} still rejects any candidate whose
+     * datum or parameters differ, so an unknown datum can only match nothing.
+     */
+    private static List<String> utmCandidates(String datumCode, int zone, boolean isSouth) {
+        List<String> codes = new ArrayList<>(2);
+        String datumEpsg = datumCode == null ? null : normalizeDatumToEpsg(datumCode);
+        if (!isSouth) {
+            if ("EPSG:4269".equals(datumEpsg) && zone <= 23) {
+                codes.add("EPSG:" + (26900 + zone));
+            } else if ("EPSG:4267".equals(datumEpsg) && zone <= 22) {
+                codes.add("EPSG:" + (26700 + zone));
+            }
+        }
+        codes.add(isSouth ? "EPSG:" + (32700 + zone) : "EPSG:" + (32600 + zone));
+        return codes;
     }
 
     /**
