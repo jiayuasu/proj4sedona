@@ -293,6 +293,49 @@ public final class Defs {
     }
 
     /**
+     * Resolve a definition without leaving the local machine.
+     *
+     * <p>Consults the cache and then every registered provider that does not declare
+     * itself {@linkplain CRSProvider#isRemote() remote}, in priority order. Unlike
+     * {@link #get(String)}, a miss returns {@code null} instead of falling through to
+     * remote catalogs, so callers that must stay offline, such as EPSG identification,
+     * can probe candidate codes freely. A hit is cached like any other resolution.</p>
+     *
+     * @param name The name/code to look up (e.g., "EPSG:26919")
+     * @return The ProjectionDef, or {@code null} if no local source knows the code
+     */
+    public static ProjectionDef getLocal(String name) {
+        if (!globalsInitialized) {
+            globals();
+        }
+        String normalizedName = CRSUtils.normalizeAuthorityCode(name);
+        ProjectionDef def = definitions.get(normalizedName);
+        if (def != null) {
+            return def;
+        }
+        Matcher matcher = AUTHORITY_CODE_PATTERN.matcher(normalizedName);
+        if (!matcher.matches()) {
+            return null;
+        }
+        String authority = matcher.group(1).toLowerCase();
+        String code = matcher.group(2);
+        for (ProviderEntry entry : providers) {
+            if (entry.provider.isRemote()) {
+                continue;
+            }
+            CRSResult result = entry.provider.resolve(authority, code);
+            if (result != null) {
+                def = parseResult(result, normalizedName);
+                if (def != null) {
+                    definitions.put(normalizedName, def);
+                }
+                return def;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Get a projection definition by name, throwing if not found.
      *
      * <p>Behaves identically to {@link #get(String)} but throws a

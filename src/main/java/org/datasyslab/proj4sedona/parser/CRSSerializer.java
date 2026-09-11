@@ -2282,6 +2282,13 @@ public final class CRSSerializer {
 
     private static boolean matchesDefinition(ProjectionParams params, String code) {
         try {
+            // Identification is a local computation: only a bundled or cached definition can
+            // serve as the reference. Resolving through the provider chain would let a
+            // candidate code reach the remote catalog, turning identification into a network
+            // call. getLocal caches a hit, so the Proj below never leaves the machine.
+            if (Defs.getLocal(code) == null) {
+                return false;
+            }
             Proj ref = new Proj(code);
             ProjectionParams refParams = ref.getParams();
 
