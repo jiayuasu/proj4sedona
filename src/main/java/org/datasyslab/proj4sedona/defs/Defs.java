@@ -46,6 +46,12 @@ public final class Defs {
 
     /** Cache of parsed projection definitions, keyed by normalized name */
     private static final Map<String, ProjectionDef> definitions = new ConcurrentHashMap<>();
+    /**
+     * Definitions resolved by {@link #getLocal} from non-remote providers, kept apart from
+     * {@link #definitions} so an offline lookup never shadows a higher-priority remote
+     * provider in ordinary resolution.
+     */
+    private static final Map<String, ProjectionDef> localDefinitions = new ConcurrentHashMap<>();
 
     /** Shared Gson instance — thread-safe for read operations. */
     private static final Gson GSON = new Gson();
@@ -299,7 +305,13 @@ public final class Defs {
      * itself {@linkplain CRSProvider#isRemote() remote}, in priority order. Unlike
      * {@link #get(String)}, a miss returns {@code null} instead of falling through to
      * remote catalogs, so callers that must stay offline, such as EPSG identification,
-     * can probe candidate codes freely. A hit is cached like any other resolution.</p>
+     * can probe candidate codes freely.</p>
+     *
+     * <p>A hit from a local provider is cached apart from ordinary resolution: a
+     * higher-priority remote provider that was skipped here must still win in
+     * {@link #get(String)}, so the bundled definition is never written to that cache.
+     * The shared cache is read, since it holds the definitions ordinary resolution already
+     * settled on.</p>
      *
      * @param name The name/code to look up (e.g., "EPSG:26919")
      * @return The ProjectionDef, or {@code null} if no local source knows the code
@@ -310,6 +322,10 @@ public final class Defs {
         }
         String normalizedName = CRSUtils.normalizeAuthorityCode(name);
         ProjectionDef def = definitions.get(normalizedName);
+        if (def != null) {
+            return def;
+        }
+        def = localDefinitions.get(normalizedName);
         if (def != null) {
             return def;
         }
@@ -327,7 +343,7 @@ public final class Defs {
             if (result != null) {
                 def = parseResult(result, normalizedName);
                 if (def != null) {
-                    definitions.put(normalizedName, def);
+                    localDefinitions.put(normalizedName, def);
                 }
                 return def;
             }
@@ -521,6 +537,7 @@ public final class Defs {
      */
     public static synchronized void reset() {
         definitions.clear();
+        localDefinitions.clear();
         providers = new CopyOnWriteArrayList<>();
         globalsInitialized = false;
     }

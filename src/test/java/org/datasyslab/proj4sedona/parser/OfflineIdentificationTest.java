@@ -1,11 +1,13 @@
 package org.datasyslab.proj4sedona.parser;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import org.datasyslab.proj4sedona.core.Proj;
+import org.datasyslab.proj4sedona.core.ProjectionDef;
 import org.datasyslab.proj4sedona.defs.CRSProvider;
 import org.datasyslab.proj4sedona.defs.CRSResult;
 import org.datasyslab.proj4sedona.defs.Defs;
@@ -41,6 +43,9 @@ class OfflineIdentificationTest {
         + "PARAMETER[\"Scale_Factor\",0.9996],PARAMETER[\"Latitude_Of_Origin\",0.0],"
         + "UNIT[\"Meter\",1.0]]";
 
+    /** A code no provider bundles and no other test uses, so lookups are deterministic. */
+    private static final String PROBE_CODE = "999999";
+
     private final AtomicInteger remoteCalls = new AtomicInteger();
 
     private final CRSProvider countingRemote = new CRSProvider() {
@@ -52,7 +57,9 @@ class OfflineIdentificationTest {
         @Override
         public CRSResult resolve(String authority, String code) {
             remoteCalls.incrementAndGet();
-            return null;
+            // Answer the probe code so the chain stops here and the real remote provider,
+            // which is registered after this one, is never reached during the test.
+            return PROBE_CODE.equals(code) ? CRSResult.proj4("+proj=longlat +datum=WGS84 +no_defs") : null;
         }
 
         @Override
@@ -63,6 +70,9 @@ class OfflineIdentificationTest {
 
     @BeforeEach
     void registerCountingRemote() {
+        // A fresh registry for every test: no definition cached by one test may satisfy or
+        // defeat a lookup in another, whatever order the methods run in.
+        Defs.reset();
         Defs.globals();
         // Ahead of the built-in provider (priority 100), so any lookup that reaches the
         // provider chain hits the remote first.
@@ -70,8 +80,8 @@ class OfflineIdentificationTest {
     }
 
     @AfterEach
-    void removeCountingRemote() {
-        Defs.removeProvider("counting-remote");
+    void resetRegistry() {
+        Defs.reset();
     }
 
     @Test
@@ -101,7 +111,7 @@ class OfflineIdentificationTest {
     @Test
     @DisplayName("Ordinary definition lookup still reaches remote providers for unbundled codes")
     void definitionLookupStillUsesRemoteProviders() {
-        Defs.get("EPSG:2229");
+        assertNotNull(Defs.get("EPSG:" + PROBE_CODE));
         assertEquals(1, remoteCalls.get(), "Defs.get must still consult the remote provider");
     }
 
@@ -109,7 +119,43 @@ class OfflineIdentificationTest {
     @DisplayName("Offline lookup resolves bundled codes and skips remote providers")
     void localLookupSkipsRemoteProviders() {
         assertNotNull(Defs.getLocal("EPSG:26919"));
-        assertNull(Defs.getLocal("EPSG:2229"));
+        assertNull(Defs.getLocal("EPSG:" + PROBE_CODE));
         assertEquals(0, remoteCalls.get(), "Defs.getLocal reached a remote provider");
+    }
+
+    @Test
+    @DisplayName("Offline identification never shadows a higher-priority provider in ordinary resolution")
+    void identificationDoesNotShadowHigherPriorityProvider() {
+        // A remote provider ahead of the built-in one supplies its own EPSG:26919 with an
+        // explicit shift. Identification skips it (offline) and matches the bundled
+        // definition; afterwards ordinary resolution must still return the provider's.
+        CRSProvider custom = new CRSProvider() {
+            @Override
+            public String getName() {
+                return "custom-26919";
+            }
+
+            @Override
+            public CRSResult resolve(String authority, String code) {
+                return "26919".equals(code)
+                    ? CRSResult.proj4("+proj=utm +zone=19 +datum=NAD83 +towgs84=1,2,3 +units=m +no_defs")
+                    : null;
+            }
+
+            @Override
+            public boolean isRemote() {
+                return true;
+            }
+        };
+        Defs.registerProvider(custom, 50);
+        try {
+            assertEquals("EPSG:26919", CRSSerializer.toEpsgCode(new Proj(ESRI_NAD83_UTM19N)));
+            ProjectionDef def = Defs.get("EPSG:26919");
+            assertNotNull(def);
+            assertArrayEquals(new double[] {1, 2, 3}, def.getDatumParams(), 1e-12,
+                "identification cached the bundled definition over the higher-priority provider");
+        } finally {
+            Defs.removeProvider("custom-26919");
+        }
     }
 }
