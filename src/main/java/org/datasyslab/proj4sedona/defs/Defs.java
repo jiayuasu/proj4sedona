@@ -192,6 +192,7 @@ public final class Defs {
         String trimmed = definition == null ? "" : definition.trim();
         if (trimmed.isEmpty()) {
             definitions.remove(key);
+            localDefinitions.remove(key);
             return;
         }
 
@@ -246,6 +247,7 @@ public final class Defs {
                 def.setSrsCode(key);
             }
             definitions.put(key, def);
+            localDefinitions.remove(key);
         }
     }
 
@@ -445,7 +447,10 @@ public final class Defs {
      * @return The removed definition, or null if it didn't exist
      */
     public static ProjectionDef remove(String name) {
-        return definitions.remove(CRSUtils.normalizeAuthorityCode(name));
+        String key = CRSUtils.normalizeAuthorityCode(name);
+        ProjectionDef removed = definitions.remove(key);
+        ProjectionDef local = localDefinitions.remove(key);
+        return removed != null ? removed : local;
     }
 
     /**

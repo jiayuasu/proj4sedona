@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.core.ProjectionDef;
 import org.datasyslab.proj4sedona.defs.CRSProvider;
@@ -156,6 +157,67 @@ class OfflineIdentificationTest {
                 "identification cached the bundled definition over the higher-priority provider");
         } finally {
             Defs.removeProvider("custom-26919");
+        }
+    }
+
+    /** OGC spelling, no AUTHORITY: identification must go through parameter matching. */
+    private static final String OGC_NAD83_UTM19N =
+        "PROJCS[\"NAD83 / UTM zone 19N\",GEOGCS[\"NAD83\",DATUM[\"North_American_Datum_1983\","
+        + "SPHEROID[\"GRS 1980\",6378137,298.257222101]],PRIMEM[\"Greenwich\",0],"
+        + "UNIT[\"degree\",0.0174532925199433]],PROJECTION[\"Transverse_Mercator\"],"
+        + "PARAMETER[\"latitude_of_origin\",0],PARAMETER[\"central_meridian\",-69],"
+        + "PARAMETER[\"scale_factor\",0.9996],PARAMETER[\"false_easting\",500000],"
+        + "PARAMETER[\"false_northing\",0],UNIT[\"metre\",1]]";
+
+    private static final String SHIFTED_26919 =
+        "+proj=utm +zone=19 +datum=NAD83 +towgs84=1,2,3 +units=m +no_defs";
+    private static final String PLAIN_26919 = "+proj=utm +zone=19 +datum=NAD83 +units=m +no_defs";
+
+    /** A local provider whose EPSG:26919 definition can be changed while registered. */
+    private static CRSProvider mutableLocal26919(AtomicReference<String> definition) {
+        return new CRSProvider() {
+            @Override
+            public String getName() {
+                return "mutable-26919";
+            }
+
+            @Override
+            public CRSResult resolve(String authority, String code) {
+                return "26919".equals(code) ? CRSResult.proj4(definition.get()) : null;
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("Removing a code invalidates the offline cache too")
+    void removeInvalidatesOfflineCache() {
+        AtomicReference<String> definition = new AtomicReference<>(SHIFTED_26919);
+        Defs.registerProvider(mutableLocal26919(definition), 50);
+        try {
+            assertNull(CRSSerializer.toEpsgCode(new Proj(OGC_NAD83_UTM19N)),
+                "the provider's shifted definition must not match the unshifted WKT");
+            definition.set(PLAIN_26919);
+            Defs.remove("EPSG:26919");
+            assertEquals("EPSG:26919", CRSSerializer.toEpsgCode(new Proj(OGC_NAD83_UTM19N)),
+                "a stale offline definition survived Defs.remove");
+        } finally {
+            Defs.removeProvider("mutable-26919");
+        }
+    }
+
+    @Test
+    @DisplayName("Setting a code to an empty definition invalidates the offline cache too")
+    void emptySetInvalidatesOfflineCache() {
+        AtomicReference<String> definition = new AtomicReference<>(SHIFTED_26919);
+        Defs.registerProvider(mutableLocal26919(definition), 50);
+        try {
+            assertNull(CRSSerializer.toEpsgCode(new Proj(OGC_NAD83_UTM19N)));
+            definition.set(PLAIN_26919);
+            Defs.set("EPSG:26919", "");
+            assertEquals("EPSG:26919", CRSSerializer.toEpsgCode(new Proj(OGC_NAD83_UTM19N)),
+                "a stale offline definition survived an empty Defs.set");
+        } finally {
+            Defs.removeProvider("mutable-26919");
         }
     }
 }
