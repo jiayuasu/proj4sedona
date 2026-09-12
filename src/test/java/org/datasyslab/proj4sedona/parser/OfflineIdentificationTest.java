@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.datasyslab.proj4sedona.core.Proj;
@@ -216,6 +217,38 @@ class OfflineIdentificationTest {
             Defs.set("EPSG:26919", "");
             assertEquals("EPSG:26919", CRSSerializer.toEpsgCode(new Proj(OGC_NAD83_UTM19N)),
                 "a stale offline definition survived an empty Defs.set");
+        } finally {
+            Defs.removeProvider("mutable-26919");
+        }
+    }
+
+    @Test
+    @DisplayName("Setting a code to a null definition invalidates the offline cache too")
+    void nullDefinitionSetInvalidatesOfflineCache() {
+        AtomicReference<String> definition = new AtomicReference<>(SHIFTED_26919);
+        Defs.registerProvider(mutableLocal26919(definition), 50);
+        try {
+            assertNull(CRSSerializer.toEpsgCode(new Proj(OGC_NAD83_UTM19N)));
+            definition.set(PLAIN_26919);
+            Defs.set("EPSG:26919", (ProjectionDef) null);
+            assertEquals("EPSG:26919", CRSSerializer.toEpsgCode(new Proj(OGC_NAD83_UTM19N)),
+                "a stale offline definition survived Defs.set(code, (ProjectionDef) null)");
+        } finally {
+            Defs.removeProvider("mutable-26919");
+        }
+    }
+
+    @Test
+    @DisplayName("Setting a code to a null PROJJSON document invalidates the offline cache too")
+    void nullProjJsonSetInvalidatesOfflineCache() {
+        AtomicReference<String> definition = new AtomicReference<>(SHIFTED_26919);
+        Defs.registerProvider(mutableLocal26919(definition), 50);
+        try {
+            assertNull(CRSSerializer.toEpsgCode(new Proj(OGC_NAD83_UTM19N)));
+            definition.set(PLAIN_26919);
+            Defs.set("EPSG:26919", (Map<String, Object>) null);
+            assertEquals("EPSG:26919", CRSSerializer.toEpsgCode(new Proj(OGC_NAD83_UTM19N)),
+                "a stale offline definition survived Defs.set(code, (Map) null)");
         } finally {
             Defs.removeProvider("mutable-26919");
         }

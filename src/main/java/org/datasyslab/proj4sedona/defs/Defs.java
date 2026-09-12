@@ -191,8 +191,7 @@ public final class Defs {
         String key = CRSUtils.normalizeAuthorityCode(name);
         String trimmed = definition == null ? "" : definition.trim();
         if (trimmed.isEmpty()) {
-            definitions.remove(key);
-            localDefinitions.remove(key);
+            remove(key);
             return;
         }
 
@@ -212,6 +211,7 @@ public final class Defs {
         // to the raw definition or its embedded name).
         def.setSrsCode(key);
         definitions.put(key, def);
+        localDefinitions.remove(key);
     }
 
     /**
@@ -224,12 +224,13 @@ public final class Defs {
     public static void set(String name, Map<String, Object> projjson) {
         String key = CRSUtils.normalizeAuthorityCode(name);
         if (projjson == null) {
-            definitions.remove(key);
+            remove(key);
             return;
         }
         ProjectionDef def = WktParser.parse(projjson);
         def.setSrsCode(key);
         definitions.put(key, def);
+        localDefinitions.remove(key);
     }
 
     /**
@@ -241,7 +242,7 @@ public final class Defs {
     public static void set(String name, ProjectionDef def) {
         String key = CRSUtils.normalizeAuthorityCode(name);
         if (def == null) {
-            definitions.remove(key);
+            remove(key);
         } else {
             if (def.getSrsCode() == null) {
                 def.setSrsCode(key);
