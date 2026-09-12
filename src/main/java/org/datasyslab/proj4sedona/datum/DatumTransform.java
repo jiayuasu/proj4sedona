@@ -29,6 +29,13 @@ import java.util.List;
  */
 public final class DatumTransform {
 
+    /**
+     * Result of {@link #applyGridShift}: the datum lists only optional grids and none is
+     * available, so no shift was applied and none was required.
+     */
+    private static final int GRID_SHIFT_SKIPPED = 1;
+
+
     private DatumTransform() {
         // Utility class
     }
@@ -76,6 +83,11 @@ public final class DatumTransform {
         // If source datum requires grid shifts, apply it to geodetic coordinates
         if (source.getDatumType() == Values.PJD_GRIDSHIFT) {
             int gridShiftCode = applyGridShift(source, false, p);
+            if (gridShiftCode == GRID_SHIFT_SKIPPED) {
+                // None of the datum's optional grids is available: no shift is known, so the
+                // datum behaves like datum=none, as PROJ does for a missing optional grid file.
+                return point;
+            }
             if (gridShiftCode != 0) {
                 return null;
             }
@@ -121,6 +133,9 @@ public final class DatumTransform {
         // If destination datum requires grid shifts, apply it
         if (dest.getDatumType() == Values.PJD_GRIDSHIFT) {
             int gridShiftCode = applyGridShift(dest, true, p);
+            if (gridShiftCode == GRID_SHIFT_SKIPPED) {
+                return point;
+            }
             if (gridShiftCode != 0) {
                 return null;
             }
@@ -150,6 +165,22 @@ public final class DatumTransform {
         if (grids == null || grids.isEmpty()) {
             System.err.println("Grid shift grids not found");
             return -1;
+        }
+
+        // Nothing to shift with: no grid is loaded and no null grid is listed. If every
+        // listed grid is optional this is not an error, just no shift; a mandatory one that
+        // is missing is reported below by the search loop as before.
+        boolean anyUsable = false;
+        boolean anyMandatoryMissing = false;
+        for (NadgridInfo gridInfo : grids) {
+            if (gridInfo.isNull() || gridInfo.getGrid() != null) {
+                anyUsable = true;
+            } else if (gridInfo.isMandatory()) {
+                anyMandatoryMissing = true;
+            }
+        }
+        if (!anyUsable && !anyMandatoryMissing) {
+            return GRID_SHIFT_SKIPPED;
         }
 
         // Note: proj4js uses negative longitude internally for grid operations
