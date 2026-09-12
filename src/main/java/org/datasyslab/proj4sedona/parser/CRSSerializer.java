@@ -12,6 +12,7 @@ import org.datasyslab.proj4sedona.constants.Values;
 import org.datasyslab.proj4sedona.core.CoordinateAxis;
 import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Proj;
+import org.datasyslab.proj4sedona.core.ProjectionDef;
 import org.datasyslab.proj4sedona.defs.Defs;
 import org.datasyslab.proj4sedona.projection.Krovak;
 import org.datasyslab.proj4sedona.projection.ProjectionParams;
@@ -2282,7 +2283,15 @@ public final class CRSSerializer {
 
     private static boolean matchesDefinition(ProjectionParams params, String code) {
         try {
-            Proj ref = new Proj(code);
+            // Identification is a local computation: only a bundled or cached definition can
+            // serve as the reference, and the reference is built from that definition
+            // directly. Resolving the code through Proj(String) would consult the provider
+            // chain, which may reach the remote catalog and must not be shadowed either way.
+            ProjectionDef local = Defs.getLocal(code);
+            if (local == null) {
+                return false;
+            }
+            Proj ref = new Proj(local);
             ProjectionParams refParams = ref.getParams();
 
             // Compare projection names (normalized to handle aliases)

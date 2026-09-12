@@ -32,8 +32,8 @@ public class Proj {
     // hard-coded definition.  Mirrors: proj4js lib/parseCode.js checkMercator()
     private static final Set<String> WEB_MERCATOR_CODES = Set.of("3857", "900913", "3785", "102113");
 
-    private final ProjectionParams params;
-    private final Projection projection;
+    private ProjectionParams params;
+    private Projection projection;
 
     /**
      * Create a projection from an SRS code (PROJ string).
@@ -60,6 +60,30 @@ public class Proj {
             }
         }
 
+        initialize(def);
+    }
+
+    /**
+     * Build a projection directly from an already-parsed definition.
+     *
+     * <p>Unlike {@link #Proj(String)}, this never consults {@link org.datasyslab.proj4sedona.defs.Defs}
+     * or any provider, so a caller that has resolved a definition itself (for example an
+     * offline reference during EPSG identification) gets exactly that definition. The
+     * definition is completed in place with the same defaults the string constructor applies.</p>
+     *
+     * @param def A parsed definition with a projection name
+     * @throws IllegalArgumentException if the definition has no projection name or names an
+     *         unknown projection
+     */
+    public Proj(ProjectionDef def) {
+        ProjectionRegistry.start();
+        if (def == null || def.getProjName() == null) {
+            throw new IllegalArgumentException("Definition has no projection name");
+        }
+        initialize(def);
+    }
+
+    private void initialize(ProjectionDef def) {
         // Get the projection implementation
         projection = ProjectionRegistry.get(def.getProjName());
         if (projection == null) {

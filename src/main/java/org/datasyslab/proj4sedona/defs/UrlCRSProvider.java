@@ -250,6 +250,11 @@ public final class UrlCRSProvider implements CRSProvider {
     }
 
     @Override
+    public boolean isRemote() {
+        return true;
+    }
+
+    @Override
     public String getName() {
         return name;
     }

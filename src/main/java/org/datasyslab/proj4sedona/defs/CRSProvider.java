@@ -55,4 +55,14 @@ public interface CRSProvider {
      * @throws CRSFetchException on hard errors that should abort the entire lookup
      */
     CRSResult resolve(String authority, String code);
+
+    /**
+     * Whether resolving through this provider may leave the local machine (network, remote
+     * catalog). Offline-only lookups such as EPSG identification skip remote providers.
+     *
+     * @return {@code true} for providers that fetch definitions remotely
+     */
+    default boolean isRemote() {
+        return false;
+    }
 }

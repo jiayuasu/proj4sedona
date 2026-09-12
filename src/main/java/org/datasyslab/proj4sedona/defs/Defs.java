@@ -46,6 +46,12 @@ public final class Defs {
 
     /** Cache of parsed projection definitions, keyed by normalized name */
     private static final Map<String, ProjectionDef> definitions = new ConcurrentHashMap<>();
+    /**
+     * Definitions resolved by {@link #getLocal} from non-remote providers, kept apart from
+     * {@link #definitions} so an offline lookup never shadows a higher-priority remote
+     * provider in ordinary resolution.
+     */
+    private static final Map<String, ProjectionDef> localDefinitions = new ConcurrentHashMap<>();
 
     /** Shared Gson instance — thread-safe for read operations. */
     private static final Gson GSON = new Gson();
@@ -185,7 +191,7 @@ public final class Defs {
         String key = CRSUtils.normalizeAuthorityCode(name);
         String trimmed = definition == null ? "" : definition.trim();
         if (trimmed.isEmpty()) {
-            definitions.remove(key);
+            remove(key);
             return;
         }
 
@@ -205,6 +211,7 @@ public final class Defs {
         // to the raw definition or its embedded name).
         def.setSrsCode(key);
         definitions.put(key, def);
+        localDefinitions.remove(key);
     }
 
     /**
@@ -217,12 +224,13 @@ public final class Defs {
     public static void set(String name, Map<String, Object> projjson) {
         String key = CRSUtils.normalizeAuthorityCode(name);
         if (projjson == null) {
-            definitions.remove(key);
+            remove(key);
             return;
         }
         ProjectionDef def = WktParser.parse(projjson);
         def.setSrsCode(key);
         definitions.put(key, def);
+        localDefinitions.remove(key);
     }
 
     /**
@@ -234,12 +242,13 @@ public final class Defs {
     public static void set(String name, ProjectionDef def) {
         String key = CRSUtils.normalizeAuthorityCode(name);
         if (def == null) {
-            definitions.remove(key);
+            remove(key);
         } else {
             if (def.getSrsCode() == null) {
                 def.setSrsCode(key);
             }
             definitions.put(key, def);
+            localDefinitions.remove(key);
         }
     }
 
@@ -289,6 +298,59 @@ public final class Defs {
             }
         }
 
+        return null;
+    }
+
+    /**
+     * Resolve a definition without leaving the local machine.
+     *
+     * <p>Consults the cache and then every registered provider that does not declare
+     * itself {@linkplain CRSProvider#isRemote() remote}, in priority order. Unlike
+     * {@link #get(String)}, a miss returns {@code null} instead of falling through to
+     * remote catalogs, so callers that must stay offline, such as EPSG identification,
+     * can probe candidate codes freely.</p>
+     *
+     * <p>A hit from a local provider is cached apart from ordinary resolution: a
+     * higher-priority remote provider that was skipped here must still win in
+     * {@link #get(String)}, so the bundled definition is never written to that cache.
+     * The shared cache is read, since it holds the definitions ordinary resolution already
+     * settled on.</p>
+     *
+     * @param name The name/code to look up (e.g., "EPSG:26919")
+     * @return The ProjectionDef, or {@code null} if no local source knows the code
+     */
+    public static ProjectionDef getLocal(String name) {
+        if (!globalsInitialized) {
+            globals();
+        }
+        String normalizedName = CRSUtils.normalizeAuthorityCode(name);
+        ProjectionDef def = definitions.get(normalizedName);
+        if (def != null) {
+            return def;
+        }
+        def = localDefinitions.get(normalizedName);
+        if (def != null) {
+            return def;
+        }
+        Matcher matcher = AUTHORITY_CODE_PATTERN.matcher(normalizedName);
+        if (!matcher.matches()) {
+            return null;
+        }
+        String authority = matcher.group(1).toLowerCase();
+        String code = matcher.group(2);
+        for (ProviderEntry entry : providers) {
+            if (entry.provider.isRemote()) {
+                continue;
+            }
+            CRSResult result = entry.provider.resolve(authority, code);
+            if (result != null) {
+                def = parseResult(result, normalizedName);
+                if (def != null) {
+                    localDefinitions.put(normalizedName, def);
+                }
+                return def;
+            }
+        }
         return null;
     }
 
@@ -386,7 +448,10 @@ public final class Defs {
      * @return The removed definition, or null if it didn't exist
      */
     public static ProjectionDef remove(String name) {
-        return definitions.remove(CRSUtils.normalizeAuthorityCode(name));
+        String key = CRSUtils.normalizeAuthorityCode(name);
+        ProjectionDef removed = definitions.remove(key);
+        ProjectionDef local = localDefinitions.remove(key);
+        return removed != null ? removed : local;
     }
 
     /**
@@ -478,6 +543,7 @@ public final class Defs {
      */
     public static synchronized void reset() {
         definitions.clear();
+        localDefinitions.clear();
         providers = new CopyOnWriteArrayList<>();
         globalsInitialized = false;
     }
