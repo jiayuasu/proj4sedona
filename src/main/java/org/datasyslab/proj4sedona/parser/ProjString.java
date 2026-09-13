@@ -266,7 +266,6 @@ public final class ProjString {
             case "axis":
                 if (isValidAxis(paramVal)) {
                     def.setAxis(paramVal);
-                    def.setAxisDeclared(true);
                 }
                 break;
 
