@@ -52,6 +52,29 @@ class EsriAliasesTest {
     }
 
     @Test
+    @DisplayName("A superseded row takes its authority and deprecation from the current object")
+    void supersededRowUsesTheCurrentObjectsAuthority() {
+        // Esri kept ESRI:102113 as a code-change row pointing at 3785; the object at 3785
+        // is EPSG's, and deprecated.
+        EsriAliases.Alias webMercator = EsriAliases.crs("WGS_1984_Web_Mercator");
+        assertNotNull(webMercator);
+        assertEquals("EPSG:3785", webMercator.getCode());
+        assertTrue(webMercator.isDeprecated());
+    }
+
+    @Test
+    @DisplayName("A datum, its 2D and 3D geographic CRSs, and its projected CRSs share one 2D base")
+    void basesAreTwoDimensionalAndConsistent() {
+        assertEquals("EPSG:3824", EsriAliases.datum("D_TWD_1997").getBaseCrs());
+        assertEquals("EPSG:3824", EsriAliases.crs("GCS_TWD_1997").getBaseCrs());
+        assertEquals("EPSG:3824", EsriAliases.crs("TWD_1997_3D").getBaseCrs());
+        assertEquals("EPSG:3823", EsriAliases.crs("TWD_1997_3D").getCode());
+        assertEquals("EPSG:3824", EsriAliases.crs("TWD_1997_TM_Taiwan").getBaseCrs());
+        assertEquals("EPSG:4023", EsriAliases.datum("D_MOLDREF99").getBaseCrs());
+        assertEquals("EPSG:4023", EsriAliases.crs("MOLDREF99_Moldova_TM").getBaseCrs());
+    }
+
+    @Test
     @DisplayName("Geographic CRS names resolve to themselves as base CRS")
     void geographicCrsByName() {
         EsriAliases.Alias nad83 = EsriAliases.crs("GCS_North_American_1983");

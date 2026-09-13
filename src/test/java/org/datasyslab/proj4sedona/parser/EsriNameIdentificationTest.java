@@ -5,8 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.defs.CRSProvider;
 import org.datasyslab.proj4sedona.defs.CRSResult;
@@ -41,17 +43,11 @@ class EsriNameIdentificationTest {
     private static final String GREENWICH = "PRIMEM[\"Greenwich\",0.0]";
     private static final String DEGREE = "UNIT[\"Degree\",0.0174532925199433]";
 
-    /** What the remote catalog answers for the codes these tests exercise. */
-    private static final Map<String, String> CATALOG = new HashMap<>();
-
-    static {
-        CATALOG.put("2229", "+proj=lcc +lat_0=33.5 +lon_0=-118 +lat_1=35.4666666666667 +lat_2=34.0333333333333"
-            + " +x_0=2000000.0001016 +y_0=500000.0001016 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=us-ft +no_defs");
-        CATALOG.put("4258", "+proj=longlat +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +no_defs");
-        CATALOG.put("4275", "+proj=longlat +ellps=clrk80ign +towgs84=-168,-60,320,0,0,0,0 +no_defs");
-        CATALOG.put("4314", "+proj=longlat +ellps=bessel +towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7 +no_defs");
-    }
-
+    /**
+     * The remote catalog's answers for the codes these tests exercise, as PROJJSON documents
+     * captured from spatialreference.org, the production provider's source, so the
+     * definitions the name phase validates against have the same shape as in production.
+     */
     private final CRSProvider catalog = new CRSProvider() {
         @Override
         public String getName() {
@@ -60,8 +56,16 @@ class EsriNameIdentificationTest {
 
         @Override
         public CRSResult resolve(String authority, String code) {
-            String def = "epsg".equalsIgnoreCase(authority) ? CATALOG.get(code) : null;
-            return def == null ? null : CRSResult.proj4(def);
+            if (!"epsg".equalsIgnoreCase(authority)) {
+                return null;
+            }
+            try (InputStream in = EsriNameIdentificationTest.class.getResourceAsStream(
+                    "/esri-name-catalog/EPSG/" + code + ".json")) {
+                return in == null ? null
+                    : CRSResult.projJson(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         }
 
         @Override
@@ -198,5 +202,23 @@ class EsriNameIdentificationTest {
     void nonEsriNamesFallThrough() {
         assertEquals("EPSG:4326", CRSSerializer.toEpsgCode(new Proj("EPSG:4326")));
         assertEquals("EPSG:26919", identify(utm("NAD83 / UTM zone 19N", NAD83_GCS, -69.0)));
+    }
+
+    // Esri's own WKT for a few systems whose datum is known only by its Esri spelling, or
+    // whose geographic CRS has a 3D sibling; each must identify against the fetched definition.
+
+    @Test
+    @DisplayName("A projected name on a datum known only by its Esri spelling identifies")
+    void projectedNameOnEsriSpelledDatumIdentifies() {
+        assertEquals("EPSG:25832", identify("PROJCS[\"ETRS_1989_UTM_Zone_32N\",GEOGCS[\"GCS_ETRS_1989\",DATUM[\"D_ETRS_1989\",SPHEROID[\"GRS_1980\",6378137.0,298.257222101]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"False_Easting\",500000.0],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",9.0],PARAMETER[\"Scale_Factor\",0.9996],PARAMETER[\"Latitude_Of_Origin\",0.0],UNIT[\"Meter\",1.0]]"));
+    }
+
+    @Test
+    @DisplayName("A datum with a 3D geographic sibling still identifies its 2D and projected systems")
+    void datumWithThreeDimensionalSiblingIdentifies() {
+        assertEquals("EPSG:3824", identify("GEOGCS[\"GCS_TWD_1997\",DATUM[\"D_TWD_1997\",SPHEROID[\"GRS_1980\",6378137.0,298.257222101]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]]"));
+        assertEquals("EPSG:3826", identify("PROJCS[\"TWD_1997_TM_Taiwan\",GEOGCS[\"GCS_TWD_1997\",DATUM[\"D_TWD_1997\",SPHEROID[\"GRS_1980\",6378137.0,298.257222101]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"False_Easting\",250000.0],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",121.0],PARAMETER[\"Scale_Factor\",0.9999],PARAMETER[\"Latitude_Of_Origin\",0.0],UNIT[\"Meter\",1.0]]"));
+        assertEquals("EPSG:4023", identify("GEOGCS[\"GCS_MOLDREF99\",DATUM[\"D_MOLDREF99\",SPHEROID[\"GRS_1980\",6378137.0,298.257222101]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]]"));
+        assertEquals("EPSG:4026", identify("PROJCS[\"MOLDREF99_Moldova_TM\",GEOGCS[\"GCS_MOLDREF99\",DATUM[\"D_MOLDREF99\",SPHEROID[\"GRS_1980\",6378137.0,298.257222101]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"False_Easting\",200000.0],PARAMETER[\"False_Northing\",-5000000.0],PARAMETER[\"Central_Meridian\",28.4],PARAMETER[\"Scale_Factor\",0.99994],PARAMETER[\"Latitude_Of_Origin\",0.0],UNIT[\"Meter\",1.0]]"));
     }
 }

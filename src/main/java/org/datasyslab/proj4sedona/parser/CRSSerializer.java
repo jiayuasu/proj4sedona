@@ -1922,7 +1922,7 @@ public final class CRSSerializer {
         if (geographic && !isSafeGeographicAuthorityCandidate(params)) {
             return null;
         }
-        if (!matchesResolvedDefinition(params, alias.getCode())) {
+        if (!matchesResolvedDefinition(params, alias.getCode(), alias.getBaseCrs())) {
             return null;
         }
         return parseAuthorityCode(alias.getCode());
@@ -1932,9 +1932,11 @@ public final class CRSSerializer {
      * Whether the parameters describe the CRS a code denotes, resolving the code's
      * definition through the ordinary provider chain (bundled, cached, or fetched on
      * demand). Unlike {@link #matchesDefinition}, which serves blind candidate probing and
-     * must stay offline, this is only called for a code a name has singled out.
+     * must stay offline, this is only called for a code a name has singled out, and the
+     * caller passes the geographic CRS of that code's datum, which it already knows.
      */
-    private static boolean matchesResolvedDefinition(ProjectionParams params, String code) {
+    private static boolean matchesResolvedDefinition(
+            ProjectionParams params, String code, String referenceDatumCrs) {
         try {
             // Local sources first (bundled, cached, local providers), so a code the library
             // already knows never costs a fetch; only then the full chain, remote included.
@@ -1945,7 +1947,7 @@ public final class CRSSerializer {
             if (def == null) {
                 return false;
             }
-            return matchesReference(params, new Proj(def));
+            return matchesReference(params, new Proj(def), referenceDatumCrs);
         } catch (Exception e) {
             // An unavailable or malformed source cannot vouch for the name; identification
             // answers null rather than propagating the failure into serialization.
@@ -2385,7 +2387,7 @@ public final class CRSSerializer {
             if (local == null) {
                 return false;
             }
-            return matchesReference(params, new Proj(local));
+            return matchesReference(params, new Proj(local), null);
         } catch (Exception e) {
             return false;
         }
@@ -2395,8 +2397,14 @@ public final class CRSSerializer {
      * Whether the parameters describe the same CRS as a reference definition: projection
      * method, datum and any stated datum operation, ellipsoid, origin, standard parallels
      * (in either order), prime meridian, units, and the remaining defining parameters.
+     *
+     * @param referenceDatumCrs the geographic CRS of the reference's datum when the caller
+     *        knows it independently (the reference was resolved for a code whose datum the
+     *        alias index names), so a datum the reference spells in a way no table knows
+     *        ("Taiwan Datum 1997") still compares by identity; null when unknown
      */
-    private static boolean matchesReference(ProjectionParams params, Proj ref) {
+    private static boolean matchesReference(
+            ProjectionParams params, Proj ref, String referenceDatumCrs) {
         try {
             ProjectionParams refParams = ref.getParams();
 
@@ -2418,7 +2426,7 @@ public final class CRSSerializer {
                         || "none".equalsIgnoreCase(params.datumCode)) {
                     return false;
                 }
-                if (!datumCodesMatch(params.datumCode, refParams.datumCode)) {
+                if (!datumIdentitiesMatch(params.datumCode, refParams.datumCode, referenceDatumCrs)) {
                     return false;
                 }
             }
@@ -2507,7 +2515,13 @@ public final class CRSSerializer {
                 }
             }
 
-            if (!axesMatchDefinition(params, refParams)
+            // A registry definition declares the authority's axis order (EPSG lists most
+            // geographic CRSs, and many national grids, north-first). A WKT1 definition
+            // cannot express an axis order at all, so when the input declares no axes the
+            // registry's convention carries no information about whether this is the
+            // same CRS, and only a declared order is held against the reference.
+            if (!(declaresNoAxes(params) && isPlainHorizontalOrder(effectiveAxis(refParams))
+                        || axesMatchDefinition(params, refParams))
                     // WKT/PROJJSON describe UTM as parameterized Transverse
                     // Mercator, so zone/south are already represented by long0,
                     // y0, and the other numeric checks above.
@@ -2526,6 +2540,17 @@ public final class CRSSerializer {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** Whether the definition carries no axis declaration of its own (WKT1, PROJ strings). */
+    private static boolean declaresNoAxes(ProjectionParams params) {
+        return (params.coordinateAxes == null || params.coordinateAxes.isEmpty())
+            && (params.axis == null || "enu".equalsIgnoreCase(params.axis));
+    }
+
+    /** An east/north pair in either order with up third: the usual horizontal conventions. */
+    private static boolean isPlainHorizontalOrder(String axis) {
+        return "enu".equals(axis) || "neu".equals(axis);
     }
 
     private static boolean axesMatchDefinition(
@@ -2608,15 +2633,39 @@ public final class CRSSerializer {
      * the match, consistent with pyproj's behavior (unknown datum drops confidence below
      * the identification threshold).</p>
      */
+    /**
+     * Whether two datum codes name the same datum: the same spelling, or the same geographic
+     * CRS once each is normalized through the hand-written table, the datum registry, and
+     * the Esri datum names. When the reference's spelling normalizes to nothing but the
+     * caller knows the reference's datum independently, that identity stands in for it. An
+     * input datum that normalizes to nothing never matches: an unknown datum cannot vouch
+     * for an identification.
+     */
+    private static boolean datumIdentitiesMatch(
+            String inputCode, String referenceCode, String referenceDatumCrs) {
+        if (inputCode.equalsIgnoreCase(referenceCode)) {
+            return true;
+        }
+        String referenceIdentity = datumGeographicCrs(referenceCode);
+        if (referenceIdentity == null) {
+            referenceIdentity = referenceDatumCrs;
+        }
+        String inputIdentity = datumGeographicCrs(inputCode);
+        return inputIdentity != null && inputIdentity.equals(referenceIdentity);
+    }
+
     private static boolean datumCodesMatch(String dc1, String dc2) {
         // Fast path: direct string match
         if (dc1.equalsIgnoreCase(dc2)) {
             return true;
         }
 
-        // Normalize both to EPSG geographic CRS codes
-        String epsg1 = normalizeDatumToEpsg(dc1);
-        String epsg2 = normalizeDatumToEpsg(dc2);
+        // Normalize both to geographic CRS codes, through the hand-written table and the
+        // datum registry, and through the Esri datum names for Esri-spelled datums, so an
+        // Esri definition (datum "etrs_1989") compares with a fetched PROJJSON one (datum
+        // "EPSG_4258") as the same identity.
+        String epsg1 = datumGeographicCrs(dc1);
+        String epsg2 = datumGeographicCrs(dc2);
 
         if (epsg1 != null && epsg2 != null) {
             // Both resolved to known datums — authoritative comparison

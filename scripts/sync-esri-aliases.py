@@ -23,14 +23,16 @@ Output columns (tab-separated, ``#`` lines are comments):
     type          geodetic_datum | geodetic_crs | projected_crs | ellipsoid
     esri_name     the Esri name, exactly as spelled by Esri
     code          <AUTHORITY>:<latest WKID>, e.g. EPSG:26919 or ESRI:102001
-    base_crs      the geographic CRS of the object's datum: the base of a projected CRS
-                  (from the GEOGCS embedded in its WKT), a geographic CRS itself, and for
-                  a datum the lowest current geographic CRS on it; empty for ellipsoids
+    base_crs      the 2D geographic CRS of the object's datum: for a datum its
+                  GCS_<datum> counterpart (else the lowest current 2D geographic CRS on
+                  it), for a geographic CRS the same base as its datum, for a projected CRS
+                  the base of the GEOGCS embedded in its WKT; empty for ellipsoids
     deprecated    1 when Esri marks the object deprecated, else 0
 
-When several objects share a name (Esri keeps the old row after a code change), the
-current one wins: not deprecated first, then the row whose WKID is already the latest,
-then the lowest latest WKID.
+Esri keeps a superseded row after a code change (``deprecated = codechange``) whose
+``latestWkid`` names the current object; every row is resolved to the row that owns its
+latest WKID before authority and deprecation are read. When several objects share a name,
+the current one wins: not deprecated first, then the lowest latest WKID.
 """
 import csv
 import re
@@ -52,6 +54,7 @@ SOURCES = (
 )
 GEOGCS_NAME = re.compile(r'GEOGCS\["([^"]+)"')
 DATUM_NAME = re.compile(r'DATUM\["([^"]+)"')
+THREE_D = "CS[ellipsoidal,3]"
 
 
 def usage(code=2):
@@ -70,12 +73,20 @@ def is_deprecated(row):
     return row["deprecated"].strip().lower() == "yes"
 
 
+def canonicalize(rows):
+    """Point every row at the row that owns its latest WKID.
+
+    Esri keeps a superseded row after a code change (``deprecated = codechange``) whose
+    ``latestWkid`` names the current object. Its authority and deprecation describe the old
+    object, so both are taken from the row whose own WKID is the latest one when that row
+    exists; a superseded row with no such counterpart stands for itself.
+    """
+    by_wkid = {row["wkid"]: row for row in rows if row["wkid"] == row["latestWkid"]}
+    return [by_wkid.get(row["latestWkid"], row) for row in rows]
+
+
 def rank(row):
-    return (
-        1 if is_deprecated(row) else 0,
-        0 if row["wkid"] == row["latestWkid"] else 1,
-        int(row["latestWkid"]),
-    )
+    return (1 if is_deprecated(row) else 0, int(row["latestWkid"]))
 
 
 def read_rows(checkout, relative):
@@ -91,12 +102,14 @@ def read_rows(checkout, relative):
 
 
 def collapse_by_name(rows):
-    """One row per name (case-insensitive): the current object wins."""
+    """One row per name (case-insensitive), each resolved to the row that owns its latest
+    WKID: a name that is still current wins over one that is deprecated, then the lowest
+    latest WKID."""
     best = {}
-    for row in rows:
+    for row, canonical in zip(rows, canonicalize(rows)):
         key = row["name"].strip().lower()
-        if key not in best or rank(row) < rank(best[key]):
-            best[key] = row
+        if key not in best or rank(canonical) < rank(best[key]):
+            best[key] = canonical
     return best
 
 
@@ -115,16 +128,38 @@ def generate(checkout):
     tables = {kind: read_rows(checkout, relative) for kind, relative in SOURCES}
     current = {kind: collapse_by_name(rows) for kind, rows in tables.items()}
 
-    geogcs_code_by_name = {key: authority_code(row) for key, row in current["geodetic_crs"].items()}
+    # Every base is a 2D geographic CRS: the "_3D" rows (CS[ellipsoidal,3] in Esri's WKT2)
+    # are the same datum at a different dimension and must never be chosen as a base, or a
+    # datum's base and its 2D CRS's base would disagree with each other.
+    def is_2d(row):
+        return THREE_D not in row.get("wkt2", "")
 
-    # The lowest current geographic CRS on each datum, for the datum rows' base_crs.
+    # The 2D geographic CRS on each datum: the GCS_<datum name> counterpart when Esri has one
+    # (the pairing Esri WKT itself uses), else the lowest current 2D one.
     geogcs_by_datum = defaultdict(list)
     for row in tables["geodetic_crs"]:
-        if is_deprecated(row):
+        if is_deprecated(row) or not is_2d(row):
             continue
         match = DATUM_NAME.search(row["wkt"])
         if match:
             geogcs_by_datum[match.group(1).strip().lower()].append(row)
+
+    def datum_base(datum_key):
+        candidates = geogcs_by_datum.get(datum_key, [])
+        if not candidates:
+            return ""
+        bare = datum_key[2:] if datum_key.startswith("d_") else datum_key
+        for row in candidates:
+            if row["name"].strip().lower() == "gcs_" + bare:
+                return authority_code(row)
+        return authority_code(min(candidates, key=rank))
+
+    # A geographic CRS's base is the 2D CRS of its datum (itself when it is that CRS).
+    geogcs_base_by_name = {}
+    for key, row in current["geodetic_crs"].items():
+        match = DATUM_NAME.search(row["wkt"])
+        base = datum_base(match.group(1).strip().lower()) if match else ""
+        geogcs_base_by_name[key] = base if base else (authority_code(row) if is_2d(row) else "")
 
     records = []
     for kind, _ in SOURCES:
@@ -132,13 +167,12 @@ def generate(checkout):
             row = current[kind][key]
             code = authority_code(row)
             if kind == "geodetic_crs":
-                base = code
+                base = geogcs_base_by_name.get(key, "")
             elif kind == "projected_crs":
                 match = GEOGCS_NAME.search(row["wkt"])
-                base = geogcs_code_by_name.get(match.group(1).strip().lower(), "") if match else ""
+                base = geogcs_base_by_name.get(match.group(1).strip().lower(), "") if match else ""
             elif kind == "geodetic_datum":
-                candidates = geogcs_by_datum.get(key, [])
-                base = authority_code(min(candidates, key=rank)) if candidates else ""
+                base = datum_base(key)
             else:
                 base = ""
             records.append((kind, row["name"].strip(), code, base, 1 if is_deprecated(row) else 0))
