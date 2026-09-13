@@ -503,6 +503,9 @@ public final class WktUtils {
         setIfPresent(wkt, "units", def::setUnits);
         setDoubleIfPresent(wkt, "from_greenwich", def::setFromGreenwich);
         setIfPresent(wkt, "axis", def::setAxis);
+        if (wkt.get("axis") != null) {
+            def.setAxisDeclared(true);
+        }
 
         // UTM
         setIntegerIfPresent(wkt, "zone", def::setZone);

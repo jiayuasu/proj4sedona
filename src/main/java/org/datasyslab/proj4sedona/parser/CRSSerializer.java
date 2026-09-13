@@ -2542,10 +2542,14 @@ public final class CRSSerializer {
         }
     }
 
-    /** Whether the definition carries no axis declaration of its own (WKT1, PROJ strings). */
+    /**
+     * Whether the definition's source declared no axis order of its own, so its axes are the
+     * parser's default rather than a statement about the CRS. The parsers record the
+     * declaration explicitly; a WKT1 AXIS pair, a PROJ {@code +axis=}, or PROJJSON axes all
+     * count, while a default east-first order does not.
+     */
     private static boolean declaresNoAxes(ProjectionParams params) {
-        return (params.coordinateAxes == null || params.coordinateAxes.isEmpty())
-            && (params.axis == null || "enu".equalsIgnoreCase(params.axis));
+        return !params.axisDeclared;
     }
 
     /** An east/north pair in either order with up third: the usual horizontal conventions. */

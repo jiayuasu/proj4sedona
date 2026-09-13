@@ -432,6 +432,7 @@ public final class ProjJsonTransformer {
                     axisOrder.append('u');
                 }
                 def.setAxis(axisOrder.toString());
+                def.setAxisDeclared(true);
             }
 
             // Process units from coordinate system

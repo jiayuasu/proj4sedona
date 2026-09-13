@@ -359,6 +359,7 @@ public class Proj {
         p.units = def.getUnits();
         p.fromGreenwich = def.getFromGreenwich();
         p.axis = def.getAxis() != null ? def.getAxis() : "enu";
+        p.axisDeclared = def.isAxisDeclared();
         p.coordinateSystemType = def.getCoordinateSystemType();
         p.coordinateAxes = def.getCoordinateAxes();
 

@@ -54,6 +54,7 @@ public class ProjectionDef {
     private String units;          // Unit name: m, ft, us-ft, etc.
     private Double fromGreenwich;  // Prime meridian offset in radians
     private String axis;           // Axis order: enu, neu, etc. (default "enu")
+    private boolean axisDeclared;  // whether the source declared its axes (AXIS nodes, +axis=, PROJJSON axes)
     private String coordinateSystemType;
     private List<CoordinateAxis> coordinateAxes = Collections.emptyList();
 
@@ -187,6 +188,10 @@ public class ProjectionDef {
 
     public String getAxis() { return axis; }
     public void setAxis(String axis) { this.axis = axis; }
+
+    /** Whether the definition's source declared its axis order, as opposed to the default. */
+    public boolean isAxisDeclared() { return axisDeclared; }
+    public void setAxisDeclared(boolean axisDeclared) { this.axisDeclared = axisDeclared; }
 
     public String getCoordinateSystemType() { return coordinateSystemType; }
     public void setCoordinateSystemType(String coordinateSystemType) {
