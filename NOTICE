@@ -1,0 +1,9 @@
+Proj4Sedona
+
+This product includes an index of coordinate system names and codes derived from the
+Esri projection engine database documentation (https://github.com/Esri/projection-engine-db-doc),
+Copyright Esri, licensed under the Apache License, Version 2.0.
+
+The file src/main/resources/org/datasyslab/proj4sedona/constants/esri-aliases.tsv is
+generated from that repository by scripts/sync-esri-aliases.py. It carries object names
+and codes only; no geodetic parameter dataset is bundled with this product.

@@ -54,6 +54,7 @@ public class ProjectionDef {
     private String units;          // Unit name: m, ft, us-ft, etc.
     private Double fromGreenwich;  // Prime meridian offset in radians
     private String axis;           // Axis order: enu, neu, etc. (default "enu")
+    private boolean axisDeclared;  // whether the source declared its axes (AXIS nodes, +axis=, PROJJSON axes)
     private String coordinateSystemType;
     private List<CoordinateAxis> coordinateAxes = Collections.emptyList();
 
@@ -186,7 +187,28 @@ public class ProjectionDef {
     public void setFromGreenwich(Double fromGreenwich) { this.fromGreenwich = fromGreenwich; }
 
     public String getAxis() { return axis; }
-    public void setAxis(String axis) { this.axis = axis; }
+
+    /**
+     * Set the axis order. Setting one, whether a parser read it from its source or a caller
+     * chose it, declares it: identification then holds it against a registry definition
+     * instead of treating it as the library's default. Pass {@code null} to leave the order
+     * undeclared, in which case {@link org.datasyslab.proj4sedona.core.Proj} fills in the
+     * default {@code enu} without declaring it.
+     */
+    public void setAxis(String axis) {
+        this.axis = axis;
+        this.axisDeclared = axis != null;
+    }
+
+    /** Fill in the default axis order without declaring it. */
+    void applyDefaultAxis() {
+        this.axis = "enu";
+        this.axisDeclared = false;
+    }
+
+    /** Whether an axis order was declared (by a parser's source or through the API), as opposed to defaulted. */
+    public boolean isAxisDeclared() { return axisDeclared; }
+    public void setAxisDeclared(boolean axisDeclared) { this.axisDeclared = axisDeclared; }
 
     public String getCoordinateSystemType() { return coordinateSystemType; }
     public void setCoordinateSystemType(String coordinateSystemType) {
@@ -198,6 +220,7 @@ public class ProjectionDef {
         if (coordinateAxes == null || coordinateAxes.isEmpty()) {
             this.coordinateAxes = Collections.emptyList();
         } else {
+            this.axisDeclared = true;
             this.coordinateAxes =
                 Collections.unmodifiableList(new ArrayList<>(coordinateAxes));
         }

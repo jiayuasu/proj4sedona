@@ -6,6 +6,7 @@ import org.datasyslab.proj4sedona.common.MeridianAxisResolver;
 import org.datasyslab.proj4sedona.common.MeridianAxisResolver.Role;
 import org.datasyslab.proj4sedona.common.ProjMath;
 import org.datasyslab.proj4sedona.constants.Datum;
+import org.datasyslab.proj4sedona.constants.EsriAliases;
 import org.datasyslab.proj4sedona.constants.Ellipsoid;
 import org.datasyslab.proj4sedona.constants.Units;
 import org.datasyslab.proj4sedona.constants.Values;
@@ -1842,6 +1843,15 @@ public final class CRSSerializer {
             return null;
         }
 
+        // Phase 0: an Esri registry name. Esri-style WKT names its CRSs with Esri's own
+        // names, which index authority codes. The name is trusted only after the definition
+        // behind the code has been resolved, on demand through the providers, and the
+        // parsed datum and parameters have been checked against it.
+        String[] esri = esriNameAuthority(params);
+        if (esri != null) {
+            return esri;
+        }
+
         // Phase 1: Check if srsCode already contains authority:code. WKT and
         // PROJJSON parsers currently use the same field for both asserted IDs and
         // human-readable names, so a CRS merely named "EPSG:4326" reaches this
@@ -1878,6 +1888,91 @@ public final class CRSSerializer {
         }
 
         return null;
+    }
+
+    /**
+     * Identify a CRS by its Esri registry name.
+     *
+     * <p>The WKT parser stores the PROJCS/GEOGCS name in {@code srsCode}. When that name is
+     * an Esri alias of a CRS, the alias is trusted only if the parsed datum resolves to the
+     * alias's base geographic CRS and the parameters match the definition behind the code.
+     * That definition is resolved locally when the library already has it (bundled,
+     * cached, or from a local provider) and otherwise through the full provider chain,
+     * remote included, so it is fetched on demand; a
+     * definition that cannot be resolved, or a provider that fails, leaves the name
+     * untrusted. A name on a foreign or unrecognised datum, or with a different
+     * ellipsoid, prime meridian, unit, datum operation, or projection parameters,
+     * therefore falls through to the other phases.</p>
+     *
+     * @return {"AUTHORITY", code} or null
+     */
+    private static String[] esriNameAuthority(ProjectionParams params) {
+        EsriAliases.Alias alias = EsriAliases.crs(params.srsCode);
+        if (alias == null || alias.getBaseCrs() == null) {
+            return null;
+        }
+        boolean geographic = "longlat".equals(normalizeProjName(params.projName));
+        if (geographic != (alias.getKind() == EsriAliases.Kind.GEODETIC_CRS)) {
+            return null;
+        }
+        String datumCrs = datumGeographicCrs(params.datumCode);
+        if (datumCrs == null || !datumCrs.equals(alias.getBaseCrs())) {
+            return null;
+        }
+        if (geographic && !isSafeGeographicAuthorityCandidate(params)) {
+            return null;
+        }
+        if (!matchesResolvedDefinition(params, alias.getCode(), alias.getBaseCrs())) {
+            return null;
+        }
+        return parseAuthorityCode(alias.getCode());
+    }
+
+    /**
+     * Whether the parameters describe the CRS a code denotes, resolving the code's
+     * definition through the ordinary provider chain (bundled, cached, or fetched on
+     * demand). Unlike {@link #matchesDefinition}, which serves blind candidate probing and
+     * must stay offline, this is only called for a code a name has singled out, and the
+     * caller passes the geographic CRS of that code's datum, which it already knows.
+     */
+    private static boolean matchesResolvedDefinition(
+            ProjectionParams params, String code, String referenceDatumCrs) {
+        try {
+            // Local sources first (bundled, cached, local providers), so a code the library
+            // already knows never costs a fetch; only then the full chain, remote included.
+            ProjectionDef def = Defs.getLocal(code);
+            if (def == null) {
+                def = Defs.get(code);
+            }
+            if (def == null) {
+                return false;
+            }
+            return matchesReference(params, new Proj(def), referenceDatumCrs);
+        } catch (Exception e) {
+            // An unavailable or malformed source cannot vouch for the name; identification
+            // answers null rather than propagating the failure into serialization.
+            return false;
+        }
+    }
+
+    /**
+     * The geographic CRS a parsed datum code stands for: through the hand-written name
+     * table and the datum registry first, then through the Esri datum names (the WKT
+     * parser strips Esri's {@code d_} prefix, so both spellings are tried).
+     */
+    private static String datumGeographicCrs(String datumCode) {
+        if (datumCode == null || datumCode.isEmpty()) {
+            return null;
+        }
+        String epsg = normalizeDatumToEpsg(datumCode);
+        if (epsg != null) {
+            return epsg;
+        }
+        EsriAliases.Alias datum = EsriAliases.datum(datumCode);
+        if (datum == null) {
+            datum = EsriAliases.datum("D_" + datumCode);
+        }
+        return datum != null ? datum.getBaseCrs() : null;
     }
 
     /**
@@ -2283,15 +2378,34 @@ public final class CRSSerializer {
 
     private static boolean matchesDefinition(ProjectionParams params, String code) {
         try {
-            // Identification is a local computation: only a bundled or cached definition can
-            // serve as the reference, and the reference is built from that definition
-            // directly. Resolving the code through Proj(String) would consult the provider
-            // chain, which may reach the remote catalog and must not be shadowed either way.
+            // Blind candidate probing is a local computation: only a bundled or cached
+            // definition can serve as the reference, and the reference is built from that
+            // definition directly. Resolving the code through Proj(String) would consult the
+            // provider chain, which may reach the remote catalog and must not be shadowed
+            // either way.
             ProjectionDef local = Defs.getLocal(code);
             if (local == null) {
                 return false;
             }
-            Proj ref = new Proj(local);
+            return matchesReference(params, new Proj(local), null);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Whether the parameters describe the same CRS as a reference definition: projection
+     * method, datum and any stated datum operation, ellipsoid, origin, standard parallels
+     * (in either order), prime meridian, units, and the remaining defining parameters.
+     *
+     * @param referenceDatumCrs the geographic CRS of the reference's datum when the caller
+     *        knows it independently (the reference was resolved for a code whose datum the
+     *        alias index names), so a datum the reference spells in a way no table knows
+     *        ("Taiwan Datum 1997") still compares by identity; null when unknown
+     */
+    private static boolean matchesReference(
+            ProjectionParams params, Proj ref, String referenceDatumCrs) {
+        try {
             ProjectionParams refParams = ref.getParams();
 
             // Compare projection names (normalized to handle aliases)
@@ -2312,7 +2426,7 @@ public final class CRSSerializer {
                         || "none".equalsIgnoreCase(params.datumCode)) {
                     return false;
                 }
-                if (!datumCodesMatch(params.datumCode, refParams.datumCode)) {
+                if (!datumIdentitiesMatch(params.datumCode, refParams.datumCode, referenceDatumCrs)) {
                     return false;
                 }
             }
@@ -2321,7 +2435,8 @@ public final class CRSSerializer {
             // this library applies when transforming through WGS84.  The datum name
             // alone must not hide an explicit override such as
             // +datum=WGS84 +towgs84=100,0,0.
-            if (!datumOperationsEquivalent(params.datum, refParams.datum)) {
+            if (hasExplicitOperation(params.datum)
+                    && !datumOperationsEquivalent(params.datum, refParams.datum)) {
                 return false;
             }
 
@@ -2359,8 +2474,7 @@ public final class CRSSerializer {
             // natural origin.  This prevents a spherical Mercator with lat_ts=30
             // from being stamped EPSG:3857 merely because its ellipsoid and k match.
             if (!closeEnoughOrZero(params.latTs, refParams.latTs, 1e-9)
-                    || !closeEnoughOrZero(params.lat1, refParams.lat1, 1e-9)
-                    || !closeEnoughOrZero(params.lat2, refParams.lat2, 1e-9)) {
+                    || !standardParallelsMatch(params, refParams)) {
                 return false;
             }
 
@@ -2401,7 +2515,13 @@ public final class CRSSerializer {
                 }
             }
 
-            if (!axesMatchDefinition(params, refParams)
+            // A registry definition declares the authority's axis order (EPSG lists most
+            // geographic CRSs, and many national grids, north-first). A WKT1 definition
+            // cannot express an axis order at all, so when the input declares no axes the
+            // registry's convention carries no information about whether this is the
+            // same CRS, and only a declared order is held against the reference.
+            if (!(declaresNoAxes(params) && isPlainHorizontalOrder(effectiveAxis(refParams))
+                        || axesMatchDefinition(params, refParams))
                     // WKT/PROJJSON describe UTM as parameterized Transverse
                     // Mercator, so zone/south are already represented by long0,
                     // y0, and the other numeric checks above.
@@ -2420,6 +2540,25 @@ public final class CRSSerializer {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * Whether no axis order was declared for the definition, so its axes are the library's
+     * default rather than a statement about the CRS. A declaration is recorded whenever an
+     * order is set (a WKT1 AXIS pair, a PROJ {@code +axis=}, PROJJSON axes, or a caller
+     * setting one); independently, a non-default order or retained axis metadata on the
+     * parameters is a declaration too, so an order assigned to the parameters directly is
+     * never mistaken for the default.
+     */
+    private static boolean declaresNoAxes(ProjectionParams params) {
+        return !params.axisDeclared
+            && (params.axis == null || "enu".equalsIgnoreCase(params.axis))
+            && (params.coordinateAxes == null || params.coordinateAxes.isEmpty());
+    }
+
+    /** An east/north pair in either order with up third: the usual horizontal conventions. */
+    private static boolean isPlainHorizontalOrder(String axis) {
+        return "enu".equals(axis) || "neu".equals(axis);
     }
 
     private static boolean axesMatchDefinition(
@@ -2460,6 +2599,28 @@ public final class CRSSerializer {
         return Math.abs(a - b) < tolerance;
     }
 
+    /**
+     * A two-parallel conic is the same projection whichever parallel is listed first; Esri
+     * and EPSG happen to order them differently.
+     */
+    private static boolean standardParallelsMatch(ProjectionParams params, ProjectionParams ref) {
+        if (closeEnoughOrZero(params.lat1, ref.lat1, 1e-9) && closeEnoughOrZero(params.lat2, ref.lat2, 1e-9)) {
+            return true;
+        }
+        return closeEnoughOrZero(params.lat1, ref.lat2, 1e-9) && closeEnoughOrZero(params.lat2, ref.lat1, 1e-9);
+    }
+
+    /**
+     * Whether the definition states a datum operation of its own: a TOWGS84 / +towgs84 array
+     * (explicit or filled in from the datum registry) or a grid list. A definition that
+     * states none is the bare datum; a reference that renders the same CRS with the datum's
+     * canonical transformation to WGS 84, as PROJ does for NTF or DHDN, still describes the
+     * same CRS, so only a stated operation has to agree with the reference.
+     */
+    private static boolean hasExplicitOperation(DatumParams datum) {
+        return datum != null && (datum.isGridShift() || datum.getDatumParams() != null);
+    }
+
     private static boolean closeEnoughOrZero(Double a, Double b, double tolerance) {
         double av = a != null ? a : 0.0;
         double bv = b != null ? b : 0.0;
@@ -2480,15 +2641,39 @@ public final class CRSSerializer {
      * the match, consistent with pyproj's behavior (unknown datum drops confidence below
      * the identification threshold).</p>
      */
+    /**
+     * Whether two datum codes name the same datum: the same spelling, or the same geographic
+     * CRS once each is normalized through the hand-written table, the datum registry, and
+     * the Esri datum names. When the reference's spelling normalizes to nothing but the
+     * caller knows the reference's datum independently, that identity stands in for it. An
+     * input datum that normalizes to nothing never matches: an unknown datum cannot vouch
+     * for an identification.
+     */
+    private static boolean datumIdentitiesMatch(
+            String inputCode, String referenceCode, String referenceDatumCrs) {
+        if (inputCode.equalsIgnoreCase(referenceCode)) {
+            return true;
+        }
+        String referenceIdentity = datumGeographicCrs(referenceCode);
+        if (referenceIdentity == null) {
+            referenceIdentity = referenceDatumCrs;
+        }
+        String inputIdentity = datumGeographicCrs(inputCode);
+        return inputIdentity != null && inputIdentity.equals(referenceIdentity);
+    }
+
     private static boolean datumCodesMatch(String dc1, String dc2) {
         // Fast path: direct string match
         if (dc1.equalsIgnoreCase(dc2)) {
             return true;
         }
 
-        // Normalize both to EPSG geographic CRS codes
-        String epsg1 = normalizeDatumToEpsg(dc1);
-        String epsg2 = normalizeDatumToEpsg(dc2);
+        // Normalize both to geographic CRS codes, through the hand-written table and the
+        // datum registry, and through the Esri datum names for Esri-spelled datums, so an
+        // Esri definition (datum "etrs_1989") compares with a fetched PROJJSON one (datum
+        // "EPSG_4258") as the same identity.
+        String epsg1 = datumGeographicCrs(dc1);
+        String epsg2 = datumGeographicCrs(dc2);
 
         if (epsg1 != null && epsg2 != null) {
             // Both resolved to known datums — authoritative comparison

@@ -126,6 +126,8 @@ public class ProjectionParams {
     
     /** Axis order string (+axis), defaults to "enu" (east-north-up) */
     public String axis = "enu";
+    /** Whether the source declared its axis order; false when {@link #axis} is the default. */
+    public boolean axisDeclared;
 
     /** Coordinate-system subtype retained from WKT2/PROJJSON (for example Cartesian). */
     public String coordinateSystemType;

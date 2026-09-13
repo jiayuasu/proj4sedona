@@ -100,7 +100,7 @@ public class Proj {
         String ellpsForDerivation = def.getEllps();
 
         // Set defaults
-        if (def.getAxis() == null) def.setAxis("enu");
+        if (def.getAxis() == null) def.applyDefaultAxis();
         if (def.getEllps() == null) def.setEllps("wgs84");
         if (def.getLat1() == null && def.getLat0() != null) {
             def.setLat1(def.getLat0()); // Lambert 1SP needs this
@@ -359,6 +359,7 @@ public class Proj {
         p.units = def.getUnits();
         p.fromGreenwich = def.getFromGreenwich();
         p.axis = def.getAxis() != null ? def.getAxis() : "enu";
+        p.axisDeclared = def.isAxisDeclared();
         p.coordinateSystemType = def.getCoordinateSystemType();
         p.coordinateAxes = def.getCoordinateAxes();
 
