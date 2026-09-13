@@ -76,8 +76,10 @@ class OfflineIdentificationTest {
         // defeat a lookup in another, whatever order the methods run in.
         Defs.reset();
         Defs.globals();
-        // Ahead of the built-in provider (priority 100), so any lookup that reaches the
-        // provider chain hits the remote first.
+        // The counting provider stands in for the remote catalog: the real one is removed so
+        // nothing here can reach the network, and the stand-in sits ahead of the built-in
+        // provider (priority 100) so any lookup that reaches the chain hits it first.
+        Defs.removeProvider("spatialreference.org");
         Defs.registerProvider(countingRemote, 10);
     }
 
@@ -87,15 +89,19 @@ class OfflineIdentificationTest {
     }
 
     @Test
-    @DisplayName("Identifying an unbundled projected CRS never consults a remote provider")
-    void unidentifiableProjectedCrsStaysOffline() {
+    @DisplayName("A name-directed lookup resolves its one code through the providers; blind probing stays offline")
+    void nameDirectedLookupResolvesOnDemand() {
+        // The Esri name says exactly which definition to compare against. No local source
+        // has it, so that single code is resolved through the full provider chain, remote
+        // included. The stand-in answers nothing for it, so the name is not trusted, and the
+        // remaining parameter probing never reaches the provider.
         String result = CRSSerializer.toEpsgCode(new Proj(ESRI_STATE_PLANE_CA_V));
-        assertEquals(0, remoteCalls.get(), "toEpsgCode reached a remote provider");
-        assertNull(result, "no bundled definition matches a State Plane zone");
+        assertEquals(1, remoteCalls.get(), "expected exactly the name-directed lookup");
+        assertNull(result, "an unresolvable name must not identify");
     }
 
     @Test
-    @DisplayName("Identifying a bundled UTM zone never consults a remote provider")
+    @DisplayName("Identifying a bundled UTM zone by its Esri name never consults a remote provider")
     void bundledUtmZoneIdentifiesOffline() {
         String result = CRSSerializer.toEpsgCode(new Proj(ESRI_NAD83_UTM19N));
         assertEquals(0, remoteCalls.get(), "toEpsgCode reached a remote provider");
