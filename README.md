@@ -350,6 +350,33 @@ written.
 | Single transformation | ~500K ops/sec |
 | Batch 1000 points | ~2ms |
 
+## Esri object names
+
+Esri-style WKT (ArcGIS, the FileGDB API, Census TIGER/Line geodatabases) names datums
+`D_<name>`, geographic systems `GCS_<name>`, and projected systems by Esri's own names such as
+`NAD_1983_UTM_Zone_19N` or `NAD_1983_StatePlane_California_V_FIPS_0405_Feet`. Esri publishes the
+contents of its projection engine database (Apache License 2.0), where every object carries its
+WKID: the EPSG code wherever one exists, an Esri code otherwise. `scripts/sync-esri-aliases.py`
+extracts an index of names to codes from a clone of that repository into
+`src/main/resources/org/datasyslab/proj4sedona/constants/esri-aliases.tsv`, and `EsriAliases`
+serves it.
+
+The index carries no coordinate system parameters. When `CRSSerializer.toEpsgCode` meets an
+Esri-named CRS, it resolves the definition behind the code through the ordinary providers
+(bundled, cached, or fetched on demand from the remote catalog) and trusts the name only after
+the parsed datum, ellipsoid, prime meridian, units, and projection parameters have been checked
+against that definition. No geodetic parameter dataset is bundled with the library.
+
+To regenerate after Esri publishes an update:
+
+```bash
+git clone https://github.com/Esri/projection-engine-db-doc.git .upstream/projection-engine-db-doc
+python3 scripts/sync-esri-aliases.py .upstream/projection-engine-db-doc
+python3 scripts/sync-esri-aliases.py --check .upstream/projection-engine-db-doc   # verify the committed index
+```
+
+The header of the generated file records the upstream commit it came from. See `NOTICE`.
+
 ## Releasing
 
 To release a new version to Maven Central:

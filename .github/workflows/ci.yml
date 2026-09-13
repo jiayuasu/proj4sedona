@@ -34,6 +34,27 @@ jobs:
     - name: Check generated datum registry
       run: node scripts/sync-proj4js-datums.mjs --check .upstream/proj4js
 
+  esri-aliases:
+    name: Verify generated Esri name index
+    runs-on: ubuntu-latest
+    env:
+      ESRI_DB_DOC_COMMIT: 06dc50b556a2fa49224453ce8cbcf1833b3b64f7
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Checkout pinned Esri projection engine database documentation
+      uses: actions/checkout@v6
+      with:
+        repository: Esri/projection-engine-db-doc
+        ref: ${{ env.ESRI_DB_DOC_COMMIT }}
+        path: .upstream/projection-engine-db-doc
+        persist-credentials: false
+
+    - name: Check generated Esri name index
+      run: python3 scripts/sync-esri-aliases.py --check .upstream/projection-engine-db-doc
+
   test:
     name: Test on Java ${{ matrix.java }}
     runs-on: ${{ matrix.os }}
