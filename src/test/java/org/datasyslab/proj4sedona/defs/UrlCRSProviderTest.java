@@ -522,9 +522,14 @@ class UrlCRSProviderTest {
         List<Future<UrlCRSFetcher.FetchResult>> results = new ArrayList<>();
         try {
             for (int i = 0; i < callerCount; i++) {
+                // Half of the callers reach the fetcher late, as on a loaded CI runner.
+                boolean late = i % 2 == 1;
                 results.add(callers.submit(() -> {
                     ready.countDown();
                     assertTrue(start.await(5, TimeUnit.SECONDS));
+                    if (late) {
+                        Thread.sleep(50);
+                    }
                     return fetcher.fetch("epsg", "3000");
                 }));
             }
@@ -532,6 +537,15 @@ class UrlCRSProviderTest {
             start.countDown();
             assertTrue(ttlRefreshStarted.await(5, TimeUnit.SECONDS));
             assertEquals(1, fetcher.getInFlightCount());
+            // Hold the revalidation open until every other caller has joined it;
+            // a caller arriving after it completes would legitimately fetch again.
+            long joinDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (fetcher.getInFlightWaiterCount() < callerCount - 1) {
+                assertTrue(System.nanoTime() < joinDeadline,
+                        "every follower should join the in-flight revalidation");
+                Thread.sleep(1);
+            }
+            assertEquals(callerCount - 1, fetcher.getInFlightWaiterCount());
             releaseTtlRefresh.countDown();
 
             for (Future<UrlCRSFetcher.FetchResult> result : results) {
