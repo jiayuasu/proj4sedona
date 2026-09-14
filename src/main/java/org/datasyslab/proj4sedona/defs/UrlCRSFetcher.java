@@ -349,6 +349,8 @@ public final class UrlCRSFetcher {
 
     /** Concurrent requests for the same authority/code share one HTTP operation. */
     private final Map<String, CompletableFuture<FetchResult>> inFlight = new ConcurrentHashMap<>();
+    /** Callers currently waiting on another caller's in-flight request. */
+    private final AtomicInteger inFlightWaiters = new AtomicInteger();
 
     /** Guards all circuit-breaker state and generation transitions. */
     private final Object circuitLock = new Object();
@@ -538,6 +540,7 @@ public final class UrlCRSFetcher {
     }
 
     private FetchResult awaitInFlight(CompletableFuture<FetchResult> request) {
+        inFlightWaiters.incrementAndGet();
         try {
             FetchResult sharedResult = request.get();
             if (isInterruptedNetworkError(sharedResult)) {
@@ -563,6 +566,8 @@ public final class UrlCRSFetcher {
                     ? (Exception) cause
                     : new IOException("Concurrent CRS fetch failed", cause);
             return FetchResult.networkError(wrapped, 0);
+        } finally {
+            inFlightWaiters.decrementAndGet();
         }
     }
 
@@ -990,6 +995,9 @@ public final class UrlCRSFetcher {
 
     /** Get the number of currently active logical fetches. Visible for testing. */
     int getInFlightCount() { return inFlight.size(); }
+
+    /** Get the number of callers waiting on another caller's fetch. Visible for testing. */
+    int getInFlightWaiterCount() { return inFlightWaiters.get(); }
 
     /** Get the unmodifiable map of custom headers. */
     public Map<String, String> getHeaders() { return headers; }
