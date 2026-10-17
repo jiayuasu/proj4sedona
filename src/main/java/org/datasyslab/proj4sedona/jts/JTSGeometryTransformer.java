@@ -45,7 +45,10 @@ import org.datasyslab.proj4sedona.transform.Converter;
  * <pre>{@code
  * Geometry result = JTSGeometryTransformer.transform("EPSG:4326", "EPSG:3857", geometry);
  * }</pre>
- * 
+ *
+ * <p>A coordinate that cannot be transformed raises an {@link IllegalArgumentException}
+ * instead of producing a geometry with NaN coordinates.</p>
+ *
  * @since 1.0.0
  */
 public class JTSGeometryTransformer {
@@ -125,7 +128,8 @@ public class JTSGeometryTransformer {
      * 
      * @param geometry The geometry to transform
      * @return The transformed geometry
-     * @throws IllegalArgumentException if the geometry type is not supported
+     * @throws IllegalArgumentException if the geometry type is not supported, or if any of
+     *         its coordinates cannot be transformed (see {@link #transformCoordinate})
      */
     public Geometry transform(Geometry geometry) {
         if (geometry == null) {
@@ -297,9 +301,17 @@ public class JTSGeometryTransformer {
 
     /**
      * Transform a single JTS Coordinate.
-     * 
+     *
+     * <p>Unlike the coordinate-array methods of {@link Converter} and
+     * {@link Proj4}, which follow proj4js and return NaN for a point that cannot be
+     * transformed, this method throws: a geometry with NaN coordinates is not a usable
+     * result, and every geometry method of this class goes through here.</p>
+     *
      * @param coord The coordinate to transform
      * @return The transformed coordinate
+     * @throws IllegalArgumentException if the coordinate cannot be transformed, for example
+     *         because it lies outside every loaded datum grid or outside the valid area of
+     *         the projection
      */
     public Coordinate transformCoordinate(Coordinate coord) {
         if (coord == null) {
@@ -315,13 +327,36 @@ public class JTSGeometryTransformer {
 
         Point result = converter.forward(p);
         if (result == null) {
-            return new Coordinate(Double.NaN, Double.NaN);
+            throw new IllegalArgumentException(failureMessage(coord));
         }
 
         if (!Double.isNaN(coord.getZ())) {
             return new Coordinate(result.x, result.y, result.z);
         }
         return new Coordinate(result.x, result.y);
+    }
+
+    private String failureMessage(Coordinate coord) {
+        String point = Double.isNaN(coord.getZ())
+            ? "(" + coord.getX() + ", " + coord.getY() + ")"
+            : "(" + coord.getX() + ", " + coord.getY() + ", " + coord.getZ() + ")";
+        return "Cannot transform coordinate " + point
+            + " from " + describe(converter.getFrom())
+            + " to " + describe(converter.getTo())
+            + ": the point may lie outside every loaded datum grid"
+            + " or outside the valid area of the projection";
+    }
+
+    private static String describe(Proj proj) {
+        String code = proj.getParams().srsCode;
+        if (code != null && !code.isEmpty()) {
+            return code;
+        }
+        try {
+            return proj.toProjString();
+        } catch (RuntimeException e) {
+            return "+proj=" + proj.getParams().projName;
+        }
     }
 
     /**

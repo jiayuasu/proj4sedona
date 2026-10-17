@@ -186,6 +186,18 @@ Coordinate[] coords = {
 Coordinate[] transformed = transformer.transformCoordinates(coords);
 ```
 
+## Failed Transforms
+
+If a coordinate cannot be transformed, the transformer throws an
+`IllegalArgumentException` that names the coordinate and both CRS definitions. It does
+not return a geometry with NaN coordinates. Typical causes are a point outside every
+loaded datum grid, or a point outside the valid area of the projection (for example a
+pole in Mercator). One failing coordinate fails the whole geometry.
+
+The coordinate-array methods `Converter.forward(double[])`, `Proj4.proj4(..., double[])`
+and the batch methods keep the proj4js behavior and return NaN for a point that cannot
+be transformed.
+
 ## Static Convenience Methods
 
 For one-off transforms without creating a transformer instance:

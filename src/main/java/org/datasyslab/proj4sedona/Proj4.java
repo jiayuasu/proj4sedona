@@ -244,7 +244,8 @@ public final class Proj4 {
      * 
      * @param toProj Destination projection definition
      * @param coords Input coordinates array [lon, lat] (in WGS84)
-     * @return Transformed coordinates array
+     * @return Transformed coordinates array, or {@code [NaN, NaN]} if the point cannot be
+     *         transformed (as in proj4js)
      */
     public static double[] proj4(String toProj, double[] coords) {
         Point result = proj4(toProj, new Point(coords));
@@ -274,7 +275,8 @@ public final class Proj4 {
      * @param fromProj Source projection definition
      * @param toProj Destination projection definition
      * @param coords Input coordinates array in source CRS
-     * @return Transformed coordinates array in destination CRS
+     * @return Transformed coordinates array in destination CRS, or {@code [NaN, NaN]} if the
+     *         point cannot be transformed (as in proj4js)
      */
     public static double[] proj4(String fromProj, String toProj, double[] coords) {
         Point result = proj4(fromProj, toProj, new Point(coords));
@@ -462,7 +464,10 @@ public final class Proj4 {
      * 
      * <p><b>Performance:</b> ~30% faster than calling proj4() in a loop due to
      * projection caching and reduced object allocation.</p>
-     * 
+     *
+     * <p>A pair that cannot be transformed, or that has fewer than two values, comes back
+     * as {@code [NaN, NaN]} so that one bad point does not stop the batch.</p>
+     *
      * @param fromProj Source projection definition
      * @param toProj Destination projection definition
      * @param coords Array of [x, y] coordinate pairs
@@ -515,7 +520,10 @@ public final class Proj4 {
      * 
      * <p><b>Performance:</b> Fastest batch method due to minimal allocation.
      * Ideal for processing large datasets from binary files or native code.</p>
-     * 
+     *
+     * <p>A point that cannot be transformed comes back as NaN values so that one bad point
+     * does not stop the batch.</p>
+     *
      * @param fromProj Source projection definition
      * @param toProj Destination projection definition
      * @param coords Flat array of coordinates [x1, y1, x2, y2, ...]
@@ -558,7 +566,9 @@ public final class Proj4 {
      * Transform a flat array of 3D coordinates efficiently.
      * Coordinates are packed as [x1, y1, z1, x2, y2, z2, ...].
      * Uses cached projections for better performance.
-     * 
+     * A point that cannot be transformed comes back as NaN values so that one bad point
+     * does not stop the batch.
+     *
      * @param fromProj Source projection definition
      * @param toProj Destination projection definition
      * @param coords Flat array of 3D coordinates
