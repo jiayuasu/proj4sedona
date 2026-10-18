@@ -251,6 +251,38 @@ class Proj4jsBackportsTest {
     }
 
     @Test
+    @DisplayName("Spherical tmerc inverts latitude by the origin-adjusted angle (PROJ, not proj4js)")
+    void testSphericalTmercInverseLatitudeSign() {
+        // proj4js signs the inverse latitude by the northing from the origin, so with a
+        // nonzero lat_0 a point south of the origin but north of the equator comes back
+        // in the wrong hemisphere. PROJ uses the origin-adjusted angle; reference values
+        // from PROJ 9.8.1.
+        String[][] cases = {
+            {"+proj=tmerc +R=6371000 +lat_0=45 +lon_0=3", "4", "40", "85181.006449083", "-555496.794215061"},
+            {"+proj=tmerc +R=6371000 +lat_0=45 +lon_0=3", "4", "50", "71474.090807880", "556452.459592103"},
+            {"+proj=tmerc +R=6371000 +lat_0=45 +lon_0=3", "4", "-10", "109510.850480380", "-6115886.926879242"},
+            {"+proj=tmerc +R=6371000 +lat_0=-30 +lon_0=150 +x_0=500000 +y_0=10000000",
+                "151", "-25", "600780.116712599", "10555602.927176856"},
+            {"+proj=tmerc +R=6371000 +lat_0=-30 +lon_0=150 +x_0=500000 +y_0=10000000",
+                "152", "5", "721587.913068268", "13892159.604248783"},
+        };
+        for (String[] c : cases) {
+            for (String def : new String[]{c[0], c[0] + " +approx"}) {
+                Proj crs = new Proj(def);
+                Point input = new Point(
+                    Double.parseDouble(c[1]) * Values.D2R, Double.parseDouble(c[2]) * Values.D2R);
+                Point xy = crs.forward(input.copy());
+                assertEquals(Double.parseDouble(c[3]), xy.x, 1e-6, "easting: " + def);
+                assertEquals(Double.parseDouble(c[4]), xy.y, 1e-6, "northing: " + def);
+
+                Point ll = crs.inverse(xy);
+                assertEquals(input.x, ll.x, 1e-12, "inverse longitude: " + def);
+                assertEquals(input.y, ll.y, 1e-12, "inverse latitude: " + def);
+            }
+        }
+    }
+
+    @Test
     @DisplayName("proj4js 6a946a1: Esri D_Amersfoort without TOWGS84 resolves the amersfoort datum")
     void testAmersfoortWithoutTowgs84() {
         Datum amersfoort = Datum.get("amersfoort");

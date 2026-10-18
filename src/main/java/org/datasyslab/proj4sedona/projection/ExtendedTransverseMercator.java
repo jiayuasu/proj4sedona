@@ -324,7 +324,9 @@ public class ExtendedTransverseMercator implements Projection {
             double h = Math.cos(temp);
             double con = Math.sqrt((1 - h * h) / (1 + g * g));
             lat = ProjMath.asinz(con);
-            if (y < 0) lat = -lat;
+            // The latitude has the sign of the origin-adjusted angle, as in PROJ. proj4js
+            // signs it by the northing from the origin, which flips it when lat_0 != 0.
+            if (temp < 0) lat = -lat;
             lon = (g == 0 && h == 0) ? 0 : ProjMath.adjustLon(Math.atan2(g, h) + long0, over);
         } else {
             // Ellipsoidal case
