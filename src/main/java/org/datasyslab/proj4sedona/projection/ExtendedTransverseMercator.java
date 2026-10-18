@@ -3,6 +3,8 @@ package org.datasyslab.proj4sedona.projection;
 import org.datasyslab.proj4sedona.common.ProjMath;
 import org.datasyslab.proj4sedona.core.Point;
 
+import java.util.Set;
+
 /**
  * Extended Transverse Mercator projection implementation.
  * Mirrors: lib/projections/etmerc.js
@@ -23,7 +25,9 @@ import org.datasyslab.proj4sedona.core.Point;
  * </ul>
  * 
  * <p>When the {@code +approx} flag is set, falls back to the simpler (faster but
- * less accurate) traditional Transverse Mercator algorithm.</p>
+ * less accurate) traditional Transverse Mercator algorithm. A spherical tmerc takes
+ * the same path, because the traditional formulas are exact on a sphere; etmerc and
+ * UTM still reject a sphere, as PROJ does.</p>
  */
 public class ExtendedTransverseMercator implements Projection {
 
@@ -33,6 +37,11 @@ public class ExtendedTransverseMercator implements Projection {
         "Gauss Kruger", "Gauss_Kruger", "tmerc",
         "Fast_Transverse_Mercator", "Fast Transverse Mercator"
     };
+
+    // The names proj4js registers on its tmerc dispatcher (lib/projections/tmerc.js),
+    // in ProjectionRegistry.getNormalizedProjName form, lower-cased
+    private static final Set<String> TMERC_NAMES = Set.of(
+        "transverse_mercator", "gauss_kruger", "tmerc");
 
     // Projection parameters
     protected double a;      // Semi-major axis
@@ -77,16 +86,19 @@ public class ExtendedTransverseMercator implements Projection {
         this.over = params.over;
         this.approx = params.approx;
 
-        // Current proj4js requires an ellipsoid for exact ETMERC. A sphere is only
-        // supported through the explicitly requested traditional TM algorithm.
-        if (!usesApproximateAlgorithm(params) && (Double.isNaN(es) || es <= 0)) {
+        // The extended series is undefined at zero eccentricity, so exact ETMERC needs an
+        // ellipsoid. A spherical tmerc uses the traditional algorithm instead, as proj4js
+        // (61ab075) and PROJ do; etmerc and UTM keep rejecting a sphere.
+        boolean sphericalTmerc = es == 0 && isTransverseMercatorName(params.projName);
+        if (!usesApproximateAlgorithm(params) && !sphericalTmerc
+                && (Double.isNaN(es) || es <= 0)) {
             throw new IllegalArgumentException(
                 "Incorrect elliptical usage. Try using the +approx option in the proj string, "
                     + "or PROJECTION[\"Fast_Transverse_Mercator\"] in the WKT.");
         }
 
         // Check if we should use approximate (simple tmerc) mode
-        if (usesApproximateAlgorithm(params)) {
+        if (usesApproximateAlgorithm(params) || sphericalTmerc) {
             useApprox = true;
             this.k0 = params.getK0OrDefault(1.0);
             if (es != 0.0 && !Double.isNaN(es)) {
@@ -152,6 +164,15 @@ public class ExtendedTransverseMercator implements Projection {
     /** Whether this parameter set takes the traditional Transverse Mercator path. */
     public static boolean usesApproximateAlgorithm(ProjectionParams params) {
         return Boolean.TRUE.equals(params.approx) || isFastProjectionName(params.projName);
+    }
+
+    /** Whether a projection name selects plain tmerc rather than etmerc, UTM or the fast variant. */
+    private static boolean isTransverseMercatorName(String projectionName) {
+        if (projectionName == null) {
+            return false;
+        }
+        return TMERC_NAMES.contains(ProjectionRegistry.getNormalizedProjName(
+            projectionName.toLowerCase(java.util.Locale.ROOT)));
     }
 
     /** Whether a WKT method name directly selects proj4js's traditional TM implementation. */

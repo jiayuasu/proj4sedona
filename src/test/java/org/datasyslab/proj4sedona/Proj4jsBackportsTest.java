@@ -209,6 +209,48 @@ class Proj4jsBackportsTest {
     }
 
     @Test
+    @DisplayName("proj4js 61ab075: spherical tmerc uses the exact spherical formula")
+    void testSphericalTmerc() {
+        // proj4js testData vectors; PROJ gives the same coordinates.
+        String[][] cases = {
+            {"+proj=tmerc +a=6400000 +b=6400000 +lat_1=0.5 +lat_2=2 +n=0.5",
+                "2", "1", "223413.4664063224", "111769.14504058579"},
+            {"+proj=tmerc +a=6378137 +b=6378137 +lon_0=11.598056919260632 "
+                + "+x_0=1.0621731827420435e-09 +y_0=-5375403.8751633102 +k=1.0 +units=m +wktext +no_defs",
+                "12", "55", "25664.088897589172", "747241.858826519"},
+            // WKT1 method name, normalized through the projection registry.
+            {"PROJCS[\"Sphere TM\",GEOGCS[\"Sphere\",DATUM[\"D_Sphere\",SPHEROID[\"Sphere\",6371000,0]],"
+                + "PRIMEM[\"Greenwich\",0],UNIT[\"Degree\",0.0174532925199433]],"
+                + "PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"False_Easting\",200000],"
+                + "PARAMETER[\"False_Northing\",0],PARAMETER[\"Central_Meridian\",9],"
+                + "PARAMETER[\"Scale_Factor\",0.9999],PARAMETER[\"Latitude_Of_Origin\",0],UNIT[\"Meter\",1]]",
+                "12", "55", "391287.3012542991", "6119213.170937139"},
+        };
+        for (String[] c : cases) {
+            Proj crs = new Proj(c[0]);
+            Point input = new Point(
+                Double.parseDouble(c[1]) * Values.D2R, Double.parseDouble(c[2]) * Values.D2R);
+            Point xy = crs.forward(input.copy());
+            assertEquals(Double.parseDouble(c[3]), xy.x, 1e-6, "easting: " + c[0]);
+            assertEquals(Double.parseDouble(c[4]), xy.y, 1e-6, "northing: " + c[0]);
+
+            Point ll = crs.inverse(xy);
+            assertEquals(input.x, ll.x, 1e-12, "inverse longitude: " + c[0]);
+            assertEquals(input.y, ll.y, 1e-12, "inverse latitude: " + c[0]);
+        }
+
+        // The extended series stays undefined on a sphere: PROJ rejects etmerc and utm
+        // there ("Invalid value for eccentricity: it should not be zero").
+        for (String def : new String[]{
+            "+proj=etmerc +a=6400000 +b=6400000",
+            "+proj=utm +zone=31 +a=6400000 +b=6400000"}) {
+            IllegalArgumentException e = assertThrows(
+                IllegalArgumentException.class, () -> new Proj(def), def);
+            assertTrue(e.getMessage().contains("Incorrect elliptical usage"), e.getMessage());
+        }
+    }
+
+    @Test
     @DisplayName("proj4js 1a3b130: Defs.set accepts PROJJSON (and WKT) definitions")
     void testDefsProjJsonRegistration() {
         // Mirrors upstream test/test.js: registering a PROJJSON geographic CRS under a
