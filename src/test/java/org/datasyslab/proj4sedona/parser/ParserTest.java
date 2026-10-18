@@ -82,6 +82,16 @@ class ParserTest {
     }
 
     @Test
+    void testParseLonglatAliases() {
+        // proj4js faafa50: lonlat, latlon and latlong are aliases of longlat
+        for (String alias : new String[]{"lonlat", "latlon", "latlong"}) {
+            ProjectionDef def = ProjString.parse("+proj=" + alias + " +datum=WGS84");
+
+            assertEquals("longlat", def.getProjName(), alias);
+        }
+    }
+
+    @Test
     void testParseDatumLowercase() {
         ProjectionDef def = ProjString.parse("+proj=longlat +datum=NAD83");
 

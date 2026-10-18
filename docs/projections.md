@@ -461,7 +461,7 @@ double[] result = Proj4.proj4(
 
 Passes coordinates through without projection. Used to represent geographic (unprojected) CRS.
 
-- PROJ name: `longlat`
+- PROJ name: `longlat`, `lonlat`, `latlon`, `latlong`
 - Aliases: `identity`
 
 ```java

@@ -194,6 +194,21 @@ class Proj4jsBackportsTest {
     }
 
     @Test
+    @DisplayName("proj4js faafa50: lonlat, latlon and latlong are aliases of longlat")
+    void testLonglatAliases() {
+        for (String alias : new String[]{"lonlat", "latlon", "latlong"}) {
+            Proj crs = new Proj("+proj=" + alias + " +datum=WGS84 +no_defs");
+            assertEquals("longlat", crs.getParams().projName, alias);
+
+            // Geographic input and output stay in degrees, as for +proj=longlat.
+            Point p = Proj4.proj4(WGS84, "+proj=" + alias + " +datum=WGS84 +no_defs")
+                .forward(new Point(10, 20));
+            assertEquals(10, p.x, 1e-12, alias + " longitude");
+            assertEquals(20, p.y, 1e-12, alias + " latitude");
+        }
+    }
+
+    @Test
     @DisplayName("proj4js 1a3b130: Defs.set accepts PROJJSON (and WKT) definitions")
     void testDefsProjJsonRegistration() {
         // Mirrors upstream test/test.js: registering a PROJJSON geographic CRS under a

@@ -51,6 +51,8 @@ class GeneralObliqueTransformationTest {
         // Rotated-pole climate-grid style: o_proj=longlat outputs rotated lon/lat in degrees.
         assertCase("+proj=ob_tran +o_proj=longlat +o_lon_p=0 +o_lat_p=35",
             -105, 40, -60.8425058899586, 32.0797099050498, DEG_EPSLN);
+        assertCase("+proj=ob_tran +o_proj=latlon +o_lon_p=0 +o_lat_p=35",
+            -105, 40, -60.8425058899586, 32.0797099050498, DEG_EPSLN);
         assertCase("+proj=ob_tran +o_proj=longlat +o_lon_p=0 +o_lat_p=35 +lon_0=-113 +R=6371229 +no_defs",
             -105, 40, 6.32623159167842, -14.6380639304457, DEG_EPSLN);
         assertCase("+proj=ob_tran +o_proj=longlat +o_lon_p=0 +o_lat_p=31.758312 +lon_0=-92.402969 +R=6371229 +no_defs",
