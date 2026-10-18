@@ -190,6 +190,16 @@ class GridDatumHelmertFallbackTest {
     }
 
     @Test
+    @DisplayName("NAD27 on another ellipsoid has no fallback, before and after export")
+    void ellipsoidOverrideHasNoFallback() {
+        // PROJ treats +datum=NAD27 +a=... as an unknown datum and applies no shift; the PROJ
+        // string export drops +datum=NAD27 for the same reason
+        Proj overridden = new Proj("+proj=longlat +datum=NAD27 +a=6378207.4 +no_defs");
+        assertPoint(-98.0, 27.0, Proj4.transform(overridden, new Proj(WGS84), new Point(-98, 27)));
+        assertPoint(-98.0, 27.0, transform(overridden.toProjString(), WGS84, -98, 27));
+    }
+
+    @Test
     @DisplayName("The fallback follows the definition's current grid list")
     void fallbackFollowsCurrentGridList() {
         ProjectionDef def = ProjString.parse(NAD27);

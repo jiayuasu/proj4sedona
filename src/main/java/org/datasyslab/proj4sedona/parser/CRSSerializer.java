@@ -2745,6 +2745,29 @@ public final class CRSSerializer {
     }
 
     /**
+     * Whether an ellipsoid is a datum's own, to within 0.1 m on each semi-axis. A
+     * {@code +datum=} token replaces the ellipsoid on re-parse, so the PROJ string export
+     * names a datum only on its own ellipsoid. A registry grid datum's Helmert fallback
+     * applies only there too, so that a definition and its export agree; PROJ also treats
+     * {@code +datum=NAD27 +a=...} as an unknown datum.
+     *
+     * @param ellipseCode the datum's ellipsoid code, for example {@code "clrk66"}
+     * @param a semi-major axis in meters
+     * @param b semi-minor axis in meters
+     * @return true if the axes match the named ellipsoid
+     */
+    public static boolean isDatumEllipsoid(String ellipseCode, double a, double b) {
+        Ellipsoid ellipse = ellipseCode == null ? null : Ellipsoid.get(ellipseCode);
+        if (ellipse == null) {
+            return false;
+        }
+        double canonB = ellipse.getB() > 0
+            ? ellipse.getB()
+            : ellipse.getA() * (1 - 1 / ellipse.getRf());
+        return Math.abs(a - ellipse.getA()) <= 0.1 && Math.abs(b - canonB) <= 0.1;
+    }
+
+    /**
      * Resolve a definition to PROJ's canonical {@code +datum=} token, or null when
      * its datum is not semantically one of PROJ's. The stored datumCode may be a
      * short code ("nad83"), a full datum name from WKT/PROJJSON ("North American
@@ -2766,11 +2789,7 @@ public final class CRSSerializer {
             return null;
         }
 
-        Ellipsoid ellipse = Ellipsoid.get(canon.ellipseCode);
-        double canonB = ellipse.getB() > 0
-            ? ellipse.getB()
-            : ellipse.getA() * (1 - 1 / ellipse.getRf());
-        if (Math.abs(params.a - ellipse.getA()) > 0.1 || Math.abs(params.b - canonB) > 0.1) {
+        if (!isDatumEllipsoid(canon.ellipseCode, params.a, params.b)) {
             return null;
         }
 

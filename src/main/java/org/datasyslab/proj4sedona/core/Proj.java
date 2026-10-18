@@ -269,21 +269,23 @@ public class Proj {
 
     /**
      * The Helmert fallback of a registry grid-shift datum (see
-     * {@link DatumParams#getGridFallback()}): the definition names a registry datum, its grid
-     * list is that datum's own, and it gives no explicit TOWGS84. Any other grid list has no
-     * fallback, so it keeps PROJ's behavior for an explicit grid list. This depends only on
-     * the definition's datum, so a definition and its PROJ string, WKT or PROJJSON export,
-     * which name the same registry datum, get the same fallback.
+     * {@link DatumParams#getGridFallback()}): the definition names a registry datum, on that
+     * datum's own ellipsoid and with its own grid list, and gives no explicit TOWGS84. Any
+     * other grid list has no fallback, so it keeps PROJ's behavior for an explicit grid list.
+     * These are the conditions under which the exports name the registry datum, so a
+     * definition and its PROJ string, WKT or PROJJSON export get the same fallback.
      *
      * @return the towgs84 values, or null if the datum has no fallback
      */
-    private static double[] registryGridFallback(ProjectionDef def) {
+    private static double[] registryGridFallback(ProjectionDef def,
+                                                 DeriveConstants.SphereResult sphere) {
         if (def.getDatumParams() != null) {
             return null;
         }
         Datum registryDatum = Datum.get(def.getDatumCode());
         if (registryDatum == null || registryDatum.getNadgrids() == null
-                || !registryDatum.getNadgrids().equals(def.getNadgrids())) {
+                || !registryDatum.getNadgrids().equals(def.getNadgrids())
+                || !CRSSerializer.isDatumEllipsoid(registryDatum.getEllipse(), sphere.a, sphere.b)) {
             return null;
         }
         return registryHelmert(registryDatum);
@@ -324,7 +326,7 @@ public class Proj {
                 ecc.ep2,
                 nadgrids
             );
-            double[] fallback = registryGridFallback(def);
+            double[] fallback = registryGridFallback(def, sphere);
             if (fallback != null) {
                 datum.setGridFallback(new DatumParams(def.getDatumCode(),
                     fallback, sphere.a, sphere.b, ecc.es, ecc.ep2, null));
