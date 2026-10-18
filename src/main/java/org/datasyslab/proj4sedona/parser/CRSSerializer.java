@@ -2831,6 +2831,17 @@ public final class CRSSerializer {
     }
 
     /**
+     * The EPSG geographic CRS of a datum, as used for identification: for example
+     * {@code "EPSG:4267"} for {@code nad27} or "North American Datum 1927".
+     *
+     * @param datumCode a datum code or name
+     * @return an EPSG code like {@code "EPSG:4267"}, or null if the datum is not known
+     */
+    public static String geographicCrsOfDatum(String datumCode) {
+        return normalizeDatumToEpsg(datumCode);
+    }
+
+    /**
      * Normalize a datum code/name to an EPSG geographic CRS code for comparison.
      * Tries DATUM_NAME_TO_EPSG directly, then the Datum registry, then the EPSG_ prefix pattern.
      *

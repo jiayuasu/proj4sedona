@@ -59,6 +59,19 @@ double[] result = Proj4.proj4(
 
 NAD27 is defined with `+nadgrids=@conus,@alaska,@ntv2_0.gsb,@ntv1_can.dat`, so the appropriate grid file is used based on the location.
 
+Where none of these grids can shift a point (no grid file is loaded, or the point is
+outside every loaded grid), NAD27 uses the registry's Helmert for EPSG:4267 instead:
+`-8,160,176`, a few meters from the NADCON result in the contiguous US (for example
+2.5 m in south Texas and 4 m in San Francisco). This applies to
+any registry datum that shifts with grids; the Helmert is the registry record of the
+datum's EPSG geographic CRS. It is the shift proj4js applies to a WKT2 or PROJJSON NAD27
+CRS through its EPSG id, and PROJ also uses a Helmert transformation where no grid
+applies, although PROJ chooses one by region. A grid list written in the definition
+(`+nadgrids=...`) has no fallback, as in PROJ.
+
+A transform between two CRSs on the same datum applies no datum shift, so NAD27 to NAD27
+(for example EPSG:32041 to EPSG:4267) is exact.
+
 See [Grid Shifts](grid-shifts.md) for details on loading and configuring grid files.
 
 ## Specifying Datums
@@ -112,7 +125,7 @@ The short-name definitions most commonly used directly in PROJ strings are:
 |------------|-----------|------------|------------|
 | `wgs84` | WGS84 | 3-param (identity) | WGS 1984 |
 | `nad83` | GRS80 | 3-param (identity) | North American Datum 1983 |
-| `nad27` | clrk66 | Grid files | North American Datum 1927 |
+| `nad27` | clrk66 | Grid files, 3-param fallback | North American Datum 1927 |
 | `osgb36` | airy | 7-param | Ordnance Survey of Great Britain 1936 |
 | `potsdam` | bessel | 7-param | Potsdam Rauenberg 1950 DHDN |
 | `ch1903` | bessel | 3-param | Swiss CH1903 |

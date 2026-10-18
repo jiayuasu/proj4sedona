@@ -30,6 +30,7 @@ public class ProjectionDef {
     private String datumName;
     private double[] datumParams;  // towgs84 parameters (3 or 7 values)
     private String nadgrids;       // NAD grid files
+    private double[] gridFallbackParams; // towgs84 used where registry-supplied nadgrids cannot shift
 
     // Projection parameters (angles in radians after parsing)
     private Double lat0;           // lat_0: Latitude of origin
@@ -133,6 +134,9 @@ public class ProjectionDef {
 
     public String getNadgrids() { return nadgrids; }
     public void setNadgrids(String nadgrids) { this.nadgrids = nadgrids; }
+
+    public double[] getGridFallbackParams() { return gridFallbackParams; }
+    public void setGridFallbackParams(double[] gridFallbackParams) { this.gridFallbackParams = gridFallbackParams; }
 
     public Double getLat0() { return lat0; }
     public void setLat0(Double lat0) { this.lat0 = lat0; }

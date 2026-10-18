@@ -260,11 +260,30 @@ public class Proj {
                     datumDef.getDatumName() : def.getDatumCode());
             }
 
-            // Handle nadgrids: a registry default only, never over an explicit transform
+            // Handle nadgrids: a registry default only, never over an explicit transform.
+            // The registry chose these grids, so it also supplies the Helmert to use where
+            // none of them can shift a point (see DatumParams.getGridFallback).
             if (!explicitTransform && def.getNadgrids() == null && datumDef.getNadgrids() != null) {
                 def.setNadgrids(datumDef.getNadgrids());
+                def.setGridFallbackParams(registryHelmert(datumDef));
             }
         }
+    }
+
+    /**
+     * The registry's Helmert for a grid-shift datum: the record of the datum's own EPSG
+     * geographic CRS, for example {@code EPSG_4267} (-8,160,176) for {@code nad27}. This is
+     * the shift proj4js applies to a WKT2 or PROJJSON NAD27 CRS through its EPSG id.
+     *
+     * @return the towgs84 values, or null if the registry has no Helmert for the datum
+     */
+    private static double[] registryHelmert(Datum gridDatum) {
+        String geographicCrs = CRSSerializer.geographicCrsOfDatum(gridDatum.getCode());
+        if (geographicCrs == null || !geographicCrs.startsWith("EPSG:")) {
+            return null;
+        }
+        Datum helmert = Datum.get("EPSG_" + geographicCrs.substring("EPSG:".length()));
+        return helmert != null ? helmert.getTowgs84Array() : null;
     }
 
     /**
@@ -277,7 +296,7 @@ public class Proj {
         String nadgrids = def.getNadgrids();
         if (nadgrids != null && !nadgrids.isEmpty()) {
             // Use factory method that handles nadgrids string
-            return DatumParams.withNadgrids(
+            DatumParams datum = DatumParams.withNadgrids(
                 def.getDatumCode(),
                 def.getDatumParams(),
                 sphere.a,
@@ -286,6 +305,11 @@ public class Proj {
                 ecc.ep2,
                 nadgrids
             );
+            if (def.getGridFallbackParams() != null) {
+                datum.setGridFallback(new DatumParams(def.getDatumCode(),
+                    def.getGridFallbackParams(), sphere.a, sphere.b, ecc.es, ecc.ep2, null));
+            }
+            return datum;
         }
         
         // Standard datum without grid shift

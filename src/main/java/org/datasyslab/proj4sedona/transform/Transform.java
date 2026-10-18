@@ -6,6 +6,7 @@ import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.datum.DatumTransform;
+import org.datasyslab.proj4sedona.datum.DatumUtils;
 import org.datasyslab.proj4sedona.common.ProjMath;
 import org.datasyslab.proj4sedona.projection.ProjectionParams;
 
@@ -75,6 +76,19 @@ public final class Transform {
     }
 
     /**
+     * Whether two datums are the same datum: {@link DatumUtils#compareDatums} (type,
+     * ellipsoid and shift parameters), and for grid-shift datums the same grid list, which
+     * compareDatums does not look at.
+     */
+    private static boolean sameDatum(DatumParams a, DatumParams b) {
+        if (!DatumUtils.compareDatums(a, b)) {
+            return false;
+        }
+        return a.getDatumType() != Values.PJD_GRIDSHIFT
+            || (a.getNadgrids() != null && a.getNadgrids().equals(b.getNadgrids()));
+    }
+
+    /**
      * Check if transformation through WGS84 is needed for datum shift.
      * 
      * <p>This is required when both source and destination have datum shift
@@ -88,6 +102,14 @@ public final class Transform {
     private static boolean checkNotWGS(ProjectionParams source, ProjectionParams dest) {
         DatumParams srcDatum = source.datum;
         DatumParams destDatum = dest.datum;
+
+        // The same datum on both sides needs no datum step, as in PROJ. proj4js goes through
+        // WGS84 here, which applies the datum's shift and then undoes it: harmless for a
+        // datum without one, but with a Helmert (including a grid datum's fallback) the
+        // round trip is not exact: 2e-9 degrees for NAD27, 1e-8 degrees (1 mm) for OSGB36.
+        if (srcDatum != null && destDatum != null && sameDatum(srcDatum, destDatum)) {
+            return false;
+        }
 
         boolean sourceNeedsShift = srcDatum != null && 
             (srcDatum.getDatumType() == Values.PJD_3PARAM || 

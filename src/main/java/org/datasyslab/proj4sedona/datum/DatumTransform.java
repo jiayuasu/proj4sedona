@@ -26,6 +26,10 @@ import java.util.List;
  * &lt;li&gt;Convert from geocentric to geodetic coordinates&lt;/li&gt;
  * &lt;li&gt;Apply grid shift if destination uses grid shift&lt;/li&gt;
  * &lt;/ol&gt;
+ *
+ * <p>A grid-shift datum whose grids the library chose (a registry datum such as NAD27)
+ * carries a Helmert fallback, {@link DatumParams#getGridFallback()}. Where none of its
+ * grids can shift a point, the transform is redone with that Helmert datum in its place.</p>
  */
 public final class DatumTransform {
 
@@ -83,6 +87,11 @@ public final class DatumTransform {
         // If source datum requires grid shifts, apply it to geodetic coordinates
         if (source.getDatumType() == Values.PJD_GRIDSHIFT) {
             int gridShiftCode = applyGridShift(source, false, p);
+            if (gridShiftCode != 0 && source.getGridFallback() != null) {
+                // The library chose these grids and none of them shifts this point: use the
+                // datum's Helmert instead, as PROJ does where no grid applies.
+                return transform(source.getGridFallback(), dest, point);
+            }
             if (gridShiftCode == GRID_SHIFT_SKIPPED) {
                 // None of the datum's optional grids is available: no shift is known, so the
                 // datum behaves like datum=none, as PROJ does for a missing optional grid file.
@@ -133,6 +142,9 @@ public final class DatumTransform {
         // If destination datum requires grid shifts, apply it
         if (dest.getDatumType() == Values.PJD_GRIDSHIFT) {
             int gridShiftCode = applyGridShift(dest, true, p);
+            if (gridShiftCode != 0 && dest.getGridFallback() != null) {
+                return transform(source, dest.getGridFallback(), point);
+            }
             if (gridShiftCode == GRID_SHIFT_SKIPPED) {
                 return point;
             }

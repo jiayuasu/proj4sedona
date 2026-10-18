@@ -134,6 +134,16 @@ Proj nad27 = new Proj("+proj=longlat +ellps=clrk66 +nadgrids=@conus,@alaska,@ntv
 Proj osgb = new Proj("+proj=longlat +ellps=airy +nadgrids=OSTN15_NTv2_OSGBtoETRS.gsb");
 ```
 
+An explicit grid list behaves as in PROJ. If every listed grid is optional and none is
+loaded, no datum shift is applied; `+towgs84` next to `+nadgrids` is ignored. A point
+outside every loaded grid cannot be transformed.
+
+A registry datum that shifts with grids, such as `+datum=NAD27`, is different: the
+library chose its grids, so it also has a Helmert fallback, the registry record of the
+datum's EPSG geographic CRS (`EPSG_4267`, `-8,160,176`, for NAD27). The fallback is used
+wherever none of the grids can shift the point, including when no grid is loaded. See
+[Datum Transformations](datum-transformations.md#grid-based-datum-shift).
+
 ### Parsing nadgrids
 
 The `GridLoader.getNadgrids()` method parses the comma-separated list:
