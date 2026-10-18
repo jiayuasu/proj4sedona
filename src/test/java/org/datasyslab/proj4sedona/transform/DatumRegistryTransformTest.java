@@ -14,14 +14,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * providers, where the datum is identified by {@code base_crs.id}. Expected
  * coordinates were cross-checked with PROJ using explicit {@code +towgs84}
  * parameters copied from the proj4js registry, not PROJ's EPSG operation
- * database selection. The RT90 oracle intentionally follows PROJ. This port
- * recognizes the zero-shift target datum as WGS84-equivalent and avoids
- * proj4js's extra WGS84 routing round trip, whose iterative geocentric
- * conversion changes northing by approximately 0.095 mm.
+ * database selection. The RT90 target, SWEREF99, has no registry record since
+ * proj4js d0ef236 dropped zero shifts on WGS84-like ellipsoids, so it applies no
+ * datum shift and the transform takes proj4js's WGS84 routing round trip, whose
+ * iterative geocentric conversion moves northing about 0.095 mm from PROJ's
+ * zero-parameter Helmert.
  */
 class DatumRegistryTransformTest {
 
     private static final double TOLERANCE_METRES = 1e-6;
+    private static final double NO_SHIFT_TOLERANCE_METRES = 1e-4;
 
     @Test
     void rt90BaseCrsIdUsesGeneratedHelmertParameters() {
@@ -69,7 +71,8 @@ class DatumRegistryTransformTest {
                         + "+towgs84=0,0,0 +units=m +no_defs",
                 new Point(1272691.622, 6404578.16),
                 320728.549061309,
-                6400227.973660924);
+                6400227.973660924,
+                NO_SHIFT_TOLERANCE_METRES);
     }
 
     @Test
@@ -114,7 +117,8 @@ class DatumRegistryTransformTest {
                         + "0.039492,0.032722,0.032898,-0.009994 +units=m +no_defs",
                 new Point(500000, 6200000),
                 500117.25754570815,
-                6200179.615783105);
+                6200179.615783105,
+                TOLERANCE_METRES);
     }
 
     private static void assertMatchesExplicitTowgs84(
@@ -124,16 +128,17 @@ class DatumRegistryTransformTest {
             String explicitTarget,
             Point input,
             double expectedX,
-            double expectedY) {
+            double expectedY,
+            double tolerance) {
         Point registryResult = Proj4.proj4(sourceProjJson, targetProjJson)
                 .forward(new Point(input.x, input.y));
         Point explicitResult = Proj4.proj4(explicitSource, explicitTarget)
                 .forward(new Point(input.x, input.y));
 
-        assertEquals(explicitResult.x, registryResult.x, TOLERANCE_METRES, "easting parity");
-        assertEquals(explicitResult.y, registryResult.y, TOLERANCE_METRES, "northing parity");
-        assertEquals(expectedX, registryResult.x, TOLERANCE_METRES, "easting");
-        assertEquals(expectedY, registryResult.y, TOLERANCE_METRES, "northing");
+        assertEquals(explicitResult.x, registryResult.x, tolerance, "easting parity");
+        assertEquals(explicitResult.y, registryResult.y, tolerance, "northing parity");
+        assertEquals(expectedX, registryResult.x, tolerance, "easting");
+        assertEquals(expectedY, registryResult.y, tolerance, "northing");
     }
 
     private static String transverseMercatorProjJson(

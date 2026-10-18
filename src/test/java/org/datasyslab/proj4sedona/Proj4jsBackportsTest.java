@@ -251,6 +251,28 @@ class Proj4jsBackportsTest {
     }
 
     @Test
+    @DisplayName("proj4js 6a946a1: Esri D_Amersfoort without TOWGS84 resolves the amersfoort datum")
+    void testAmersfoortWithoutTowgs84() {
+        Datum amersfoort = Datum.get("amersfoort");
+        assertNotNull(amersfoort);
+        assertEquals(Datum.get("EPSG_4289").getTowgs84(), amersfoort.getTowgs84(),
+            "same parameters as EPSG_4289");
+
+        // proj4js testData vector: the RD_New .prj written for shapefiles (#537).
+        String rdNew = "PROJCS[\"RD_New\",GEOGCS[\"GCS_Amersfoort\","
+            + "DATUM[\"D_Amersfoort\",SPHEROID[\"Bessel_1841\",6377397.155,299.1528128]],"
+            + "PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],"
+            + "PROJECTION[\"Double_Stereographic\"],PARAMETER[\"False_Easting\",155000.0],"
+            + "PARAMETER[\"False_Northing\",463000.0],"
+            + "PARAMETER[\"Central_Meridian\",5.38763888888889],"
+            + "PARAMETER[\"Scale_Factor\",0.9999079],"
+            + "PARAMETER[\"Latitude_Of_Origin\",52.1561605555556],UNIT[\"Meter\",1.0]]";
+        Point xy = Proj4.proj4(WGS84, rdNew).forward(new Point(5.2, 52.25));
+        assertEquals(142216.10, xy.x, 0.01, "easting");
+        assertEquals(473567.13, xy.y, 0.01, "northing");
+    }
+
+    @Test
     @DisplayName("proj4js 1a3b130: Defs.set accepts PROJJSON (and WKT) definitions")
     void testDefsProjJsonRegistration() {
         // Mirrors upstream test/test.js: registering a PROJJSON geographic CRS under a

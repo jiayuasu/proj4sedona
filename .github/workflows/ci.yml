@@ -11,7 +11,7 @@ jobs:
     name: Verify generated datum registry
     runs-on: ubuntu-latest
     env:
-      PROJ4JS_DATUM_COMMIT: 955bfd6bda76982bba87d683990b3ae3393a7e0b
+      PROJ4JS_DATUM_COMMIT: 7b94f6be407e25ea4b8b5ae80f0fece279a79ea4
 
     steps:
     - name: Checkout code

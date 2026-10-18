@@ -282,7 +282,7 @@ differ until the next upstream release.
 
 The datum registry is synchronized as a complete snapshot of proj4js's generated
 `lib/constants/Datum.js`, rather than inferred from the commit range above. The pinned
-snapshot contains 438 canonical records and is guarded by an exhaustive count,
+snapshot contains 461 canonical records and is guarded by an exhaustive count,
 content-hash, field, and alias parity test. To verify or refresh it from a clean
 proj4js checkout:
 
