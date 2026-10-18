@@ -144,8 +144,9 @@ has a Helmert fallback, the registry record of the datum's EPSG geographic CRS
 can shift the point, including when no grid is loaded. It follows the datum, not the
 spelling: `+datum=NAD27 +nadgrids=@conus,@alaska,@ntv2_0.gsb,@ntv1_can.dat` restates the
 registry datum and has the fallback too, so the datum keeps it through PROJ string, WKT
-and PROJJSON exports. Any other grid list, or the same list on `+ellps=clrk66` without
-the datum, has none. See [Datum Transformations](datum-transformations.md#grid-based-datum-shift).
+and PROJJSON exports. Any other grid list, the same list on `+ellps=clrk66` without the
+datum, or NAD27 on another ellipsoid (`+datum=NAD27 +a=...`) has none; PROJ treats the
+last one as an unknown datum. See [Datum Transformations](datum-transformations.md#grid-based-datum-shift).
 
 ### Parsing nadgrids
 
