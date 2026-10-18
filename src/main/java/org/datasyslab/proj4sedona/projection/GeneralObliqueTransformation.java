@@ -1,8 +1,5 @@
 package org.datasyslab.proj4sedona.projection;
 
-import java.util.Arrays;
-import java.util.List;
-
 import org.datasyslab.proj4sedona.common.ProjMath;
 import org.datasyslab.proj4sedona.constants.Values;
 import org.datasyslab.proj4sedona.core.Point;
@@ -31,8 +28,6 @@ public class GeneralObliqueTransformation implements Projection {
         "General Oblique Transformation", "General_Oblique_Transformation", "ob_tran"
     };
 
-    private static final List<String> LONGLAT_NAMES = Arrays.asList(LongLat.NAMES);
-
     private static final int OBLIQUE = 0;
     private static final int TRANSVERSE = 1;
 
@@ -60,7 +55,7 @@ public class GeneralObliqueTransformation implements Projection {
         if ("ob_tran".equals(oProj)) {
             throw new IllegalArgumentException("Invalid value for o_proj: " + oProj);
         }
-        this.isIdentity = LONGLAT_NAMES.contains(oProj);
+        this.isIdentity = ProjectionRegistry.get(oProj) instanceof LongLat;
 
         // Build the inner projection from the original proj string, as upstream does:
         // drop +proj=ob_tran and promote +o_proj to +proj. The inner projection must

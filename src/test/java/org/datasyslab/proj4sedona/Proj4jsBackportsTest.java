@@ -196,16 +196,32 @@ class Proj4jsBackportsTest {
     @Test
     @DisplayName("proj4js faafa50: lonlat, latlon and latlong are aliases of longlat")
     void testLonglatAliases() {
-        for (String alias : new String[]{"lonlat", "latlon", "latlong"}) {
+        // Any spelling or case of a geographic alias, including identity, takes the
+        // canonical name, so input and output stay in degrees as for +proj=longlat.
+        for (String alias : new String[]{
+            "lonlat", "latlon", "latlong", "LonLat", "LATLONG", "LongLat", "identity"}) {
             Proj crs = new Proj("+proj=" + alias + " +datum=WGS84 +no_defs");
             assertEquals("longlat", crs.getParams().projName, alias);
+            assertTrue(org.datasyslab.proj4sedona.parser.CRSSerializer.toWkt1(crs)
+                .startsWith("GEOGCS["), alias);
 
-            // Geographic input and output stay in degrees, as for +proj=longlat.
             Point p = Proj4.proj4(WGS84, "+proj=" + alias + " +datum=WGS84 +no_defs")
                 .forward(new Point(10, 20));
             assertEquals(10, p.x, 1e-12, alias + " longitude");
             assertEquals(20, p.y, 1e-12, alias + " latitude");
         }
+
+        // The same holds for a definition built without the PROJ string parser.
+        org.datasyslab.proj4sedona.core.ProjectionDef def =
+            new org.datasyslab.proj4sedona.core.ProjectionDef();
+        def.setProjName("latlon");
+        def.setDatumCode("WGS84");
+        Proj fromDef = new Proj(def);
+        assertEquals("longlat", fromDef.getParams().projName);
+        Point p = org.datasyslab.proj4sedona.transform.Transform.transform(
+            new Proj(WGS84), fromDef, new Point(10, 20), false);
+        assertEquals(10, p.x, 1e-12, "definition longitude");
+        assertEquals(20, p.y, 1e-12, "definition latitude");
     }
 
     @Test
