@@ -2,6 +2,10 @@ package org.datasyslab.proj4sedona.grid;
 
 import org.datasyslab.proj4sedona.Proj4;
 import org.datasyslab.proj4sedona.core.Point;
+import org.datasyslab.proj4sedona.core.Proj;
+import org.datasyslab.proj4sedona.core.ProjectionDef;
+import org.datasyslab.proj4sedona.defs.Defs;
+import org.datasyslab.proj4sedona.transform.Transform;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -26,6 +30,30 @@ class TransformationRegistryTest {
         Point inverse = Proj4.proj4("EPSG:4152", "EPSG:4269", new Point(-104.9903, 39.7392));
         assertEquals(-104.990299455, inverse.x, 1e-6, "inverse longitude");
         assertEquals(39.739197962, inverse.y, 1e-6, "inverse latitude");
+    }
+
+    @Test
+    void testHelmertKeptWhenDefinitionSuppliesAnotherGrid() {
+        // When the definition already carries a grid other than the pair grid, nothing is
+        // injected, and that grid shifts to WGS84 in proj4js's model: the destination
+        // still needs its Helmert, exactly as a plain transform applies it.
+        ProjectionDef saved = Defs.get("EPSG:4269");
+        try {
+            Defs.set("EPSG:4269", "+proj=longlat +ellps=GRS80 +nadgrids=@us_noaa_conus.tif +no_defs");
+            for (String[] pair : new String[][]{{"EPSG:4269", "EPSG:4152"}, {"EPSG:4152", "EPSG:4269"}}) {
+                Point viaRegistry = Proj4.proj4(pair[0], pair[1], new Point(-104.9903, 39.7392));
+                Point plain = Transform.transform(
+                    new Proj(pair[0]), new Proj(pair[1]), new Point(-104.9903, 39.7392), false);
+                assertEquals(plain.x, viaRegistry.x, 1e-12, pair[0] + " -> " + pair[1] + " longitude");
+                assertEquals(plain.y, viaRegistry.y, 1e-12, pair[0] + " -> " + pair[1] + " latitude");
+            }
+        } finally {
+            if (saved != null) {
+                Defs.set("EPSG:4269", saved);
+            } else {
+                Defs.remove("EPSG:4269");
+            }
+        }
     }
 
     // ==================== Basic Functionality Tests ====================

@@ -187,7 +187,8 @@ public final class Proj4 {
                     from = new Proj(modifiedProj);
                 }
                 
-                return new Proj[] { from, asGridTarget(new Proj(toProj)) };
+                Proj to = new Proj(toProj);
+                return new Proj[] { from, usesGrid(from, gridFile) ? asGridTarget(to) : to };
             } else {
                 // Reverse direction: apply grid to DESTINATION (inverse shift)
                 Proj to = new Proj(toProj);
@@ -198,17 +199,35 @@ public final class Proj4 {
                     to = new Proj(modifiedProj);
                 }
                 
-                return new Proj[] { asGridTarget(new Proj(fromProj)), to };
+                Proj from = new Proj(fromProj);
+                return new Proj[] { usesGrid(to, gridFile) ? asGridTarget(from) : from, to };
             }
         }
         
         return new Proj[] { new Proj(fromProj), new Proj(toProj) };
     }
 
+    /** Whether the CRS's grid list names the registered pair grid, not some other grid. */
+    private static boolean usesGrid(Proj proj, String gridFile) {
+        DatumParams datum = proj.getParams().datum;
+        String nadgrids = datum != null ? datum.getNadgrids() : null;
+        if (nadgrids == null) {
+            return false;
+        }
+        for (String grid : nadgrids.split(",")) {
+            if (grid.trim().replaceFirst("^@", "").equals(gridFile)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * The registered grid shifts into this CRS's datum, so its own TOWGS84 must not be
      * applied on top. Without one it behaves as before, when such a datum (for example
-     * NAD83(HARN), EPSG:4152) had no registry record and applied no shift.
+     * NAD83(HARN), EPSG:4152) had no registry record and applied no shift. Only for the
+     * pair grid: a different grid from the definition shifts to WGS84, so the TOWGS84
+     * still applies.
      */
     private static Proj asGridTarget(Proj proj) {
         DatumParams datum = proj.getParams().datum;
