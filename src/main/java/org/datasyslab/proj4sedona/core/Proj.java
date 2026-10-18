@@ -260,14 +260,33 @@ public class Proj {
                     datumDef.getDatumName() : def.getDatumCode());
             }
 
-            // Handle nadgrids: a registry default only, never over an explicit transform.
-            // The registry chose these grids, so it also supplies the Helmert to use where
-            // none of them can shift a point (see DatumParams.getGridFallback).
+            // Handle nadgrids: a registry default only, never over an explicit transform
             if (!explicitTransform && def.getNadgrids() == null && datumDef.getNadgrids() != null) {
                 def.setNadgrids(datumDef.getNadgrids());
-                def.setGridFallbackParams(registryHelmert(datumDef));
             }
         }
+    }
+
+    /**
+     * The Helmert fallback of a registry grid-shift datum (see
+     * {@link DatumParams#getGridFallback()}): the definition names a registry datum, its grid
+     * list is that datum's own, and it gives no explicit TOWGS84. Any other grid list has no
+     * fallback, so it keeps PROJ's behavior for an explicit grid list. This depends only on
+     * the definition's datum, so a definition and its PROJ string, WKT or PROJJSON export,
+     * which name the same registry datum, get the same fallback.
+     *
+     * @return the towgs84 values, or null if the datum has no fallback
+     */
+    private static double[] registryGridFallback(ProjectionDef def) {
+        if (def.getDatumParams() != null) {
+            return null;
+        }
+        Datum registryDatum = Datum.get(def.getDatumCode());
+        if (registryDatum == null || registryDatum.getNadgrids() == null
+                || !registryDatum.getNadgrids().equals(def.getNadgrids())) {
+            return null;
+        }
+        return registryHelmert(registryDatum);
     }
 
     /**
@@ -305,9 +324,10 @@ public class Proj {
                 ecc.ep2,
                 nadgrids
             );
-            if (def.getGridFallbackParams() != null) {
+            double[] fallback = registryGridFallback(def);
+            if (fallback != null) {
                 datum.setGridFallback(new DatumParams(def.getDatumCode(),
-                    def.getGridFallbackParams(), sphere.a, sphere.b, ecc.es, ecc.ep2, null));
+                    fallback, sphere.a, sphere.b, ecc.es, ecc.ep2, null));
             }
             return datum;
         }

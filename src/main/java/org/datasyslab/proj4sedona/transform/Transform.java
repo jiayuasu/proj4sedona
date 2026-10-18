@@ -77,15 +77,24 @@ public final class Transform {
 
     /**
      * Whether two datums are the same datum: {@link DatumUtils#compareDatums} (type,
-     * ellipsoid and shift parameters), and for grid-shift datums the same grid list, which
-     * compareDatums does not look at.
+     * ellipsoid and shift parameters), and for grid-shift datums the same grid list and the
+     * same Helmert fallback, which compareDatums does not look at. A registry NAD27 and an
+     * explicit copy of its grid list on the bare ellipsoid differ: only the first falls
+     * back to a Helmert where no grid applies.
      */
     private static boolean sameDatum(DatumParams a, DatumParams b) {
         if (!DatumUtils.compareDatums(a, b)) {
             return false;
         }
-        return a.getDatumType() != Values.PJD_GRIDSHIFT
-            || (a.getNadgrids() != null && a.getNadgrids().equals(b.getNadgrids()));
+        if (a.getDatumType() != Values.PJD_GRIDSHIFT) {
+            return true;
+        }
+        if (a.getNadgrids() == null || !a.getNadgrids().equals(b.getNadgrids())) {
+            return false;
+        }
+        DatumParams fa = a.getGridFallback();
+        DatumParams fb = b.getGridFallback();
+        return fa == null ? fb == null : fb != null && DatumUtils.compareDatums(fa, fb);
     }
 
     /**

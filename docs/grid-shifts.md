@@ -138,11 +138,14 @@ An explicit grid list behaves as in PROJ. If every listed grid is optional and n
 loaded, no datum shift is applied; `+towgs84` next to `+nadgrids` is ignored. A point
 outside every loaded grid cannot be transformed.
 
-A registry datum that shifts with grids, such as `+datum=NAD27`, is different: the
-library chose its grids, so it also has a Helmert fallback, the registry record of the
-datum's EPSG geographic CRS (`EPSG_4267`, `-8,160,176`, for NAD27). The fallback is used
-wherever none of the grids can shift the point, including when no grid is loaded. See
-[Datum Transformations](datum-transformations.md#grid-based-datum-shift).
+A registry datum that shifts with grids, such as `+datum=NAD27`, is different: it also
+has a Helmert fallback, the registry record of the datum's EPSG geographic CRS
+(`EPSG_4267`, `-8,160,176`, for NAD27). The fallback is used wherever none of the grids
+can shift the point, including when no grid is loaded. It follows the datum, not the
+spelling: `+datum=NAD27 +nadgrids=@conus,@alaska,@ntv2_0.gsb,@ntv1_can.dat` restates the
+registry datum and has the fallback too, so the datum keeps it through PROJ string, WKT
+and PROJJSON exports. Any other grid list, or the same list on `+ellps=clrk66` without
+the datum, has none. See [Datum Transformations](datum-transformations.md#grid-based-datum-shift).
 
 ### Parsing nadgrids
 

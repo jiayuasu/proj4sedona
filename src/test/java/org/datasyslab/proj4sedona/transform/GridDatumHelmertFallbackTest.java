@@ -10,8 +10,11 @@ import java.nio.file.Path;
 import org.datasyslab.proj4sedona.Proj4;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
+import org.datasyslab.proj4sedona.core.ProjectionDef;
 import org.datasyslab.proj4sedona.grid.GridLoader;
 import org.datasyslab.proj4sedona.grid.NadgridRegistry;
+import org.datasyslab.proj4sedona.parser.CRSSerializer;
+import org.datasyslab.proj4sedona.parser.ProjString;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,8 +24,9 @@ import org.junit.jupiter.api.Test;
  * @ntv1_can.dat}) falls back to the registry's Helmert for its geographic CRS,
  * {@code EPSG_4267} (-8,160,176), wherever none of its grids can shift a point: no grid is
  * loaded, or the point is outside every loaded grid. PROJ does the same for a CRS whose
- * datum it knows (it uses a Helmert operation where no grid applies). Grids that a
- * definition lists itself keep PROJ's PROJ-string behavior: no fallback.
+ * datum it knows (it uses a Helmert operation where no grid applies). The fallback follows
+ * the datum: any grid list other than the registry datum's own keeps PROJ's behavior for
+ * an explicit grid list, with no fallback.
  *
  * <p>Expected values are from PROJ 9.8.1 (pyproj 3.8.0, network off): the Helmert values
  * from {@code +proj=longlat +ellps=clrk66 +towgs84=-8,160,176}, the grid values from
@@ -36,6 +40,7 @@ class GridDatumHelmertFallbackTest {
         Path.of("src/test/resources/grids/us_noaa_conus.tif").toAbsolutePath().toString();
 
     private static final String NAD27 = "+proj=longlat +datum=NAD27 +no_defs";
+    private static final String REGISTRY_GRIDS = "@conus,@alaska,@ntv2_0.gsb,@ntv1_can.dat";
     private static final String WGS84 = "EPSG:4326";
 
     /** EPSG:32041, NAD27 / Texas South, as a PROJ string with the registry datum. */
@@ -151,5 +156,47 @@ class GridDatumHelmertFallbackTest {
     @DisplayName("The fallback is not written into PROJ string exports")
     void fallbackIsNotExported() {
         assertFalse(new Proj(NAD27).toProjString().contains("towgs84"));
+    }
+
+    @Test
+    @DisplayName("Restating the registry grid list on +datum=NAD27 keeps the fallback through exports")
+    void registryGridListKeepsFallbackThroughExports() {
+        // The exports name the registry datum, so the reparsed CRS must transform the same
+        Proj explicit = new Proj("+proj=longlat +datum=NAD27 +nadgrids=" + REGISTRY_GRIDS + " +no_defs");
+        Point direct = Proj4.transform(explicit, new Proj(WGS84), new Point(-98, 27));
+        assertPoint(-98.00030416754218, 27.000326243662016, direct);
+
+        String[] exports = {
+            explicit.toProjString(),
+            CRSSerializer.toWkt1(explicit),
+            CRSSerializer.toWkt2(explicit),
+            CRSSerializer.toProjJson(explicit),
+        };
+        for (String exported : exports) {
+            assertPoint(direct.x, direct.y, transform(exported, WGS84, -98, 27));
+        }
+    }
+
+    @Test
+    @DisplayName("The registry grid list on the bare ellipsoid is a different datum")
+    void registryGridsOnBareEllipsoidAreADifferentDatum() {
+        String bare = "+proj=longlat +ellps=clrk66 +nadgrids=" + REGISTRY_GRIDS + " +no_defs";
+        // PROJ applies NAD27's Helmert here (its own CONUS choice), and the explicit grids,
+        // all missing, apply nothing
+        assertPoint(-98.00030416754218, 27.000326243662016, transform(NAD27, bare, -98, 27));
+        // and applies no datum step between two NAD27 definitions
+        assertPoint(-98.0, 27.0, transform(NAD27,
+            "+proj=longlat +datum=NAD27 +nadgrids=" + REGISTRY_GRIDS + " +no_defs", -98, 27));
+    }
+
+    @Test
+    @DisplayName("The fallback follows the definition's current grid list")
+    void fallbackFollowsCurrentGridList() {
+        ProjectionDef def = ProjString.parse(NAD27);
+        new Proj(def);
+        def.setNadgrids("@proj4sedona_no_such_grid.gsb");
+
+        Point reused = Proj4.transform(new Proj(def), new Proj(WGS84), new Point(-98, 27));
+        assertPoint(-98.0, 27.0, reused);
     }
 }

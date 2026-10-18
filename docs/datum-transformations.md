@@ -66,8 +66,8 @@ outside every loaded grid), NAD27 uses the registry's Helmert for EPSG:4267 inst
 any registry datum that shifts with grids; the Helmert is the registry record of the
 datum's EPSG geographic CRS. It is the shift proj4js applies to a WKT2 or PROJJSON NAD27
 CRS through its EPSG id, and PROJ also uses a Helmert transformation where no grid
-applies, although PROJ chooses one by region. A grid list written in the definition
-(`+nadgrids=...`) has no fallback, as in PROJ.
+applies, although PROJ chooses one by region. A grid list other than the registry
+datum's own (`+nadgrids=...`) has no fallback, as in PROJ.
 
 A transform between two CRSs on the same datum applies no datum shift, so NAD27 to NAD27
 (for example EPSG:32041 to EPSG:4267) is exact.
