@@ -27,7 +27,8 @@ import org.locationtech.jts.geom.Point;
  *
  * <p>The failing cases are real null-producing inputs: a point outside a loaded mandatory
  * grid (no listed grid contains it, so the grid shift fails), and a pole in Mercator (the
- * forward projection is undefined there).</p>
+ * forward projection is undefined there). Non-finite values that the core transform returns
+ * without reporting a failure are passed through.</p>
  */
 class JTSTransformFailureTest {
 
@@ -71,6 +72,20 @@ class JTSTransformFailureTest {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
             () -> transformer.transform(gf.createPoint(new Coordinate(0.0, 90.0))));
         assertTrue(e.getMessage().contains("(0.0, 90.0)"), e.getMessage());
+    }
+
+    @Test
+    @DisplayName("Non-finite values the transform does not report as a failure pass through")
+    void unreportedNonFiniteResultPassesThrough() {
+        // The stereographic formula divides by zero at the antipode of its center and
+        // returns non-finite values without reporting a failure. PROJ 9.8.1 also returns
+        // (0, inf) here without an error.
+        JTSGeometryTransformer transformer = new JTSGeometryTransformer(
+            "EPSG:4326", "+proj=stere +lat_0=0 +lon_0=0 +datum=WGS84");
+
+        Point result = (Point) transformer.transform(gf.createPoint(new Coordinate(180.0, 0.0)));
+        assertTrue(!Double.isFinite(result.getX()) || !Double.isFinite(result.getY()),
+            result.toText());
     }
 
     @Test

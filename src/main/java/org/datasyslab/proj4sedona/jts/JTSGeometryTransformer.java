@@ -46,8 +46,10 @@ import org.datasyslab.proj4sedona.transform.Converter;
  * Geometry result = JTSGeometryTransformer.transform("EPSG:4326", "EPSG:3857", geometry);
  * }</pre>
  *
- * <p>A coordinate that cannot be transformed raises an {@link IllegalArgumentException}
- * instead of producing a geometry with NaN coordinates.</p>
+ * <p>A coordinate that the transform reports it cannot map raises an
+ * {@link IllegalArgumentException} instead of producing a geometry with NaN coordinates.
+ * NaN or infinite values that a projection formula returns without reporting a failure
+ * are passed through (see {@link #transformCoordinate}).</p>
  *
  * @since 1.0.0
  */
@@ -307,11 +309,16 @@ public class JTSGeometryTransformer {
      * transformed, this method throws: a geometry with NaN coordinates is not a usable
      * result, and every geometry method of this class goes through here.</p>
      *
+     * <p>Some projection formulas return NaN or infinite values without reporting a
+     * failure, for example at the point opposite the center of a stereographic
+     * projection. Those values are returned as they are; PROJ also returns an infinite
+     * value for that point without an error.</p>
+     *
      * @param coord The coordinate to transform
      * @return The transformed coordinate
-     * @throws IllegalArgumentException if the coordinate cannot be transformed, for example
-     *         because it lies outside every loaded datum grid or outside the valid area of
-     *         the projection
+     * @throws IllegalArgumentException if the transform reports that the coordinate cannot
+     *         be transformed, for example because it lies outside every loaded datum grid or
+     *         where the projection is undefined
      */
     public Coordinate transformCoordinate(Coordinate coord) {
         if (coord == null) {
