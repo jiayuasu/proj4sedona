@@ -304,7 +304,7 @@ class CRSSerializerRoundTripSafetyTest {
 
     @Test
     void geographicProjectionAliasesUseGeographicStandardRoots() {
-        for (String alias : new String[]{"identity", "LongLat"}) {
+        for (String alias : new String[]{"identity", "LongLat", "lonlat", "latlon", "latlong"}) {
             Proj original = new Proj(
                 "+proj=" + alias + " +datum=WGS84 +no_defs");
             String wkt1 = CRSSerializer.toWkt1(original);

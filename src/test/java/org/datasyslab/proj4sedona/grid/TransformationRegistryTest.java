@@ -1,6 +1,14 @@
 package org.datasyslab.proj4sedona.grid;
 
+import org.datasyslab.proj4sedona.Proj4;
+import org.datasyslab.proj4sedona.core.Point;
+import org.datasyslab.proj4sedona.core.Proj;
+import org.datasyslab.proj4sedona.core.ProjectionDef;
+import org.datasyslab.proj4sedona.defs.Defs;
+import org.datasyslab.proj4sedona.transform.Transform;
 import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -8,6 +16,57 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests for TransformationRegistry.
  */
 class TransformationRegistryTest {
+
+    // ==================== Grid Injection Tests ====================
+
+    @Test
+    void testHarnGridIsNotCombinedWithItsHelmert() {
+        // EPSG:4152 resolves the EPSG_4152 Helmert through its own id, but the injected
+        // NAD83 -> HARN grid already shifts into HARN, so that Helmert must not be added.
+        // Reference values from PROJ, which selects the same NADCON5 grid. Needs network
+        // access to cdn.proj.org for the grid.
+        Point forward = Proj4.proj4("EPSG:4269", "EPSG:4152", new Point(-104.9903, 39.7392));
+        assertEquals(-104.990300545, forward.x, 1e-6, "forward longitude");
+        assertEquals(39.739202038, forward.y, 1e-6, "forward latitude");
+
+        Point inverse = Proj4.proj4("EPSG:4152", "EPSG:4269", new Point(-104.9903, 39.7392));
+        assertEquals(-104.990299455, inverse.x, 1e-6, "inverse longitude");
+        assertEquals(39.739197962, inverse.y, 1e-6, "inverse latitude");
+    }
+
+    @Test
+    void testHelmertKeptForGridsTheDefinitionLists() throws IOException {
+        // Nothing is injected when the definition lists grids itself. Those grids shift to
+        // WGS84, as in proj4js, whichever of them applies, so the other CRS keeps its
+        // Helmert and the result equals a plain transform. That includes a list holding the
+        // pair grid behind another grid, or the pair grid alone.
+        String harnGrid = TransformationRegistry.getGridFile("EPSG:4269", "EPSG:4152");
+        GridLoader.fetchFromCdn("us_noaa_conus.tif");
+        GridLoader.fetchFromCdn(harnGrid);
+        ProjectionDef saved = Defs.get("EPSG:4269");
+        try {
+            for (String grids : new String[]{
+                "@us_noaa_conus.tif", "@us_noaa_conus.tif,@" + harnGrid, "@" + harnGrid}) {
+                Defs.set("EPSG:4269", "+proj=longlat +ellps=GRS80 +nadgrids=" + grids + " +no_defs");
+                for (String[] pair : new String[][]{
+                    {"EPSG:4269", "EPSG:4152"}, {"EPSG:4152", "EPSG:4269"}}) {
+                    String label = grids + " " + pair[0] + " -> " + pair[1];
+                    Point viaRegistry = Proj4.proj4(pair[0], pair[1], new Point(-104.9903, 39.7392));
+                    Point plain = Transform.transform(
+                        new Proj(pair[0]), new Proj(pair[1]), new Point(-104.9903, 39.7392), false);
+                    assertTrue(Math.abs(plain.x + 104.9903) > 1e-6, label + ": a grid shift applies");
+                    assertEquals(plain.x, viaRegistry.x, 1e-12, label + " longitude");
+                    assertEquals(plain.y, viaRegistry.y, 1e-12, label + " latitude");
+                }
+            }
+        } finally {
+            if (saved != null) {
+                Defs.set("EPSG:4269", saved);
+            } else {
+                Defs.remove("EPSG:4269");
+            }
+        }
+    }
 
     // ==================== Basic Functionality Tests ====================
 

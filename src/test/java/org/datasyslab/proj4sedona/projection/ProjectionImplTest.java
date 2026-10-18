@@ -132,6 +132,9 @@ class ProjectionImplTest {
         assertNotNull(ProjectionRegistry.get("longlat"));
         assertNotNull(ProjectionRegistry.get("identity"));
         assertNotNull(ProjectionRegistry.get("LONGLAT"));
+        assertNotNull(ProjectionRegistry.get("lonlat"));
+        assertNotNull(ProjectionRegistry.get("latlon"));
+        assertNotNull(ProjectionRegistry.get("latlong"));
     }
 
     // ========== Mercator Projection Tests ==========

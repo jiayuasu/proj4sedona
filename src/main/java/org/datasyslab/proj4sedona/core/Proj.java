@@ -7,6 +7,7 @@ import org.datasyslab.proj4sedona.defs.Defs;
 import org.datasyslab.proj4sedona.parser.CRSSerializer;
 import org.datasyslab.proj4sedona.parser.ProjString;
 import org.datasyslab.proj4sedona.parser.WktParser;
+import org.datasyslab.proj4sedona.projection.LongLat;
 import org.datasyslab.proj4sedona.projection.Projection;
 import org.datasyslab.proj4sedona.projection.ProjectionParams;
 import org.datasyslab.proj4sedona.projection.ProjectionRegistry;
@@ -88,6 +89,11 @@ public class Proj {
         projection = ProjectionRegistry.get(def.getProjName());
         if (projection == null) {
             throw new IllegalArgumentException("Unknown projection: " + def.getProjName());
+        }
+        // Every geographic alias, in any case, takes the canonical name that the transform
+        // pipeline and the serializers check for
+        if (projection instanceof LongLat) {
+            def.setProjName("longlat");
         }
 
         // Process datum definition

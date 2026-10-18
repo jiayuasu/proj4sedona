@@ -194,6 +194,172 @@ class Proj4jsBackportsTest {
     }
 
     @Test
+    @DisplayName("proj4js faafa50: lonlat, latlon and latlong are aliases of longlat")
+    void testLonglatAliases() {
+        // Any spelling or case of a geographic alias, including identity, takes the
+        // canonical name, so input and output stay in degrees as for +proj=longlat.
+        for (String alias : new String[]{
+            "lonlat", "latlon", "latlong", "LonLat", "LATLONG", "LongLat", "identity"}) {
+            Proj crs = new Proj("+proj=" + alias + " +datum=WGS84 +no_defs");
+            assertEquals("longlat", crs.getParams().projName, alias);
+            assertTrue(org.datasyslab.proj4sedona.parser.CRSSerializer.toWkt1(crs)
+                .startsWith("GEOGCS["), alias);
+
+            Point p = Proj4.proj4(WGS84, "+proj=" + alias + " +datum=WGS84 +no_defs")
+                .forward(new Point(10, 20));
+            assertEquals(10, p.x, 1e-12, alias + " longitude");
+            assertEquals(20, p.y, 1e-12, alias + " latitude");
+        }
+
+        // The same holds for a definition built without the PROJ string parser.
+        org.datasyslab.proj4sedona.core.ProjectionDef def =
+            new org.datasyslab.proj4sedona.core.ProjectionDef();
+        def.setProjName("latlon");
+        def.setDatumCode("WGS84");
+        Proj fromDef = new Proj(def);
+        assertEquals("longlat", fromDef.getParams().projName);
+        Point p = org.datasyslab.proj4sedona.transform.Transform.transform(
+            new Proj(WGS84), fromDef, new Point(10, 20), false);
+        assertEquals(10, p.x, 1e-12, "definition longitude");
+        assertEquals(20, p.y, 1e-12, "definition latitude");
+    }
+
+    @Test
+    @DisplayName("proj4js 61ab075: spherical tmerc uses the exact spherical formula")
+    void testSphericalTmerc() {
+        // proj4js testData vectors; PROJ gives the same coordinates.
+        String[][] cases = {
+            {"+proj=tmerc +a=6400000 +b=6400000 +lat_1=0.5 +lat_2=2 +n=0.5",
+                "2", "1", "223413.4664063224", "111769.14504058579"},
+            {"+proj=tmerc +a=6378137 +b=6378137 +lon_0=11.598056919260632 "
+                + "+x_0=1.0621731827420435e-09 +y_0=-5375403.8751633102 +k=1.0 +units=m +wktext +no_defs",
+                "12", "55", "25664.088897589172", "747241.858826519"},
+            // WKT1 method name, normalized through the projection registry.
+            {"PROJCS[\"Sphere TM\",GEOGCS[\"Sphere\",DATUM[\"D_Sphere\",SPHEROID[\"Sphere\",6371000,0]],"
+                + "PRIMEM[\"Greenwich\",0],UNIT[\"Degree\",0.0174532925199433]],"
+                + "PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"False_Easting\",200000],"
+                + "PARAMETER[\"False_Northing\",0],PARAMETER[\"Central_Meridian\",9],"
+                + "PARAMETER[\"Scale_Factor\",0.9999],PARAMETER[\"Latitude_Of_Origin\",0],UNIT[\"Meter\",1]]",
+                "12", "55", "391287.3012542991", "6119213.170937139"},
+        };
+        for (String[] c : cases) {
+            Proj crs = new Proj(c[0]);
+            Point input = new Point(
+                Double.parseDouble(c[1]) * Values.D2R, Double.parseDouble(c[2]) * Values.D2R);
+            Point xy = crs.forward(input.copy());
+            assertEquals(Double.parseDouble(c[3]), xy.x, 1e-6, "easting: " + c[0]);
+            assertEquals(Double.parseDouble(c[4]), xy.y, 1e-6, "northing: " + c[0]);
+
+            Point ll = crs.inverse(xy);
+            assertEquals(input.x, ll.x, 1e-12, "inverse longitude: " + c[0]);
+            assertEquals(input.y, ll.y, 1e-12, "inverse latitude: " + c[0]);
+        }
+
+        // The extended series stays undefined on a sphere: PROJ rejects etmerc and utm
+        // there ("Invalid value for eccentricity: it should not be zero").
+        for (String def : new String[]{
+            "+proj=etmerc +a=6400000 +b=6400000",
+            "+proj=utm +zone=31 +a=6400000 +b=6400000"}) {
+            IllegalArgumentException e = assertThrows(
+                IllegalArgumentException.class, () -> new Proj(def), def);
+            assertTrue(e.getMessage().contains("Incorrect elliptical usage"), e.getMessage());
+        }
+    }
+
+    @Test
+    @DisplayName("Spherical tmerc inverts latitude by the origin-adjusted angle (PROJ, not proj4js)")
+    void testSphericalTmercInverseLatitudeSign() {
+        // proj4js signs the inverse latitude by the northing from the origin, so with a
+        // nonzero lat_0 a point south of the origin but north of the equator comes back
+        // in the wrong hemisphere. PROJ uses the origin-adjusted angle; reference values
+        // from PROJ 9.8.1.
+        String[][] cases = {
+            {"+proj=tmerc +R=6371000 +lat_0=45 +lon_0=3", "4", "40", "85181.006449083", "-555496.794215061"},
+            {"+proj=tmerc +R=6371000 +lat_0=45 +lon_0=3", "4", "50", "71474.090807880", "556452.459592103"},
+            {"+proj=tmerc +R=6371000 +lat_0=45 +lon_0=3", "4", "-10", "109510.850480380", "-6115886.926879242"},
+            {"+proj=tmerc +R=6371000 +lat_0=-30 +lon_0=150 +x_0=500000 +y_0=10000000",
+                "151", "-25", "600780.116712599", "10555602.927176856"},
+            {"+proj=tmerc +R=6371000 +lat_0=-30 +lon_0=150 +x_0=500000 +y_0=10000000",
+                "152", "5", "721587.913068268", "13892159.604248783"},
+        };
+        for (String[] c : cases) {
+            for (String def : new String[]{c[0], c[0] + " +approx"}) {
+                Proj crs = new Proj(def);
+                Point input = new Point(
+                    Double.parseDouble(c[1]) * Values.D2R, Double.parseDouble(c[2]) * Values.D2R);
+                Point xy = crs.forward(input.copy());
+                assertEquals(Double.parseDouble(c[3]), xy.x, 1e-6, "easting: " + def);
+                assertEquals(Double.parseDouble(c[4]), xy.y, 1e-6, "northing: " + def);
+
+                Point ll = crs.inverse(xy);
+                assertEquals(input.x, ll.x, 1e-12, "inverse longitude: " + def);
+                assertEquals(input.y, ll.y, 1e-12, "inverse latitude: " + def);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("proj4js 6a946a1: Esri D_Amersfoort without TOWGS84 resolves the amersfoort datum")
+    void testAmersfoortWithoutTowgs84() {
+        Datum amersfoort = Datum.get("amersfoort");
+        assertNotNull(amersfoort);
+        assertEquals(Datum.get("EPSG_4289").getTowgs84(), amersfoort.getTowgs84(),
+            "same parameters as EPSG_4289");
+
+        // proj4js testData vector: the RD_New .prj written for shapefiles (#537).
+        String rdNew = "PROJCS[\"RD_New\",GEOGCS[\"GCS_Amersfoort\","
+            + "DATUM[\"D_Amersfoort\",SPHEROID[\"Bessel_1841\",6377397.155,299.1528128]],"
+            + "PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],"
+            + "PROJECTION[\"Double_Stereographic\"],PARAMETER[\"False_Easting\",155000.0],"
+            + "PARAMETER[\"False_Northing\",463000.0],"
+            + "PARAMETER[\"Central_Meridian\",5.38763888888889],"
+            + "PARAMETER[\"Scale_Factor\",0.9999079],"
+            + "PARAMETER[\"Latitude_Of_Origin\",52.1561605555556],UNIT[\"Meter\",1.0]]";
+        Point xy = Proj4.proj4(WGS84, rdNew).forward(new Point(5.2, 52.25));
+        assertEquals(142216.10, xy.x, 0.01, "easting");
+        assertEquals(473567.13, xy.y, 0.01, "northing");
+    }
+
+    @Test
+    @DisplayName("proj4js d0ef236 / wkt-parser c6c80af: a geographic CRS without TOWGS84 shifts by its id")
+    void testGeographicCrsDatumShiftFromId() {
+        // Upstream test vectors: DB_REF (EPSG:5830) has no TOWGS84 and no base_crs, so its
+        // own id selects the EPSG_5830 record. PROJ gives the same coordinates.
+        String geocent = "+proj=geocent +datum=WGS84 +units=m +no_defs +type=crs";
+        String wkt = "GEOGCRS[\"DB_REF\",DATUM[\"Deutsche Bahn Reference System\","
+            + "ELLIPSOID[\"Bessel 1841\",6377397.155,299.1528128,LENGTHUNIT[\"metre\",1]]],"
+            + "PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],CS[ellipsoidal,3],"
+            + "AXIS[\"geodetic latitude (Lat)\",north,ORDER[1],ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "AXIS[\"geodetic longitude (Lon)\",east,ORDER[2],ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "AXIS[\"ellipsoidal height (h)\",up,ORDER[3],LENGTHUNIT[\"metre\",1]],ID[\"EPSG\",5830]]";
+        String projjson = "{\"$schema\":\"https://proj.org/schemas/v0.7/projjson.schema.json\","
+            + "\"type\":\"GeographicCRS\",\"name\":\"DB_REF\","
+            + "\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"Deutsche Bahn Reference System\","
+            + "\"ellipsoid\":{\"name\":\"Bessel 1841\",\"semi_major_axis\":6377397.155,"
+            + "\"inverse_flattening\":299.1528128}},"
+            + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":["
+            + "{\"name\":\"Geodetic latitude\",\"abbreviation\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
+            + "{\"name\":\"Geodetic longitude\",\"abbreviation\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"},"
+            + "{\"name\":\"Ellipsoidal height\",\"abbreviation\":\"h\",\"direction\":\"up\",\"unit\":\"metre\"}]},"
+            + "\"id\":{\"authority\":\"EPSG\",\"code\":5830}}";
+        for (String def : new String[]{wkt, projjson}) {
+            assertEquals("EPSG_5830", new Proj(def).getParams().datumCode, def);
+            Point r = Proj4.proj4(geocent, def).forward(new Point(3785368, 893986, 5038059));
+            assertEquals(13.289722, r.x, 0.000001, "longitude: " + def);
+            assertEquals(52.518405, r.y, 0.000001, "latitude: " + def);
+            assertEquals(11.345461, r.z, 0.001, "height: " + def);
+        }
+
+        // Without a record for its id, a geographic CRS keeps its datum name.
+        String nad83Nsrs = projjson
+            .replace("DB_REF", "NAD83(2011)")
+            .replace("Deutsche Bahn Reference System", "NAD83 (National Spatial Reference System 2011)")
+            .replace("5830", "6318");
+        assertEquals("NAD83 (National Spatial Reference System 2011)",
+            new Proj(nad83Nsrs).getParams().datumCode);
+    }
+
+    @Test
     @DisplayName("proj4js 1a3b130: Defs.set accepts PROJJSON (and WKT) definitions")
     void testDefsProjJsonRegistration() {
         // Mirrors upstream test/test.js: registering a PROJJSON geographic CRS under a

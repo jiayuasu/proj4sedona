@@ -11,7 +11,7 @@ import org.datasyslab.proj4sedona.core.Point;
  */
 public class LongLat implements Projection {
 
-    public static final String[] NAMES = {"longlat", "identity"};
+    public static final String[] NAMES = {"longlat", "identity", "lonlat", "latlon", "latlong"};
 
     @Override
     public String[] getNames() {

@@ -6,6 +6,7 @@ import org.datasyslab.proj4sedona.constants.Values;
 import org.datasyslab.proj4sedona.core.ProjectionDef;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -19,6 +20,7 @@ import java.util.Map;
 public final class ProjString {
 
     private static final String LEGAL_AXIS_CHARS = "ewnsud";
+    private static final List<String> LONGLAT_ALIASES = List.of("lonlat", "latlon", "latlong");
 
     private ProjString() {
         // Utility class
@@ -80,7 +82,8 @@ public final class ProjString {
         switch (paramName) {
             // Simple mappings
             case "proj":
-                def.setProjName(paramVal);
+                // 'lonlat', 'latlon' and 'latlong' are aliases of 'longlat'
+                def.setProjName(LONGLAT_ALIASES.contains(paramVal) ? "longlat" : paramVal);
                 break;
             case "datum":
                 def.setDatumCode(paramVal);

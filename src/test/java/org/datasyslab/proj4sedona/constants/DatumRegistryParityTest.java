@@ -38,17 +38,17 @@ class DatumRegistryParityTest {
     private static final String RESOURCE =
             "/org/datasyslab/proj4sedona/constants/proj4js-datums.tsv";
     private static final String UPSTREAM_COMMIT =
-            "955bfd6bda76982bba87d683990b3ae3393a7e0b";
+            "7b94f6be407e25ea4b8b5ae80f0fece279a79ea4";
     private static final String UPSTREAM_SOURCE =
             "https://github.com/proj4js/proj4js/blob/" + UPSTREAM_COMMIT
                     + "/lib/constants/Datum.js";
     private static final String DATA_SHA256 =
-            "52fa7af521bc8acc1836d4ec476272d726c3cab5c9d037a2b7a1e338370c8f79";
+            "7ee63836eb75606293bf7265399a43088ca6abcc5f2b4939bdec94a0216a5552";
     private static final String NULL_MARKER = "\\N";
-    private static final int CANONICAL_RECORDS = 438;
-    private static final int DATUM_NAME_ALIASES = 18;
-    private static final int THREE_PARAMETER_RECORDS = 330;
-    private static final int SEVEN_PARAMETER_RECORDS = 107;
+    private static final int CANONICAL_RECORDS = 461;
+    private static final int DATUM_NAME_ALIASES = 19;
+    private static final int THREE_PARAMETER_RECORDS = 300;
+    private static final int SEVEN_PARAMETER_RECORDS = 160;
     private static final int NAD_GRID_RECORDS = 1;
 
     // These public constants predate the generated table and intentionally carry
@@ -139,7 +139,11 @@ class DatumRegistryParityTest {
 
         // Equal parameter values are not aliases: their authority codes must keep
         // distinct objects and canonical identities.
-        assertNotSame(Datum.get("EPSG_9059"), Datum.get("EPSG_4269"));
+        assertNotSame(Datum.get("amersfoort"), Datum.get("EPSG_4289"));
+
+        // proj4js d0ef236 dropped this zero shift; the deprecated constant must not
+        // bring it back into the registry.
+        assertNull(Datum.get("EPSG_4269"));
     }
 
     private static Snapshot readSnapshot() throws IOException {

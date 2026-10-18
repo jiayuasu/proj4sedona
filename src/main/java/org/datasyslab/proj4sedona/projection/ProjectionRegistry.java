@@ -262,7 +262,7 @@ public final class ProjectionRegistry {
         started = true;
         
         // Identity / Geographic
-        add(List.of("longlat"), LongLat::new);
+        add(List.of("longlat", "lonlat", "latlon", "latlong"), LongLat::new);
         
         // Cylindrical projections
         add(List.of("merc"), Mercator::new);

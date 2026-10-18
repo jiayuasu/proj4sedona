@@ -162,8 +162,12 @@ class ConstantsTest {
         assertEquals(4.07244, p[6], DELTA);
         assertEquals("bessel", amersfoort.getEllipse());
 
-        // Alias lookup
-        assertSame(amersfoort, Datum.get("Amersfoort"));
+        // The datum name resolves to proj4js's amersfoort record (6a946a1), which
+        // carries the same parameters.
+        Datum amersfoortByName = Datum.get("Amersfoort");
+        assertEquals("amersfoort", amersfoortByName.getCode());
+        assertEquals(amersfoort.getTowgs84(), amersfoortByName.getTowgs84());
+        assertEquals(amersfoort.getEllipse(), amersfoortByName.getEllipse());
 
         // EPSG:4283 (GDA94 / Australia)
         Datum gda94 = Datum.get("EPSG_4283");

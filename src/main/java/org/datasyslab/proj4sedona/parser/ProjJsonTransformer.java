@@ -79,6 +79,19 @@ public final class ProjJsonTransformer {
             processKey(key, value, projjson, def);
         }
 
+        // Geographic and geodetic CRSs have no base_crs, so use their own id as
+        // datumCode (wkt-parser 1.6.0), which lets the registry supply their datum
+        // shift. Java keeps the datum name instead when the registry resolves it, or
+        // when the id has no record, because the name also serves identification.
+        Object type = projjson.get("type");
+        if (("GeographicCRS".equals(type) || "GeodeticCRS".equals(type))
+                && Datum.get(def.getDatumCode()) == null) {
+            String idCode = authorityCode(projjson.get("id"));
+            if (idCode != null && Datum.get(idCode) != null) {
+                def.setDatumCode(idCode);
+            }
+        }
+
         // Apply calculated properties (parameter normalization)
         applyCalculatedProperties(def);
 
@@ -227,15 +240,7 @@ public final class ProjJsonTransformer {
                     }
                     // Fall back to base CRS id if datum name not found
                     if (resolvedDatumCode == null) {
-                        Object baseId = baseCrs.get("id");
-                        if (baseId instanceof Map) {
-                            Map<String, Object> id = (Map<String, Object>) baseId;
-                            Object authority = id.get("authority");
-                            Object code = id.get("code");
-                            if (authority != null && code != null) {
-                                resolvedDatumCode = authority.toString() + "_" + toIntString(code);
-                            }
-                        }
+                        resolvedDatumCode = authorityCode(baseCrs.get("id"));
                     }
                     // Last resort: base CRS name, normalized to a PROJ-safe
                     // token (strip whitespace, lowercase).  e.g. "WGS 84" -> "wgs84".
@@ -1184,6 +1189,21 @@ public final class ProjJsonTransformer {
      * Convert a value to an integer string representation.
      * Handles the case where GSON parses JSON integer codes (e.g., 6318) as Double (6318.0).
      */
+    /** The {@code AUTHORITY_code} datum key of a PROJJSON id, or null without one. */
+    @SuppressWarnings("unchecked")
+    private static String authorityCode(Object idValue) {
+        if (!(idValue instanceof Map)) {
+            return null;
+        }
+        Map<String, Object> id = (Map<String, Object>) idValue;
+        Object authority = id.get("authority");
+        Object code = id.get("code");
+        if (authority == null || code == null) {
+            return null;
+        }
+        return authority.toString() + "_" + toIntString(code);
+    }
+
     private static String toIntString(Object value) {
         if (value == null) {
             return "";

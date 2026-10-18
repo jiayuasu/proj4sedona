@@ -92,7 +92,15 @@ public final class Datum {
     // Additional EPSG datums (selected important ones)
     public static final Datum EPSG_4314 = register("EPSG_4314", "597.1,71.4,412.1,0.894,0.068,-1.563,7.58", null, null);
     public static final Datum EPSG_4267 = register("EPSG_4267", "-8.0,160.0,176.0", null, null);
-    public static final Datum EPSG_4269 = register("EPSG_4269", "0,0,0", null, null);
+    /**
+     * NAD83 zero shift, no longer a registry record: proj4js d0ef236 dropped zero shifts
+     * on WGS84-like ellipsoids as redundant, so {@code Datum.get("EPSG_4269")} returns
+     * null and the datum applies no shift, as upstream.
+     *
+     * @deprecated not resolvable by code; use {@link #NAD83}
+     */
+    @Deprecated
+    public static final Datum EPSG_4269 = new Datum("EPSG_4269", "0,0,0", null, null, null);
     public static final Datum EPSG_4230 = register("EPSG_4230", "-68.863,-134.888,-111.49,-0.53,-0.14,0.57,-3.4", null, null);
 
     // Datums added / corrected from proj4js v2.20.4 (PR #551).
@@ -125,8 +133,9 @@ public final class Datum {
         registerAlias("North American Datum of 1927", NAD27);
         registerAlias("Ordnance Survey of Great Britain 1936", OSGB36);
         registerAlias("OSGB 1936", OSGB36);
-        // Aliases for newly-added datums (PR #551 corrections)
-        registerAlias("Amersfoort", EPSG_4289);
+        // Aliases for newly-added datums (PR #551 corrections). "Amersfoort" is not
+        // aliased to EPSG_4289: proj4js 6a946a1 added an amersfoort record with the
+        // same parameters, which the generated registry provides.
         registerAlias("Geocentric Datum of Australia 1994", EPSG_4283);
         registerAlias("GDA94", EPSG_4283);
         registerAlias("NAD83 Canadian Spatial Reference System", EPSG_4617);

@@ -138,12 +138,10 @@ class ScaleFactorZeroParityTest {
         assertNotEquals(omitted.y, zero.y, 1.0);
     }
 
-    @ParameterizedTest(name = "+proj={0}")
-    @ValueSource(strings = {"etmerc", "tmerc"})
-    @DisplayName("Transverse Mercator requires +approx for a sphere")
-    void testTransverseMercatorSphereRequiresApprox(String projectionName) {
-        String definition = "+proj=" + projectionName
-            + " +lat_0=0 +lon_0=3 +R=6371000 +units=m +no_defs";
+    @Test
+    @DisplayName("Extended transverse Mercator requires +approx for a sphere")
+    void testExtendedTransverseMercatorSphereRequiresApprox() {
+        String definition = "+proj=etmerc +lat_0=0 +lon_0=3 +R=6371000 +units=m +no_defs";
         IllegalArgumentException exception = assertThrows(
             IllegalArgumentException.class, () -> new Proj(definition));
         assertTrue(exception.getMessage().contains("Try using the +approx option"),
@@ -152,6 +150,18 @@ class ScaleFactorZeroParityTest {
         Proj approximate = new Proj(definition + " +approx +k=0");
         Point projected = project(approximate, 4, 50);
         assertFinite(projected, definition + " +approx");
+    }
+
+    @Test
+    @DisplayName("Spherical transverse Mercator uses the +approx formulas without the flag")
+    void testTransverseMercatorSphereUsesApproximateFormulas() {
+        // proj4js 61ab075: the traditional formulas are exact on a sphere, so a
+        // spherical tmerc takes them, as PROJ does.
+        String definition = "+proj=tmerc +lat_0=0 +lon_0=3 +R=6371000 +units=m +no_defs +k=0";
+        Point projected = project(new Proj(definition), 4, 50);
+        assertFinite(projected, definition);
+        assertPointEquals(project(new Proj(definition + " +approx"), 4, 50), projected, 0.0,
+            definition);
     }
 
     @ParameterizedTest(name = "+proj={0}")

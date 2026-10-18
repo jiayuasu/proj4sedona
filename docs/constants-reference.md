@@ -6,8 +6,8 @@ Proj4Sedona includes built-in definitions for datums, ellipsoids, linear units, 
 
 Retrieved via `Datum.get(code)`. The `towgs84` field contains the parameters for transforming to WGS84.
 
-The registry mirrors the complete generated proj4js datum snapshot: 438 canonical
-definitions, comprising 437 three- or seven-parameter transformations and the NAD27
+The registry mirrors the complete generated proj4js datum snapshot: 461 canonical
+definitions, comprising 460 three- or seven-parameter transformations and the NAD27
 grid definition. This includes authority keys such as `EPSG_4124`, `ESRI_104101`, and
 `IGNF_ANAA92G`, in addition to the familiar short names below. The authoritative
 machine-readable list is
