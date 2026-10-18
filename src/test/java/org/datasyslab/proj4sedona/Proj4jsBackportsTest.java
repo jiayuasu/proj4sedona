@@ -273,6 +273,45 @@ class Proj4jsBackportsTest {
     }
 
     @Test
+    @DisplayName("proj4js d0ef236 / wkt-parser c6c80af: a geographic CRS without TOWGS84 shifts by its id")
+    void testGeographicCrsDatumShiftFromId() {
+        // Upstream test vectors: DB_REF (EPSG:5830) has no TOWGS84 and no base_crs, so its
+        // own id selects the EPSG_5830 record. PROJ gives the same coordinates.
+        String geocent = "+proj=geocent +datum=WGS84 +units=m +no_defs +type=crs";
+        String wkt = "GEOGCRS[\"DB_REF\",DATUM[\"Deutsche Bahn Reference System\","
+            + "ELLIPSOID[\"Bessel 1841\",6377397.155,299.1528128,LENGTHUNIT[\"metre\",1]]],"
+            + "PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"degree\",0.0174532925199433]],CS[ellipsoidal,3],"
+            + "AXIS[\"geodetic latitude (Lat)\",north,ORDER[1],ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "AXIS[\"geodetic longitude (Lon)\",east,ORDER[2],ANGLEUNIT[\"degree\",0.0174532925199433]],"
+            + "AXIS[\"ellipsoidal height (h)\",up,ORDER[3],LENGTHUNIT[\"metre\",1]],ID[\"EPSG\",5830]]";
+        String projjson = "{\"$schema\":\"https://proj.org/schemas/v0.7/projjson.schema.json\","
+            + "\"type\":\"GeographicCRS\",\"name\":\"DB_REF\","
+            + "\"datum\":{\"type\":\"GeodeticReferenceFrame\",\"name\":\"Deutsche Bahn Reference System\","
+            + "\"ellipsoid\":{\"name\":\"Bessel 1841\",\"semi_major_axis\":6377397.155,"
+            + "\"inverse_flattening\":299.1528128}},"
+            + "\"coordinate_system\":{\"subtype\":\"ellipsoidal\",\"axis\":["
+            + "{\"name\":\"Geodetic latitude\",\"abbreviation\":\"Lat\",\"direction\":\"north\",\"unit\":\"degree\"},"
+            + "{\"name\":\"Geodetic longitude\",\"abbreviation\":\"Lon\",\"direction\":\"east\",\"unit\":\"degree\"},"
+            + "{\"name\":\"Ellipsoidal height\",\"abbreviation\":\"h\",\"direction\":\"up\",\"unit\":\"metre\"}]},"
+            + "\"id\":{\"authority\":\"EPSG\",\"code\":5830}}";
+        for (String def : new String[]{wkt, projjson}) {
+            assertEquals("EPSG_5830", new Proj(def).getParams().datumCode, def);
+            Point r = Proj4.proj4(geocent, def).forward(new Point(3785368, 893986, 5038059));
+            assertEquals(13.289722, r.x, 0.000001, "longitude: " + def);
+            assertEquals(52.518405, r.y, 0.000001, "latitude: " + def);
+            assertEquals(11.345461, r.z, 0.001, "height: " + def);
+        }
+
+        // Without a record for its id, a geographic CRS keeps its datum name.
+        String nad83Nsrs = projjson
+            .replace("DB_REF", "NAD83(2011)")
+            .replace("Deutsche Bahn Reference System", "NAD83 (National Spatial Reference System 2011)")
+            .replace("5830", "6318");
+        assertEquals("NAD83 (National Spatial Reference System 2011)",
+            new Proj(nad83Nsrs).getParams().datumCode);
+    }
+
+    @Test
     @DisplayName("proj4js 1a3b130: Defs.set accepts PROJJSON (and WKT) definitions")
     void testDefsProjJsonRegistration() {
         // Mirrors upstream test/test.js: registering a PROJJSON geographic CRS under a

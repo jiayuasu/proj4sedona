@@ -1,5 +1,7 @@
 package org.datasyslab.proj4sedona;
 
+import org.datasyslab.proj4sedona.constants.Values;
+import org.datasyslab.proj4sedona.core.DatumParams;
 import org.datasyslab.proj4sedona.core.Point;
 import org.datasyslab.proj4sedona.core.Proj;
 import org.datasyslab.proj4sedona.grid.GridLoader;
@@ -185,7 +187,7 @@ public final class Proj4 {
                     from = new Proj(modifiedProj);
                 }
                 
-                return new Proj[] { from, new Proj(toProj) };
+                return new Proj[] { from, asGridTarget(new Proj(toProj)) };
             } else {
                 // Reverse direction: apply grid to DESTINATION (inverse shift)
                 Proj to = new Proj(toProj);
@@ -196,11 +198,26 @@ public final class Proj4 {
                     to = new Proj(modifiedProj);
                 }
                 
-                return new Proj[] { new Proj(fromProj), to };
+                return new Proj[] { asGridTarget(new Proj(fromProj)), to };
             }
         }
         
         return new Proj[] { new Proj(fromProj), new Proj(toProj) };
+    }
+
+    /**
+     * The registered grid shifts into this CRS's datum, so its own TOWGS84 must not be
+     * applied on top. Without one it behaves as before, when such a datum (for example
+     * NAD83(HARN), EPSG:4152) had no registry record and applied no shift.
+     */
+    private static Proj asGridTarget(Proj proj) {
+        DatumParams datum = proj.getParams().datum;
+        if (datum != null && (datum.getDatumType() == Values.PJD_3PARAM
+                || datum.getDatumType() == Values.PJD_7PARAM)) {
+            proj.getParams().datum = new DatumParams(proj.getParams().datumCode, null,
+                datum.getA(), datum.getB(), datum.getEs(), datum.getEp2(), null);
+        }
+        return proj;
     }
 
     /**

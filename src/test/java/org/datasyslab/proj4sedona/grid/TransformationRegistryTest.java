@@ -1,5 +1,7 @@
 package org.datasyslab.proj4sedona.grid;
 
+import org.datasyslab.proj4sedona.Proj4;
+import org.datasyslab.proj4sedona.core.Point;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -8,6 +10,23 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests for TransformationRegistry.
  */
 class TransformationRegistryTest {
+
+    // ==================== Grid Injection Tests ====================
+
+    @Test
+    void testHarnGridIsNotCombinedWithItsHelmert() {
+        // EPSG:4152 resolves the EPSG_4152 Helmert through its own id, but the injected
+        // NAD83 -> HARN grid already shifts into HARN, so that Helmert must not be added.
+        // Reference values from PROJ, which selects the same NADCON5 grid. Needs network
+        // access to cdn.proj.org for the grid.
+        Point forward = Proj4.proj4("EPSG:4269", "EPSG:4152", new Point(-104.9903, 39.7392));
+        assertEquals(-104.990300545, forward.x, 1e-6, "forward longitude");
+        assertEquals(39.739202038, forward.y, 1e-6, "forward latitude");
+
+        Point inverse = Proj4.proj4("EPSG:4152", "EPSG:4269", new Point(-104.9903, 39.7392));
+        assertEquals(-104.990299455, inverse.x, 1e-6, "inverse longitude");
+        assertEquals(39.739197962, inverse.y, 1e-6, "inverse latitude");
+    }
 
     // ==================== Basic Functionality Tests ====================
 

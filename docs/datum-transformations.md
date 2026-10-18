@@ -94,6 +94,8 @@ definitions, including EPSG, ESRI, and IGNF authority keys. PROJJSON definitions
 that identify their base geographic CRS by authority therefore receive the same
 `towgs84` transformation as proj4js. For example, an RT90 base CRS identified as
 `EPSG_4124` resolves its seven-parameter Helmert transformation automatically.
+A geographic or geodetic CRS has no base CRS, so when the registry does not know its
+datum name, its own id is used: DB_REF (`EPSG_5830`) gets its shift this way.
 Geographic 3D and geocentric CRSs on the same datum share its record. Datums whose
 shift to WGS84 is zero on a WGS84-like ellipsoid (for example SWEREF99 or GDA2020)
 have no record and apply no datum shift, which gives the same coordinates.
