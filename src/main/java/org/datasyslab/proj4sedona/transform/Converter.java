@@ -54,9 +54,12 @@ public class Converter {
 
     /**
      * Forward transformation from array coordinates.
-     * 
+     *
+     * <p>Like proj4js's array adapter, a point that cannot be transformed comes back as
+     * {@code [NaN, NaN]}.</p>
+     *
      * @param coords Array [x, y] or [x, y, z]
-     * @return Transformed array
+     * @return Transformed array, or {@code [NaN, NaN]} if the point cannot be transformed
      */
     public double[] forward(double[] coords) {
         Point p = new Point(coords);
@@ -91,9 +94,12 @@ public class Converter {
 
     /**
      * Inverse transformation from array coordinates.
-     * 
+     *
+     * <p>Like proj4js's array adapter, a point that cannot be transformed comes back as
+     * {@code [NaN, NaN]}.</p>
+     *
      * @param coords Array [x, y] or [x, y, z]
-     * @return Transformed array
+     * @return Transformed array, or {@code [NaN, NaN]} if the point cannot be transformed
      */
     public double[] inverse(double[] coords) {
         Point p = new Point(coords);
