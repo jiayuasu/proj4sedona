@@ -28,6 +28,9 @@ public class DatumParams {
     private double ep2;            // Second eccentricity squared
     private List<NadgridInfo> grids;  // NAD grid info objects (for PJD_GRIDSHIFT)
     private String nadgrids;       // NAD grids string (e.g., "@conus,null")
+    // Datum to use for a point that this grid-shift datum's grids cannot shift
+    // (see getGridFallback)
+    private DatumParams gridFallback;
 
     /**
      * Create datum parameters.
@@ -172,6 +175,20 @@ public class DatumParams {
     public List<NadgridInfo> getGrids() { return grids; }
     public String getNadgrids() { return nadgrids; }
 
+    /**
+     * The datum to use instead of this grid-shift datum for a point that none of its grids
+     * can shift: no listed grid is loaded, or no loaded grid contains the point.
+     *
+     * <p>Set for a registry grid-shift datum such as NAD27 (its own ellipsoid and grid list,
+     * no explicit TOWGS84); the fallback is then the registry's Helmert for that datum.
+     * PROJ does the same for a CRS whose datum it knows: it uses the grid where it applies
+     * and a Helmert transformation elsewhere. Any other grid list ({@code +nadgrids=}) has
+     * no fallback, so it keeps PROJ's behavior for an explicit grid list.</p>
+     *
+     * @return the fallback datum, or null if this datum has none
+     */
+    public DatumParams getGridFallback() { return gridFallback; }
+
     // Setters (for special cases)
 
     public void setDatumType(int datumType) { this.datumType = datumType; }
@@ -181,6 +198,7 @@ public class DatumParams {
     public void setEp2(double ep2) { this.ep2 = ep2; }
     public void setGrids(List<NadgridInfo> grids) { this.grids = grids; }
     public void setNadgrids(String nadgrids) { this.nadgrids = nadgrids; }
+    public void setGridFallback(DatumParams gridFallback) { this.gridFallback = gridFallback; }
 
     @Override
     public String toString() {
