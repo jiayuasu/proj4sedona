@@ -179,11 +179,11 @@ public class DatumParams {
      * The datum to use instead of this grid-shift datum for a point that none of its grids
      * can shift: no listed grid is loaded, or no loaded grid contains the point.
      *
-     * <p>Set for a registry grid-shift datum such as NAD27 (its own grid list, no explicit
-     * TOWGS84); the fallback is then the registry's Helmert for that datum. PROJ does the
-     * same for a CRS whose datum it knows: it uses the grid where it applies and a Helmert
-     * transformation elsewhere. Any other grid list ({@code +nadgrids=}) has no fallback,
-     * so it keeps PROJ's behavior for an explicit grid list.</p>
+     * <p>Set for a registry grid-shift datum such as NAD27 (its own ellipsoid and grid list,
+     * no explicit TOWGS84); the fallback is then the registry's Helmert for that datum.
+     * PROJ does the same for a CRS whose datum it knows: it uses the grid where it applies
+     * and a Helmert transformation elsewhere. Any other grid list ({@code +nadgrids=}) has
+     * no fallback, so it keeps PROJ's behavior for an explicit grid list.</p>
      *
      * @return the fallback datum, or null if this datum has none
      */

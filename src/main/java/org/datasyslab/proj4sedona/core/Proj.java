@@ -272,13 +272,16 @@ public class Proj {
      * {@link DatumParams#getGridFallback()}): the definition names a registry datum, on that
      * datum's own ellipsoid and with its own grid list, and gives no explicit TOWGS84. Any
      * other grid list has no fallback, so it keeps PROJ's behavior for an explicit grid list.
+     * The ellipsoid is the one the transform uses: {@code +R_A} keeps the datum's axes but
+     * replaces it with a sphere ({@code es = 0}), which PROJ treats as an unknown datum.
      * These are the conditions under which the exports name the registry datum, so a
      * definition and its PROJ string, WKT or PROJJSON export get the same fallback.
      *
      * @return the towgs84 values, or null if the datum has no fallback
      */
     private static double[] registryGridFallback(ProjectionDef def,
-                                                 DeriveConstants.SphereResult sphere) {
+                                                 DeriveConstants.SphereResult sphere,
+                                                 DeriveConstants.EccentricityResult ecc) {
         if (def.getDatumParams() != null) {
             return null;
         }
@@ -286,6 +289,11 @@ public class Proj {
         if (registryDatum == null || registryDatum.getNadgrids() == null
                 || !registryDatum.getNadgrids().equals(def.getNadgrids())
                 || !CRSSerializer.isDatumEllipsoid(registryDatum.getEllipse(), sphere.a, sphere.b)) {
+            return null;
+        }
+        // The axes match under +R_A too, but the datum is then a sphere
+        double a2 = sphere.a * sphere.a;
+        if (Math.abs(ecc.es - (a2 - sphere.b * sphere.b) / a2) > 1e-12) {
             return null;
         }
         return registryHelmert(registryDatum);
@@ -326,7 +334,7 @@ public class Proj {
                 ecc.ep2,
                 nadgrids
             );
-            double[] fallback = registryGridFallback(def, sphere);
+            double[] fallback = registryGridFallback(def, sphere, ecc);
             if (fallback != null) {
                 datum.setGridFallback(new DatumParams(def.getDatumCode(),
                     fallback, sphere.a, sphere.b, ecc.es, ecc.ep2, null));

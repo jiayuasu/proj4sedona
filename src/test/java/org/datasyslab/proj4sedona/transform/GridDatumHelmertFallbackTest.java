@@ -200,6 +200,16 @@ class GridDatumHelmertFallbackTest {
     }
 
     @Test
+    @DisplayName("NAD27 on its authalic sphere has no fallback, before and after export")
+    void authalicSphereHasNoFallback() {
+        // +R_A keeps Clarke 1866's axes but sets es to 0; PROJ treats it as an unknown datum
+        // and applies no shift, where a Helmert on the sphere would move the point 17.5 km
+        Proj authalic = new Proj("+proj=longlat +datum=NAD27 +R_A +no_defs");
+        assertPoint(-98.0, 27.0, Proj4.transform(authalic, new Proj(WGS84), new Point(-98, 27)));
+        assertPoint(-98.0, 27.0, transform(authalic.toProjString(), WGS84, -98, 27));
+    }
+
+    @Test
     @DisplayName("The fallback follows the definition's current grid list")
     void fallbackFollowsCurrentGridList() {
         ProjectionDef def = ProjString.parse(NAD27);

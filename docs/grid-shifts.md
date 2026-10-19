@@ -145,8 +145,9 @@ can shift the point, including when no grid is loaded. It follows the datum, not
 spelling: `+datum=NAD27 +nadgrids=@conus,@alaska,@ntv2_0.gsb,@ntv1_can.dat` restates the
 registry datum and has the fallback too, so the datum keeps it through PROJ string, WKT
 and PROJJSON exports. Any other grid list, the same list on `+ellps=clrk66` without the
-datum, or NAD27 on another ellipsoid (`+datum=NAD27 +a=...`) has none; PROJ treats the
-last one as an unknown datum. See [Datum Transformations](datum-transformations.md#grid-based-datum-shift).
+datum, or NAD27 on another ellipsoid (`+datum=NAD27 +a=...`) or on its authalic sphere
+(`+datum=NAD27 +R_A`) has none; PROJ treats the last two as unknown datums. See
+[Datum Transformations](datum-transformations.md#grid-based-datum-shift).
 
 ### Parsing nadgrids
 
